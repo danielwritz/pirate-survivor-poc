@@ -1208,58 +1208,51 @@ function drawCloudOverlay() {
 
 function drawHud() {
   const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
-  const speedRatio = clamp(player.speed / (player.baseSpeed + 1.9), 0, 1);
-  const rowRatio = state.rowEffort;
-  const threatRatio = clamp((state.difficultyTier + state.difficultyFromSize) / 10, 0, 1);
-
-  const panelX = 18;
-  const panelY = 14;
-  const panelW = 430;
-  const barW = 300;
-  const barH = 13;
-
-  ctx.fillStyle = 'rgba(8,20,30,0.62)';
-  ctx.fillRect(panelX - 10, panelY - 8, panelW, 138);
-
-  ctx.fillStyle = '#d8eefc';
-  ctx.font = '12px system-ui';
-  ctx.fillText('HULL', panelX, panelY + 10);
-  ctx.fillText('SPEED', panelX, panelY + 34);
-  ctx.fillText('ROW', panelX, panelY + 58);
-  ctx.fillText('THREAT', panelX, panelY + 82);
-  ctx.fillText('GUN LOAD', panelX, panelY + 106);
-  ctx.fillText('CANNON', panelX, panelY + 130);
-
-  ctx.fillStyle = '#233746';
-  ctx.fillRect(panelX + 52, panelY + 0, barW, barH);
-  ctx.fillRect(panelX + 52, panelY + 24, barW, barH);
-  ctx.fillRect(panelX + 52, panelY + 48, barW, barH);
-  ctx.fillRect(panelX + 52, panelY + 72, barW, barH);
-  ctx.fillRect(panelX + 52, panelY + 96, barW, barH);
-  ctx.fillRect(panelX + 52, panelY + 120, barW, barH);
-
-  ctx.fillStyle = '#cd5454';
-  ctx.fillRect(panelX + 52, panelY + 0, barW * hpRatio, barH);
-  ctx.fillStyle = '#72badf';
-  ctx.fillRect(panelX + 52, panelY + 24, barW * speedRatio, barH);
-  ctx.fillStyle = '#9fd889';
-  ctx.fillRect(panelX + 52, panelY + 48, barW * rowRatio, barH);
-  ctx.fillStyle = '#d28d49';
-  ctx.fillRect(panelX + 52, panelY + 72, barW * threatRatio, barH);
   const gunLoad = clamp(player.gunTimer / player.gunReload, 0, 1);
   const cannonLoad = clamp(player.cannonTimer / player.cannonReload, 0, 1);
+  const stageLabel = getLevelConfig(state.stageIndex).name;
+  const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
+  const bossIn = Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer));
+
+  const panelW = Math.min(560, canvas.width * 0.62);
+  const panelX = (canvas.width - panelW) / 2;
+  const panelY = 12;
+  const barW = panelW - 116;
+  const barH = 12;
+  const labelX = panelX + 14;
+  const barX = panelX + 88;
+
+  ctx.fillStyle = 'rgba(8,20,30,0.68)';
+  ctx.fillRect(panelX, panelY, panelW, 116);
+
+  ctx.fillStyle = '#e2f3ff';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${modeLabel} · ${stageLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Boss ${bossIn}s`, panelX + panelW / 2, panelY + 16);
+  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#d8eefc';
+  ctx.fillText('HULL', labelX, panelY + 53);
+  ctx.fillText('GUN', labelX, panelY + 75);
+  ctx.fillText('CANNON', labelX, panelY + 97);
+
+  ctx.fillStyle = '#233746';
+  ctx.fillRect(barX, panelY + 42, barW, barH);
+  ctx.fillRect(barX, panelY + 64, barW, barH);
+  ctx.fillRect(barX, panelY + 86, barW, barH);
+
+  ctx.fillStyle = '#cd5454';
+  ctx.fillRect(barX, panelY + 42, barW * hpRatio, barH);
   ctx.fillStyle = '#8fcfe4';
-  ctx.fillRect(panelX + 52, panelY + 96, barW * gunLoad, barH);
+  ctx.fillRect(barX, panelY + 64, barW * gunLoad, barH);
   ctx.fillStyle = '#d8a167';
-  ctx.fillRect(panelX + 52, panelY + 120, barW * cannonLoad, barH);
+  ctx.fillRect(barX, panelY + 86, barW * cannonLoad, barH);
 
   ctx.fillStyle = '#ecf7ff';
-  ctx.fillText(`${Math.round(player.hp)}/${player.maxHp}`, panelX + 358, panelY + 10);
-  ctx.fillText(`${player.speed.toFixed(2)}`, panelX + 358, panelY + 34);
-  ctx.fillText(`${Math.round(rowRatio * 100)}%`, panelX + 358, panelY + 58);
-  ctx.fillText(`T${state.difficultyTier}+S${state.difficultyFromSize}`, panelX + 328, panelY + 82);
-  ctx.fillText(`${Math.round(gunLoad * 100)}%`, panelX + 358, panelY + 106);
-  ctx.fillText(`${Math.round(cannonLoad * 100)}%`, panelX + 358, panelY + 130);
+  ctx.fillText(`${Math.round(player.hp)}/${player.maxHp}`, barX + barW + 8, panelY + 53);
+  ctx.fillText(`${Math.round(gunLoad * 100)}%`, barX + barW + 8, panelY + 75);
+  ctx.fillText(`${Math.round(cannonLoad * 100)}%`, barX + barW + 8, panelY + 97);
 }
 
 function drawRangeIndicators() {
@@ -1336,21 +1329,27 @@ function draw() {
   drawCloudOverlay();
 
   if (state.upgradesOffered) {
+    const cardW = Math.min(560, canvas.width * 0.68);
+    const cardX = (canvas.width - cardW) / 2;
+    const titleX = canvas.width / 2;
     ctx.fillStyle = 'rgba(5,10,15,0.78)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#f5fbff';
     ctx.font = '24px system-ui';
-    ctx.fillText(state.upgradesOffered.title, state.upgradesOffered.major ? 265 : 360, 120);
+    ctx.textAlign = 'center';
+    ctx.fillText(state.upgradesOffered.title, titleX, 120);
     ctx.font = '18px system-ui';
     state.upgradesOffered.options.forEach((u, i) => {
       const y = 200 + i * 95;
       ctx.fillStyle = state.upgradesOffered.major ? '#4a2f18' : '#163349';
-      ctx.fillRect(240, y - 34, 480, 62);
+      ctx.fillRect(cardX, y - 34, cardW, 62);
       ctx.fillStyle = '#e8f5ff';
-      ctx.fillText(`${i + 1}) ${u.name}`, 262, y - 7);
+      ctx.textAlign = 'left';
+      ctx.fillText(`${i + 1}) ${u.name}`, cardX + 22, y - 7);
       ctx.fillStyle = '#a8c6d9';
-      ctx.fillText(u.desc, 262, y + 18);
+      ctx.fillText(u.desc, cardX + 22, y + 18);
     });
+    ctx.textAlign = 'left';
   }
 
   if (state.gameOver) {
@@ -1363,11 +1362,8 @@ function draw() {
     ctx.fillText('Refresh to sail again', 392, 290);
   }
 
-  const stageLabel = getLevelConfig(state.stageIndex).name;
-  const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
-  const sailState = player.sailOpen ? 'Open' : 'Closed';
-  statsEl.textContent = `${modeLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Sail ${sailState} · Pivot ${player.cannonPivot}°`;
-  windEl.textContent = `${stageLabel} · Wind ${windDirectionLabel()} · Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s · Zoom ${(state.zoom * 100).toFixed(0)}%`;
+  statsEl.textContent = '';
+  windEl.textContent = '';
 
   drawHud();
 
