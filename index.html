@@ -483,8 +483,8 @@ function broadsideFire(sideSign, target) {
     const spawnY = player.y + forward.y * along + right.y * sideOffset;
 
     const spread = (Math.random() - 0.5) * 0.16;
-    const cannonAdjust = isCannon(i) ? clamped : angleDiff(targetAngle, baseDir) * 0.5;
-    const dir = baseDir + cannonAdjust + spread;
+    const cannonAdjust = isCannon(i) ? clamped : 0;
+    const dir = isCannon(i) ? (baseDir + cannonAdjust + spread) : (targetAngle + spread);
     const speed = player.bulletSpeed + (isCannon(i) ? 0.45 : 0.2);
     const dmg = player.bulletDamage + (isCannon(i) ? 4 : 0);
 
