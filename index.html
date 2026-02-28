@@ -19,7 +19,7 @@
       <div id="wind"></div>
     </div>
     <canvas id="game" width="1280" height="720"></canvas>
-    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: E · Mouse wheel zoom · Level-up: 1/2/3</div>
+    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: Space · Mouse wheel zoom · Level-up: 1/2/3</div>
   </div>
 
 <script>
@@ -44,7 +44,9 @@ window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
 window.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() === 'e' && !e.repeat) {
+  const key = e.key.toLowerCase();
+  if ((key === ' ' || key === 'spacebar' || e.code === 'Space' || key === 'e') && !e.repeat) {
+    if (e.code === 'Space' || key === ' ') e.preventDefault();
     player.sailOpen = !player.sailOpen;
   }
 });
@@ -152,6 +154,24 @@ function getPlayerRanges() {
     gun,
     cannon: Math.max(gun + 70, cannon)
   };
+}
+
+function getHullDims(entity) {
+  const size = entity.size;
+  const len = size * clamp(entity.hullLength ?? 1, 0.78, 1.55);
+  const beam = size * clamp(entity.hullBeam ?? 1, 0.7, 1.45);
+  return { len, beam };
+}
+
+function getMountAlong(index, total, len, startFactor = 0.62, spanFactor = 1.24) {
+  const t = total <= 1 ? 0.5 : index / (total - 1);
+  return -len * startFactor + t * len * spanFactor;
+}
+
+function drawPerimeterMount(along, side, length, thickness, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(along - thickness * 0.5, -side - length, thickness, length);
+  ctx.fillRect(along - thickness * 0.5, side, thickness, length);
 }
 
 const GOLD_MAGNET_PULL_FACTOR = 0.62;
@@ -710,8 +730,10 @@ function getRightVector() {
 function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCannonFire) {
   const right = getRightVector();
   const forward = getForwardVector();
+  const { len, beam } = getHullDims(player);
   const guns = Math.max(2, player.gunners + player.cannons * 2);
-  const isCannon = (portIndex) => portIndex < player.cannons * 2;
+  const cannonSlots = Math.min(guns, player.cannons * 2);
+  const isCannon = (portIndex) => portIndex < cannonSlots;
   const ranges = getPlayerRanges();
   const allowGun = distanceToTarget <= ranges.gun && allowGunFire;
   const allowCannon = distanceToTarget <= ranges.cannon && allowCannonFire;
@@ -729,15 +751,16 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
     if (cannonPort && !allowCannon) continue;
     if (!cannonPort && !allowGun) continue;
 
-    const t = guns === 1 ? 0.5 : i / (guns - 1);
-    const along = (t - 0.5) * player.size * 1.7;
-    const sideOffset = sideSign * (player.size * 0.72);
+    const along = getMountAlong(i, guns, len, 0.62, 1.24);
+    const mountLen = cannonPort ? Math.max(8, player.size * 0.48) : Math.max(4.5, player.size * 0.3);
+    const sideOffset = sideSign * (beam * 0.67 + mountLen);
     const spawnX = player.x + forward.x * along + right.x * sideOffset;
     const spawnY = player.y + forward.y * along + right.y * sideOffset;
 
-    const spread = (Math.random() - 0.5) * 0.16;
+    const spread = (Math.random() - 0.5) * (cannonPort ? 0.12 : 0.18);
     const cannonAdjust = cannonPort ? clamped : 0;
-    const dir = cannonPort ? (baseDir + cannonAdjust + spread) : (targetAngle + spread);
+    const gunAdjust = clamp(angleDiff(targetAngle, baseDir), -36 * (Math.PI / 180), 36 * (Math.PI / 180));
+    const dir = cannonPort ? (baseDir + cannonAdjust + spread) : (baseDir + gunAdjust + spread);
     const speed = player.bulletSpeed + (cannonPort ? 0.45 : 0.2);
     const dmg = player.bulletDamage + (cannonPort ? 4 : 0);
 
@@ -760,21 +783,24 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
 function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, allowCannonFire) {
   const fwd = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
   const right = { x: -fwd.y, y: fwd.x };
+  const { len, beam } = getHullDims(enemy);
   const targetAngle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
   const allowGun = distanceToTarget <= enemy.gunRange && allowGunFire;
   const allowCannon = distanceToTarget <= enemy.cannonRange && allowCannonFire;
   let firedGun = false;
   let firedCannon = false;
+  const baseDir = enemy.heading + sideSign * Math.PI / 2;
 
   if (allowGun) {
     const gunCount = Math.max(1, enemy.gunners);
     for (let i = 0; i < gunCount; i++) {
-      const t = gunCount === 1 ? 0.5 : i / (gunCount - 1);
-      const along = (t - 0.5) * enemy.size * 1.45;
-      const sideOffset = sideSign * enemy.size * 0.58;
+      const along = getMountAlong(i, gunCount, len, 0.62, 1.24);
+      const mountLen = Math.max(4, enemy.size * 0.28);
+      const sideOffset = sideSign * (beam * 0.64 + mountLen);
       const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
       const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
-      const dir = targetAngle + (Math.random() - 0.5) * 0.2;
+      const gunAdjust = clamp(angleDiff(targetAngle, baseDir), -44 * (Math.PI / 180), 44 * (Math.PI / 180));
+      const dir = baseDir + gunAdjust + (Math.random() - 0.5) * 0.2;
       state.bullets.push({
         x: spawnX,
         y: spawnY,
@@ -792,12 +818,11 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
 
   if (allowCannon) {
     const cannonCount = Math.max(0, enemy.cannons);
-    const baseDir = enemy.heading + sideSign * Math.PI / 2;
     const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
     for (let i = 0; i < cannonCount; i++) {
-      const t = cannonCount === 1 ? 0.5 : i / (cannonCount - 1);
-      const along = (t - 0.5) * enemy.size * 1.2;
-      const sideOffset = sideSign * enemy.size * 0.74;
+      const along = getMountAlong(i, cannonCount, len, 0.52, 1.08);
+      const mountLen = Math.max(7, enemy.size * 0.42);
+      const sideOffset = sideSign * (beam * 0.72 + mountLen);
       const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
       const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
       const dir = baseDir + clamped + (Math.random() - 0.5) * 0.1;
@@ -1358,24 +1383,15 @@ function drawShip() {
     ctx.fill();
   }
 
-  const gunPorts = Math.max(2, player.gunners);
-  for (let i = 0; i < gunPorts; i++) {
-    const t = gunPorts === 1 ? 0.5 : i / (gunPorts - 1);
-    const along = -sLen * 0.62 + t * sLen * 1.24;
-
-    ctx.fillStyle = '#d5dbe2';
-    ctx.fillRect(along - 1.6, -sBeam * 0.67, 3.2, 2.2);
-    ctx.fillRect(along - 1.6, sBeam * 0.63, 3.2, 2.2);
-  }
-
-  const cannonPorts = Math.max(0, player.cannons);
-  for (let i = 0; i < cannonPorts; i++) {
-    const t = cannonPorts === 1 ? 0.5 : i / (cannonPorts - 1);
-    const along = -sLen * 0.52 + t * sLen * 1.08;
-
-    ctx.fillStyle = '#5f656c';
-    ctx.fillRect(along - 5, -sBeam * 0.79, 10, 4);
-    ctx.fillRect(along - 5, sBeam * 0.73, 10, 4);
+  const broadsidePorts = Math.max(2, player.gunners + player.cannons * 2);
+  const cannonPorts = Math.min(broadsidePorts, player.cannons * 2);
+  for (let i = 0; i < broadsidePorts; i++) {
+    const cannonPort = i < cannonPorts;
+    const along = getMountAlong(i, broadsidePorts, sLen, 0.62, 1.24);
+    const length = cannonPort ? Math.max(8, s * 0.48) : Math.max(4.5, s * 0.3);
+    const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
+    const color = cannonPort ? '#5f656c' : '#d5dbe2';
+    drawPerimeterMount(along, sBeam * 0.66, length, thickness, color);
   }
 
   ctx.restore();
@@ -1406,20 +1422,15 @@ function drawEnemyShip(enemy) {
     ctx.fill();
   }
 
-  for (let i = 0; i < Math.max(1, enemy.gunners); i++) {
-    const t = enemy.gunners <= 1 ? 0.5 : i / (enemy.gunners - 1);
-    const along = -sLen * 0.62 + t * sLen * 1.24;
-    ctx.fillStyle = '#d0d6de';
-    ctx.fillRect(along - 1.5, -sBeam * 0.64, 3, 2);
-    ctx.fillRect(along - 1.5, sBeam * 0.59, 3, 2);
+  const gunPorts = Math.max(1, enemy.gunners);
+  for (let i = 0; i < gunPorts; i++) {
+    const along = getMountAlong(i, gunPorts, sLen, 0.62, 1.24);
+    drawPerimeterMount(along, sBeam * 0.62, Math.max(3.8, s * 0.27), Math.max(1.7, s * 0.1), '#d0d6de');
   }
 
   for (let i = 0; i < enemy.cannons; i++) {
-    const t = enemy.cannons <= 1 ? 0.5 : i / (enemy.cannons - 1);
-    const along = -sLen * 0.52 + t * sLen * 1.08;
-    ctx.fillStyle = '#596068';
-    ctx.fillRect(along - 4.5, -sBeam * 0.76, 9, 3.8);
-    ctx.fillRect(along - 4.5, sBeam * 0.71, 9, 3.8);
+    const along = getMountAlong(i, enemy.cannons, sLen, 0.52, 1.08);
+    drawPerimeterMount(along, sBeam * 0.69, Math.max(6.6, s * 0.42), Math.max(2.5, s * 0.13), '#596068');
   }
 
   ctx.restore();
