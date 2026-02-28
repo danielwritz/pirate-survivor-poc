@@ -26,6 +26,9 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
   - Sea monsters (high-health pressure)
 - Wind system with HUD compass indicator
 - Graphical status HUD: hull, speed, rowing effort, and threat meter
+- Reload UX:
+  - Gun reload bar (faster cadence)
+  - Cannon reload bar (slower cadence)
 - Weapon range model:
   - Gunners fire only inside gun range
   - Cannons fire only inside cannon range
@@ -53,6 +56,10 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Vessel movement is intentionally slower-paced while shots remain comparatively fast
 - Pace tuning can target a calmer or livelier midpoint without changing projectile tempo
 - Config-driven level structure with endless scaling
+
+## Interface Behavior
+- Fullscreen canvas viewport by default
+- Mouse-wheel zoom augments automatic size-based camera zoom
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling

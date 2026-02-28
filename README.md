@@ -5,11 +5,14 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 ## Run
 Open `index.html` directly in a browser.
 
+Canvas now runs fullscreen in the browser viewport.
+
 ## Controls
 - Steer: `A` / `D`
 - Row forward: `W`
 - Brake / drag anchor: `S`
 - Toggle sail open/closed: `E`
+- Zoom: mouse wheel
 - Combat: auto-fire
 - Level-up choices: `1`, `2`, `3`
 
@@ -22,6 +25,7 @@ Open `index.html` directly in a browser.
 - Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
 - Gunners and cannons only fire when target is within effective range
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
+- Slower, separate reload cadence for guns vs cannons (guns faster, cannons slower)
 - Floating gold drops remain at kill positions until collected
 - Gold drops render as spinning pixel-style coins
 - World-space traversal on a larger sea map (camera follows ship)
@@ -37,6 +41,7 @@ Open `index.html` directly in a browser.
 - Major upgrade choices on boss defeat (visual + gameplay impact)
 - Dynamic zoom-out as ship scales up
 - Graphical HUD bars (hull, speed, rowing effort, threat)
+- HUD includes gun and cannon loading bars with independent fill states
 - Boat movement pace rebalanced much slower (projectiles remain fast)
 - Vessel pace increased from the prior slow pass to a livelier midpoint
 - Level configuration system with endless scaling support

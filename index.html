@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pirate Survivor Prototype</title>
   <style>
-    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
-    .wrap { display: grid; place-items: center; min-height: 100vh; }
-    canvas { border: 1px solid #2a4b63; background: radial-gradient(circle at 30% 30%, #0a2a3f, #071521 70%); }
-    .hud { width: 960px; display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
-    .hint { width: 960px; margin-top: 8px; color: #9fc2d9; font-size: 13px; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { position: fixed; inset: 0; }
+    canvas { display: block; width: 100vw; height: 100vh; border: 0; background: radial-gradient(circle at 30% 30%, #0a2a3f, #071521 70%); }
+    .hud { position: absolute; top: 10px; left: 14px; right: 14px; z-index: 5; display: flex; justify-content: space-between; font-size: 14px; pointer-events: none; }
+    .hint { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 5; color: #9fc2d9; font-size: 13px; text-align: center; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -18,8 +18,8 @@
       <div id="stats"></div>
       <div id="wind"></div>
     </div>
-    <canvas id="game" width="960" height="540"></canvas>
-    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: E · Auto-fire broadside · Level-up: 1/2/3</div>
+    <canvas id="game" width="1280" height="720"></canvas>
+    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: E · Mouse wheel zoom · Level-up: 1/2/3</div>
   </div>
 
 <script>
@@ -28,6 +28,16 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const statsEl = document.getElementById('stats');
 const windEl = document.getElementById('wind');
+
+function resizeCanvas() {
+  const w = Math.max(900, window.innerWidth);
+  const h = Math.max(540, window.innerHeight);
+  canvas.width = w;
+  canvas.height = h;
+}
+
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
 const keys = new Set();
 window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
@@ -38,6 +48,12 @@ window.addEventListener('keydown', (e) => {
     player.sailOpen = !player.sailOpen;
   }
 });
+
+window.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const step = e.deltaY > 0 ? -0.06 : 0.06;
+  state.zoomUserOffset = clamp(state.zoomUserOffset + step, -0.26, 0.34);
+}, { passive: false });
 
 const ENDLESS_MODE = true;
 const LEVEL_CONFIGS = [
@@ -88,6 +104,7 @@ const state = {
   rowEffort: 0,
   difficultyFromSize: 0,
   defenseTier: 0,
+  zoomUserOffset: 0,
   islands: [],
   clouds: []
 };
@@ -101,8 +118,10 @@ const player = {
   heading: -Math.PI / 2,
   speed: 0,
   baseSpeed: 2.6,
-  fireRate: 0.42,
-  fireTimer: 0,
+  gunReload: 1.1,
+  cannonReload: 2.2,
+  gunTimer: 1.1,
+  cannonTimer: 2.2,
   bulletDamage: 9,
   bulletSpeed: 6,
   rowers: 0,
@@ -136,7 +155,7 @@ const upgradePool = [
     apply() {
       player.crew += 1;
       player.gunners += 1;
-      player.fireRate = Math.max(0.16, player.fireRate - 0.04);
+      player.gunReload = Math.max(0.55, player.gunReload - 0.07);
       addAbility('Musketeers');
     }
   },
@@ -146,6 +165,7 @@ const upgradePool = [
     apply() {
       player.cannons += 1;
       player.bulletDamage += 3;
+      player.cannonReload = Math.max(1.0, player.cannonReload - 0.1);
       addAbility('Cannons');
     }
   },
@@ -223,7 +243,8 @@ const majorUpgradePool = [
     desc: 'Faster ship, faster volleys',
     apply() {
       player.baseSpeed += 0.45;
-      player.fireRate = Math.max(0.12, player.fireRate - 0.06);
+      player.gunReload = Math.max(0.45, player.gunReload - 0.08);
+      player.cannonReload = Math.max(0.9, player.cannonReload - 0.1);
       player.sailColor = '#d34d4d';
       player.mastScale += 0.2;
       addAbility('CrimsonSails');
@@ -506,8 +527,10 @@ function spawnEnemy() {
     cannonPivot,
     rudder: kind === 'rammer' ? 2 : 1,
     mass: 20 + size * 0.9,
-    fireRate: 0.72 - Math.min(0.28, state.difficultyTier * 0.03),
-    fireTimer: Math.random() * 0.5,
+    gunReload: Math.max(0.62, 1.15 - state.difficultyTier * 0.04),
+    cannonReload: Math.max(1.05, 2.1 - state.difficultyTier * 0.05),
+    gunTimer: Math.random() * 0.8,
+    cannonTimer: Math.random() * 1.2,
     gunRange: 105 + size * 3.1 + state.difficultyTier * 7,
     cannonRange: 168 + size * 4.4 + cannons * 14 + state.difficultyTier * 8,
     bulletDamage: 5 + state.difficultyTier * 1.5 + cannons * 1.2,
@@ -548,8 +571,10 @@ function spawnBoss() {
     cannonPivot: clamp(5 + Math.floor(state.difficultyTier / 2) * 5, 5, 25),
     rudder: 2,
     mass: 46 + size,
-    fireRate: Math.max(0.35, 0.6 - state.difficultyTier * 0.02),
-    fireTimer: 0.2,
+    gunReload: Math.max(0.48, 0.9 - state.difficultyTier * 0.03),
+    cannonReload: Math.max(0.82, 1.45 - state.difficultyTier * 0.04),
+    gunTimer: 0.4,
+    cannonTimer: 0.7,
     gunRange: 150 + size * 3.3,
     cannonRange: 245 + size * 4.8 + state.difficultyTier * 14,
     bulletDamage: 10 + state.difficultyTier * 2.4,
@@ -567,21 +592,22 @@ function getRightVector() {
   return { x: -f.y, y: f.x };
 }
 
-function broadsideFire(sideSign, target, distanceToTarget) {
+function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCannonFire) {
   const right = getRightVector();
   const forward = getForwardVector();
   const guns = Math.max(2, player.gunners + player.cannons * 2);
   const isCannon = (portIndex) => portIndex < player.cannons * 2;
   const ranges = getPlayerRanges();
-  const allowGun = distanceToTarget <= ranges.gun;
-  const allowCannon = distanceToTarget <= ranges.cannon;
+  const allowGun = distanceToTarget <= ranges.gun && allowGunFire;
+  const allowCannon = distanceToTarget <= ranges.cannon && allowCannonFire;
 
   if (!allowGun && !allowCannon) return false;
 
   const baseDir = player.heading + sideSign * Math.PI / 2;
   const targetAngle = target ? Math.atan2(target.y - player.y, target.x - player.x) : baseDir;
   const clamped = clamp(angleDiff(targetAngle, baseDir), -player.cannonPivot * (Math.PI / 180), player.cannonPivot * (Math.PI / 180));
-  let fired = false;
+  let firedGun = false;
+  let firedCannon = false;
 
   for (let i = 0; i < guns; i++) {
     const cannonPort = isCannon(i);
@@ -609,19 +635,21 @@ function broadsideFire(sideSign, target, distanceToTarget) {
       heavy: cannonPort,
       owner: 'player'
     });
-    fired = true;
+    if (cannonPort) firedCannon = true;
+    else firedGun = true;
   }
 
-  return fired;
+  return { firedGun, firedCannon };
 }
 
-function enemyVolley(enemy, sideSign, distanceToTarget) {
+function enemyVolley(enemy, sideSign, distanceToTarget, allowGunFire, allowCannonFire) {
   const fwd = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
   const right = { x: -fwd.y, y: fwd.x };
   const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-  const allowGun = distanceToTarget <= enemy.gunRange;
-  const allowCannon = distanceToTarget <= enemy.cannonRange;
-  let fired = false;
+  const allowGun = distanceToTarget <= enemy.gunRange && allowGunFire;
+  const allowCannon = distanceToTarget <= enemy.cannonRange && allowCannonFire;
+  let firedGun = false;
+  let firedCannon = false;
 
   if (allowGun) {
     const gunCount = Math.max(1, enemy.gunners);
@@ -641,7 +669,7 @@ function enemyVolley(enemy, sideSign, distanceToTarget) {
         heavy: false,
         owner: 'enemy'
       });
-      fired = true;
+      firedGun = true;
     }
   }
 
@@ -665,11 +693,11 @@ function enemyVolley(enemy, sideSign, distanceToTarget) {
         heavy: true,
         owner: 'enemy'
       });
-      fired = true;
+      firedCannon = true;
     }
   }
 
-  return fired;
+  return { firedGun, firedCannon };
 }
 
 function shootAtNearest() {
@@ -685,17 +713,20 @@ function shootAtNearest() {
       target = enemy;
     }
   }
-  if (!target) return false;
+  if (!target) return { firedGun: false, firedCannon: false };
 
   const forward = getForwardVector();
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const dist = Math.hypot(dx, dy);
   const ranges = getPlayerRanges();
-  if (dist > Math.max(ranges.gun, ranges.cannon)) return false;
+  if (dist > Math.max(ranges.gun, ranges.cannon)) return { firedGun: false, firedCannon: false };
   const cross = forward.x * dy - forward.y * dx;
   const sideSign = cross >= 0 ? 1 : -1;
-  return broadsideFire(sideSign, target, dist);
+  const canGun = player.gunTimer >= player.gunReload;
+  const canCannon = player.cannonTimer >= player.cannonReload;
+  if (!canGun && !canCannon) return { firedGun: false, firedCannon: false };
+  return broadsideFire(sideSign, target, dist, canGun, canCannon);
 }
 
 function offerUpgrades() {
@@ -808,17 +839,17 @@ function update(dt) {
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
   resolveIslandCollisions(player, dt, true);
 
-  const zoomTarget = clamp(1 - (player.size - 16) * 0.008, 0.62, 1);
+  const zoomTarget = clamp(1 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.32);
   state.zoom += (zoomTarget - state.zoom) * 0.09;
   state.difficultyFromSize = Math.floor(Math.max(0, (16 - state.zoom * 16) * 0.9));
   ensureIslandDefenses();
   updateCamera();
 
-  player.fireTimer += dt;
-  if (player.fireTimer >= player.fireRate) {
-    const fired = shootAtNearest();
-    player.fireTimer = fired ? 0 : player.fireRate * 0.82;
-  }
+  player.gunTimer += dt;
+  player.cannonTimer += dt;
+  const firedPlayer = shootAtNearest();
+  if (firedPlayer.firedGun) player.gunTimer = 0;
+  if (firedPlayer.firedCannon) player.cannonTimer = 0;
 
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09;
   const spawnChance = (0.0105 * cfg.spawnRate + state.level * 0.00022 + state.difficultyTier * 0.00035 + state.difficultyFromSize * 0.00045) * dt * 60;
@@ -845,16 +876,20 @@ function update(dt) {
     });
     resolveIslandCollisions(enemy, dt, false);
 
-    enemy.fireTimer += dt;
-    if (enemy.fireTimer >= enemy.fireRate) {
-      const fwdEnemy = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
-      const dx = player.x - enemy.x;
-      const dy = player.y - enemy.y;
-      const dist = Math.hypot(dx, dy);
-      const cross = fwdEnemy.x * dy - fwdEnemy.y * dx;
-      const sideSign = cross >= 0 ? 1 : -1;
-      const fired = enemyVolley(enemy, sideSign, dist);
-      enemy.fireTimer = fired ? 0 : enemy.fireRate * 0.82;
+    enemy.gunTimer += dt;
+    enemy.cannonTimer += dt;
+    const fwdEnemy = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const dist = Math.hypot(dx, dy);
+    const cross = fwdEnemy.x * dy - fwdEnemy.y * dx;
+    const sideSign = cross >= 0 ? 1 : -1;
+    const canGun = enemy.gunTimer >= enemy.gunReload;
+    const canCannon = enemy.cannonTimer >= enemy.cannonReload;
+    if (canGun || canCannon) {
+      const fired = enemyVolley(enemy, sideSign, dist, canGun, canCannon);
+      if (fired.firedGun) enemy.gunTimer = 0;
+      if (fired.firedCannon) enemy.cannonTimer = 0;
     }
   }
 
@@ -1179,12 +1214,12 @@ function drawHud() {
 
   const panelX = 18;
   const panelY = 14;
-  const panelW = 390;
+  const panelW = 430;
   const barW = 300;
   const barH = 13;
 
   ctx.fillStyle = 'rgba(8,20,30,0.62)';
-  ctx.fillRect(panelX - 10, panelY - 8, panelW, 92);
+  ctx.fillRect(panelX - 10, panelY - 8, panelW, 138);
 
   ctx.fillStyle = '#d8eefc';
   ctx.font = '12px system-ui';
@@ -1192,12 +1227,16 @@ function drawHud() {
   ctx.fillText('SPEED', panelX, panelY + 34);
   ctx.fillText('ROW', panelX, panelY + 58);
   ctx.fillText('THREAT', panelX, panelY + 82);
+  ctx.fillText('GUN LOAD', panelX, panelY + 106);
+  ctx.fillText('CANNON', panelX, panelY + 130);
 
   ctx.fillStyle = '#233746';
   ctx.fillRect(panelX + 52, panelY + 0, barW, barH);
   ctx.fillRect(panelX + 52, panelY + 24, barW, barH);
   ctx.fillRect(panelX + 52, panelY + 48, barW, barH);
   ctx.fillRect(panelX + 52, panelY + 72, barW, barH);
+  ctx.fillRect(panelX + 52, panelY + 96, barW, barH);
+  ctx.fillRect(panelX + 52, panelY + 120, barW, barH);
 
   ctx.fillStyle = '#cd5454';
   ctx.fillRect(panelX + 52, panelY + 0, barW * hpRatio, barH);
@@ -1207,12 +1246,20 @@ function drawHud() {
   ctx.fillRect(panelX + 52, panelY + 48, barW * rowRatio, barH);
   ctx.fillStyle = '#d28d49';
   ctx.fillRect(panelX + 52, panelY + 72, barW * threatRatio, barH);
+  const gunLoad = clamp(player.gunTimer / player.gunReload, 0, 1);
+  const cannonLoad = clamp(player.cannonTimer / player.cannonReload, 0, 1);
+  ctx.fillStyle = '#8fcfe4';
+  ctx.fillRect(panelX + 52, panelY + 96, barW * gunLoad, barH);
+  ctx.fillStyle = '#d8a167';
+  ctx.fillRect(panelX + 52, panelY + 120, barW * cannonLoad, barH);
 
   ctx.fillStyle = '#ecf7ff';
   ctx.fillText(`${Math.round(player.hp)}/${player.maxHp}`, panelX + 358, panelY + 10);
   ctx.fillText(`${player.speed.toFixed(2)}`, panelX + 358, panelY + 34);
   ctx.fillText(`${Math.round(rowRatio * 100)}%`, panelX + 358, panelY + 58);
   ctx.fillText(`T${state.difficultyTier}+S${state.difficultyFromSize}`, panelX + 328, panelY + 82);
+  ctx.fillText(`${Math.round(gunLoad * 100)}%`, panelX + 358, panelY + 106);
+  ctx.fillText(`${Math.round(cannonLoad * 100)}%`, panelX + 358, panelY + 130);
 }
 
 function drawRangeIndicators() {
@@ -1319,7 +1366,7 @@ function draw() {
   const stageLabel = getLevelConfig(state.stageIndex).name;
   const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
   const sailState = player.sailOpen ? 'Open' : 'Closed';
-  statsEl.textContent = `${modeLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Sail ${sailState} · Cannons Pivot ${player.cannonPivot}°`;
+  statsEl.textContent = `${modeLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Sail ${sailState} · Pivot ${player.cannonPivot}°`;
   windEl.textContent = `${stageLabel} · Wind ${windDirectionLabel()} · Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s · Zoom ${(state.zoom * 100).toFixed(0)}%`;
 
   drawHud();
