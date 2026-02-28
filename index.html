@@ -52,7 +52,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('wheel', (e) => {
   e.preventDefault();
   const step = e.deltaY > 0 ? -0.06 : 0.06;
-  state.zoomUserOffset = clamp(state.zoomUserOffset + step, -0.26, 0.34);
+  state.zoomUserOffset = clamp(state.zoomUserOffset + step, -0.26, 0.62);
 }, { passive: false });
 
 const ENDLESS_MODE = true;
@@ -142,9 +142,11 @@ const player = {
 };
 
 function getPlayerRanges() {
+  const gun = 128 + player.gunners * 7 + state.level * 0.8;
+  const cannon = 236 + player.cannons * 20 + player.cannonPivot * 1.6 + state.level * 1.2;
   return {
-    gun: 135 + player.gunners * 7 + state.level * 0.8,
-    cannon: 220 + player.cannons * 18 + player.cannonPivot * 1.4 + state.level * 1.1
+    gun,
+    cannon: Math.max(gun + 70, cannon)
   };
 }
 
@@ -531,8 +533,8 @@ function spawnEnemy() {
     cannonReload: Math.max(1.05, 2.1 - state.difficultyTier * 0.05),
     gunTimer: Math.random() * 0.8,
     cannonTimer: Math.random() * 1.2,
-    gunRange: 105 + size * 3.1 + state.difficultyTier * 7,
-    cannonRange: 168 + size * 4.4 + cannons * 14 + state.difficultyTier * 8,
+    gunRange: 102 + size * 3.0 + state.difficultyTier * 7,
+    cannonRange: Math.max(158 + size * 4.5 + cannons * 14 + state.difficultyTier * 9, 102 + size * 3.0 + state.difficultyTier * 7 + 55),
     bulletDamage: 5 + state.difficultyTier * 1.5 + cannons * 1.2,
     hullColor: kind === 'raider' ? '#5c3f35' : kind === 'rammer' ? '#6a3d2f' : '#394f60',
     sailColor: kind === 'raider' ? '#d7d2c1' : '#d4e6f5'
@@ -576,7 +578,7 @@ function spawnBoss() {
     gunTimer: 0.4,
     cannonTimer: 0.7,
     gunRange: 150 + size * 3.3,
-    cannonRange: 245 + size * 4.8 + state.difficultyTier * 14,
+    cannonRange: Math.max(245 + size * 4.8 + state.difficultyTier * 14, 150 + size * 3.3 + 80),
     bulletDamage: 10 + state.difficultyTier * 2.4,
     hullColor: '#7b2e3d',
     sailColor: '#f1d1d8'
@@ -839,7 +841,7 @@ function update(dt) {
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
   resolveIslandCollisions(player, dt, true);
 
-  const zoomTarget = clamp(1 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.32);
+  const zoomTarget = clamp(1 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.6);
   state.zoom += (zoomTarget - state.zoom) * 0.09;
   state.difficultyFromSize = Math.floor(Math.max(0, (16 - state.zoom * 16) * 0.9));
   ensureIslandDefenses();
@@ -1073,9 +1075,9 @@ function drawShip() {
     const t = gunPorts === 1 ? 0.5 : i / (gunPorts - 1);
     const along = -s * 0.75 + t * s * 1.5;
 
-    ctx.fillStyle = '#b9bec4';
-    ctx.fillRect(along - 2, -s * 0.74, 4, 3);
-    ctx.fillRect(along - 2, s * 0.71, 4, 3);
+    ctx.fillStyle = '#d5dbe2';
+    ctx.fillRect(along - 1.6, -s * 0.83, 3.2, 2.2);
+    ctx.fillRect(along - 1.6, s * 0.79, 3.2, 2.2);
   }
 
   const cannonPorts = Math.max(0, player.cannons);
@@ -1083,9 +1085,9 @@ function drawShip() {
     const t = cannonPorts === 1 ? 0.5 : i / (cannonPorts - 1);
     const along = -s * 0.65 + t * s * 1.3;
 
-    ctx.fillStyle = '#6f747a';
-    ctx.fillRect(along - 3, -s * 0.84, 6, 5);
-    ctx.fillRect(along - 3, s * 0.79, 6, 5);
+    ctx.fillStyle = '#5f656c';
+    ctx.fillRect(along - 5, -s * 0.98, 10, 4);
+    ctx.fillRect(along - 5, s * 0.94, 10, 4);
   }
 
   ctx.restore();
@@ -1118,17 +1120,17 @@ function drawEnemyShip(enemy) {
   for (let i = 0; i < Math.max(1, enemy.gunners); i++) {
     const t = enemy.gunners <= 1 ? 0.5 : i / (enemy.gunners - 1);
     const along = -s * 0.7 + t * s * 1.4;
-    ctx.fillStyle = '#b8bdc3';
-    ctx.fillRect(along - 2, -s * 0.7, 4, 3);
-    ctx.fillRect(along - 2, s * 0.67, 4, 3);
+    ctx.fillStyle = '#d0d6de';
+    ctx.fillRect(along - 1.5, -s * 0.81, 3, 2);
+    ctx.fillRect(along - 1.5, s * 0.77, 3, 2);
   }
 
   for (let i = 0; i < enemy.cannons; i++) {
     const t = enemy.cannons <= 1 ? 0.5 : i / (enemy.cannons - 1);
     const along = -s * 0.62 + t * s * 1.24;
-    ctx.fillStyle = '#6c7278';
-    ctx.fillRect(along - 3, -s * 0.82, 6, 5);
-    ctx.fillRect(along - 3, s * 0.77, 6, 5);
+    ctx.fillStyle = '#596068';
+    ctx.fillRect(along - 4.5, -s * 0.95, 9, 3.8);
+    ctx.fillRect(along - 4.5, s * 0.91, 9, 3.8);
   }
 
   ctx.restore();
@@ -1260,23 +1262,32 @@ function drawRangeIndicators() {
   const ranges = getPlayerRanges();
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(181,214,236,0.42)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 7]);
+  ctx.strokeStyle = 'rgba(189,226,248,0.62)';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([3, 6]);
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, ranges.gun * state.zoom, 0, Math.PI * 2);
   ctx.stroke();
 
   if (player.cannons > 0) {
-    ctx.strokeStyle = 'rgba(229,196,150,0.46)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([12, 10]);
+    ctx.strokeStyle = 'rgba(232,191,142,0.64)';
+    ctx.lineWidth = 2.3;
+    ctx.setLineDash([12, 9]);
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, ranges.cannon * state.zoom, 0, Math.PI * 2);
     ctx.stroke();
   }
 
   ctx.setLineDash([]);
+  ctx.textAlign = 'left';
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = 'rgba(209,233,248,0.9)';
+  ctx.fillText('GUN RANGE', pos.x + 12, pos.y - ranges.gun * state.zoom - 6);
+  if (player.cannons > 0) {
+    ctx.fillStyle = 'rgba(237,205,167,0.92)';
+    ctx.fillText('CANNON RANGE', pos.x + 12, pos.y - ranges.cannon * state.zoom - 6);
+  }
+
   ctx.restore();
 }
 
