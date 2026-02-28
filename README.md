@@ -6,17 +6,22 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 Open `index.html` directly in a browser.
 
 ## Controls
-- Move: `WASD` or arrow keys
+- Steer: `A` / `D`
+- Row forward: `W`
+- Brake / drag anchor: `S`
+- Toggle sail open/closed: `E`
 - Combat: auto-fire
 - Level-up choices: `1`, `2`, `3`
 
 ## Implemented
-- Top-down ship movement
-- Auto-shooting at nearest enemies
+- Momentum-based ship steering (heavier hull = more inertia)
+- Wind + sail propulsion with on-screen wind compass
+- Broadside-only firing from ship port/starboard weapon mounts
+- Distinct gun vs cannon visual ports on ship sides
 - Enemy waves (pirates, rammers, sea monsters)
-- Gold + XP + level-up upgrades
-- Wind direction gameplay effect
-- Rower upgrade mitigates wind impact
+- Floating gold drops remain at kill positions until collected
+- World-space traversal on a larger sea map (camera follows ship)
+- Land/island tiles plus translucent moving cloud layer
 - Visible ship growth and ability slots
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)

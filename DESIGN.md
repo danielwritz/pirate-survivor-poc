@@ -16,16 +16,25 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 5. Survive longer against escalating enemy pressure.
 
 ## POC Mechanics
-- Top-down movement
+- Heading-based steering (A/D) with momentum
+- Row propulsion on demand (W)
+- Sail toggle state (E) and braking/anchor drag (S)
 - Auto-shoot combat
 - Enemy archetypes:
   - Pirate skiffs (baseline)
   - Ram boats (fast impact threats)
   - Sea monsters (high-health pressure)
-- Wind direction modifies movement vector
-- Rower upgrades reduce wind penalty
+- Wind system with HUD compass indicator
+- Broadside-only projectiles from side-mounted ports
+- Side-mounted visual weapons:
+  - Guns: smaller, lighter gray rectangles
+  - Cannons: larger, darker gray rectangles
+- Heavier ship tiers increase inertia and handling weight
 - Ability/upgrade choices with up to 4 active slots
-- Visible ship growth over time
+- Visible ship growth over time (hull/sail transformations)
+- Floating gold drops remain in-world until collected
+- Large traversable sea map with camera follow
+- Land/island scatter and translucent cloud pass-over layer
 - Periodic boss ship arrivals that gate major progression spikes
 - Boss defeat increases global difficulty tier
 - Config-driven level structure with endless scaling
@@ -45,9 +54,10 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 Major upgrades are intentionally high-impact and visibly alter ship presentation.
 
 ## Visual Direction (POC)
-- Stylized top-down naval silhouette
+- Pixel-art inspired top-down naval silhouette
 - Readable enemy colors by type
-- Lightweight ocean wave lines for motion feel
+- Tiled ocean shading + lightweight wave lines
+- Semi-transparent moving cloud overlay for atmosphere
 
 ## Next Build Targets
 1. Island plunder encounters

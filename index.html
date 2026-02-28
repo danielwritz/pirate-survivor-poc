@@ -19,18 +19,25 @@
       <div id="wind"></div>
     </div>
     <canvas id="game" width="960" height="540"></canvas>
-    <div class="hint">Move: WASD / Arrows · Auto-fire enabled · Level-up: press 1/2/3 to choose upgrade</div>
+    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: E · Auto-fire broadside · Level-up: 1/2/3</div>
   </div>
 
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
 const statsEl = document.getElementById('stats');
 const windEl = document.getElementById('wind');
 
 const keys = new Set();
 window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'e' && !e.repeat) {
+    player.sailOpen = !player.sailOpen;
+  }
+});
 
 const ENDLESS_MODE = true;
 const LEVEL_CONFIGS = [
@@ -74,25 +81,35 @@ const state = {
   particles: [],
   gameOver: false,
   upgradesOffered: null,
-  wind: { x: 0.35, y: -0.12, timer: 0 }
+  wind: { x: 0.35, y: -0.12, timer: 0 },
+  world: { width: 3600, height: 2600 },
+  camera: { x: 0, y: 0 },
+  islands: [],
+  clouds: []
 };
 
 const player = {
-  x: 480,
-  y: 270,
+  x: 1800,
+  y: 1300,
   hp: 100,
   maxHp: 100,
   size: 16,
-  baseSpeed: 2.15,
+  heading: -Math.PI / 2,
+  speed: 0,
+  baseSpeed: 2.6,
   fireRate: 0.42,
   fireTimer: 0,
   bulletDamage: 9,
-  bulletSpeed: 5.2,
+  bulletSpeed: 6,
   rowers: 0,
+  gunners: 2,
   cannons: 0,
   crew: 2,
+  rudder: 0,
+  sailOpen: true,
   ram: false,
   ramDamage: 46,
+  mass: 28,
   slots: [],
   hullColor: '#5f4630',
   sailColor: '#f0f7ff',
@@ -106,6 +123,7 @@ const upgradePool = [
     desc: '+1 crew, faster fire',
     apply() {
       player.crew += 1;
+      player.gunners += 1;
       player.fireRate = Math.max(0.16, player.fireRate - 0.04);
       addAbility('Musketeers');
     }
@@ -124,7 +142,7 @@ const upgradePool = [
     desc: '+1 rower, wind mitigation',
     apply() {
       player.rowers += 1;
-      player.baseSpeed += 0.18;
+      player.baseSpeed += 0.16;
       addAbility('Rowers');
     }
   },
@@ -152,7 +170,16 @@ const upgradePool = [
     apply() {
       player.baseSpeed += 0.25;
       player.size += 1;
+      player.mass += 2;
       addAbility('Sails');
+    }
+  },
+  {
+    name: 'Rudder Upgrade',
+    desc: 'Turn faster under momentum',
+    apply() {
+      player.rudder += 1;
+      addAbility('Rudder');
     }
   }
 ];
@@ -165,6 +192,7 @@ const majorUpgradePool = [
       player.size += 5;
       player.maxHp += 40;
       player.hp = Math.min(player.maxHp, player.hp + 28);
+      player.mass += 10;
       player.hullColor = '#3f2f24';
       player.trimColor = '#c7a476';
       addAbility('Dreadnought');
@@ -188,6 +216,7 @@ const majorUpgradePool = [
       player.cannons += 2;
       player.bulletDamage += 10;
       player.size += 1;
+      player.mass += 3;
       addAbility('Broadside');
     }
   },
@@ -198,6 +227,7 @@ const majorUpgradePool = [
       player.ram = true;
       player.ramDamage += 38;
       player.size += 2;
+      player.mass += 4;
       player.hullColor = '#4a3a2e';
       addAbility('IronRam');
     }
@@ -210,16 +240,40 @@ function addAbility(label) {
   }
 }
 
+function initWorld() {
+  const islandCount = 26;
+  for (let i = 0; i < islandCount; i++) {
+    const x = 200 + Math.random() * (state.world.width - 400);
+    const y = 200 + Math.random() * (state.world.height - 400);
+    const r = 34 + Math.random() * 52;
+    state.islands.push({ x, y, r });
+  }
+
+  for (let i = 0; i < 11; i++) {
+    state.clouds.push({
+      x: Math.random() * state.world.width,
+      y: Math.random() * state.world.height,
+      w: 130 + Math.random() * 180,
+      h: 45 + Math.random() * 60,
+      drift: 0.2 + Math.random() * 0.35
+    });
+  }
+}
+
 function spawnEnemy() {
   const cfg = getLevelConfig(state.stageIndex);
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12;
 
   const edge = Math.floor(Math.random() * 4);
+  const margin = 130;
   let x, y;
-  if (edge === 0) { x = Math.random() * canvas.width; y = -20; }
-  if (edge === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
-  if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
-  if (edge === 3) { x = -20; y = Math.random() * canvas.height; }
+  if (edge === 0) { x = state.camera.x + Math.random() * canvas.width; y = state.camera.y - margin; }
+  if (edge === 1) { x = state.camera.x + canvas.width + margin; y = state.camera.y + Math.random() * canvas.height; }
+  if (edge === 2) { x = state.camera.x + Math.random() * canvas.width; y = state.camera.y + canvas.height + margin; }
+  if (edge === 3) { x = state.camera.x - margin; y = state.camera.y + Math.random() * canvas.height; }
+
+  x = Math.max(20, Math.min(state.world.width - 20, x));
+  y = Math.max(20, Math.min(state.world.height - 20, y));
 
   const t = Math.random();
   let kind = 'pirate';
@@ -236,17 +290,59 @@ function spawnEnemy() {
 
 function spawnBoss() {
   const edge = Math.floor(Math.random() * 4);
+  const margin = 170;
   let x, y;
-  if (edge === 0) { x = Math.random() * canvas.width; y = -40; }
-  if (edge === 1) { x = canvas.width + 40; y = Math.random() * canvas.height; }
-  if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 40; }
-  if (edge === 3) { x = -40; y = Math.random() * canvas.height; }
+  if (edge === 0) { x = state.camera.x + Math.random() * canvas.width; y = state.camera.y - margin; }
+  if (edge === 1) { x = state.camera.x + canvas.width + margin; y = state.camera.y + Math.random() * canvas.height; }
+  if (edge === 2) { x = state.camera.x + Math.random() * canvas.width; y = state.camera.y + canvas.height + margin; }
+  if (edge === 3) { x = state.camera.x - margin; y = state.camera.y + Math.random() * canvas.height; }
+
+  x = Math.max(30, Math.min(state.world.width - 30, x));
+  y = Math.max(30, Math.min(state.world.height - 30, y));
 
   const hp = 260 + state.level * 18 + state.difficultyTier * 45;
   const speed = 1.15 + state.difficultyTier * 0.05;
   const size = 30 + state.difficultyTier * 1.2;
 
   state.enemies.push({ x, y, hp, speed, size, kind: 'boss' });
+}
+
+function getForwardVector() {
+  return { x: Math.cos(player.heading), y: Math.sin(player.heading) };
+}
+
+function getRightVector() {
+  const f = getForwardVector();
+  return { x: -f.y, y: f.x };
+}
+
+function broadsideFire(sideSign) {
+  const right = getRightVector();
+  const forward = getForwardVector();
+  const guns = Math.max(2, player.gunners + player.cannons * 2);
+  const isCannon = (portIndex) => portIndex < player.cannons * 2;
+
+  for (let i = 0; i < guns; i++) {
+    const t = guns === 1 ? 0.5 : i / (guns - 1);
+    const along = (t - 0.5) * player.size * 1.7;
+    const sideOffset = sideSign * (player.size * 0.72);
+    const spawnX = player.x + forward.x * along + right.x * sideOffset;
+    const spawnY = player.y + forward.y * along + right.y * sideOffset;
+
+    const spread = (Math.random() - 0.5) * 0.16;
+    const dir = sideSign * (Math.PI / 2 + spread) + player.heading;
+    const speed = player.bulletSpeed + (isCannon(i) ? 0.45 : 0.2);
+    const dmg = player.bulletDamage + (isCannon(i) ? 4 : 0);
+
+    state.bullets.push({
+      x: spawnX,
+      y: spawnY,
+      vx: Math.cos(dir) * speed,
+      vy: Math.sin(dir) * speed,
+      dmg,
+      heavy: isCannon(i)
+    });
+  }
 }
 
 function shootAtNearest() {
@@ -264,19 +360,12 @@ function shootAtNearest() {
   }
   if (!target) return;
 
+  const forward = getForwardVector();
   const dx = target.x - player.x;
   const dy = target.y - player.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const vx = (dx / len) * player.bulletSpeed;
-  const vy = (dy / len) * player.bulletSpeed;
-
-  const shots = 1 + Math.floor(player.cannons / 2);
-  for (let i = 0; i < shots; i++) {
-    const spread = (i - (shots - 1) / 2) * 0.12;
-    const rx = vx * Math.cos(spread) - vy * Math.sin(spread);
-    const ry = vx * Math.sin(spread) + vy * Math.cos(spread);
-    state.bullets.push({ x: player.x, y: player.y, vx: rx, vy: ry, dmg: player.bulletDamage });
-  }
+  const cross = forward.x * dy - forward.y * dx;
+  const sideSign = cross >= 0 ? 1 : -1;
+  broadsideFire(sideSign);
 }
 
 function offerUpgrades() {
@@ -352,23 +441,42 @@ function update(dt) {
     state.wind.y = Math.sin(angle) * strength;
   }
 
-  let mx = 0, my = 0;
-  if (keys.has('w') || keys.has('arrowup')) my -= 1;
-  if (keys.has('s') || keys.has('arrowdown')) my += 1;
-  if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
-  if (keys.has('d') || keys.has('arrowright')) mx += 1;
+  const forwardPressed = keys.has('w') || keys.has('arrowup');
+  const brakePressed = keys.has('s') || keys.has('arrowdown');
+  const turnLeft = keys.has('a') || keys.has('arrowleft');
+  const turnRight = keys.has('d') || keys.has('arrowright');
 
-  const mLen = Math.hypot(mx, my) || 1;
-  mx /= mLen; my /= mLen;
+  const fwd = getForwardVector();
+  const windMag = Math.hypot(state.wind.x, state.wind.y) || 1;
+  const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
 
-  const rowerMitigation = Math.min(0.85, player.rowers * 0.18);
+  const rowPower = forwardPressed ? (0.14 + player.rowers * 0.075) : 0;
+  const sailAlignment = player.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
+  const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
+  const drag = brakePressed ? 0.06 : 0.018;
+
+  const accel = (rowPower + sailPush) / Math.max(1, player.mass / 16);
+  player.speed += accel * dt * 60;
+  player.speed -= drag * player.speed * dt * 60;
+  player.speed = Math.max(0, Math.min(player.baseSpeed + 1.9, player.speed));
+
+  const steerAuthority = 0.012 + player.rudder * 0.006 + player.rowers * 0.002;
+  const speedFactor = 0.3 + Math.min(1.2, player.speed / 2.4);
+  if (turnLeft) player.heading -= steerAuthority * speedFactor * dt * 60;
+  if (turnRight) player.heading += steerAuthority * speedFactor * dt * 60;
+
+  const rowerMitigation = Math.min(0.85, player.rowers * 0.16);
   const wx = state.wind.x * (1 - rowerMitigation);
   const wy = state.wind.y * (1 - rowerMitigation);
 
-  player.x += mx * player.baseSpeed * dt * 60 + wx * dt * 60;
-  player.y += my * player.baseSpeed * dt * 60 + wy * dt * 60;
-  player.x = Math.max(16, Math.min(canvas.width - 16, player.x));
-  player.y = Math.max(16, Math.min(canvas.height - 16, player.y));
+  player.x += fwd.x * player.speed * dt * 60 + wx * dt * 30;
+  player.y += fwd.y * player.speed * dt * 60 + wy * dt * 30;
+
+  player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
+  player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
+
+  state.camera.x = Math.max(0, Math.min(state.world.width - canvas.width, player.x - canvas.width / 2));
+  state.camera.y = Math.max(0, Math.min(state.world.height - canvas.height, player.y - canvas.height / 2));
 
   player.fireTimer += dt;
   if (player.fireTimer >= player.fireRate) {
@@ -384,7 +492,7 @@ function update(dt) {
     bullet.x += bullet.vx * dt * 60;
     bullet.y += bullet.vy * dt * 60;
   }
-  state.bullets = state.bullets.filter(b => b.x > -10 && b.x < canvas.width + 10 && b.y > -10 && b.y < canvas.height + 10);
+  state.bullets = state.bullets.filter(b => b.x > -30 && b.x < state.world.width + 30 && b.y > -30 && b.y < state.world.height + 30);
 
   for (const enemy of state.enemies) {
     const dx = player.x - enemy.x;
@@ -444,13 +552,19 @@ function update(dt) {
     const d = state.drops[i];
     const dx = player.x - d.x;
     const dy = player.y - d.y;
-    const len = Math.hypot(dx, dy) || 1;
-    d.x += (dx / len) * 1.8 * dt * 60;
-    d.y += (dy / len) * 1.8 * dt * 60;
     if (Math.hypot(dx, dy) < 14) {
       state.gold += d.v;
       state.drops.splice(i, 1);
     }
+  }
+
+  for (const cloud of state.clouds) {
+    cloud.x += (state.wind.x * 0.35 + cloud.drift) * dt * 60;
+    cloud.y += (state.wind.y * 0.2) * dt * 60;
+    if (cloud.x > state.world.width + 200) cloud.x = -220;
+    if (cloud.x < -240) cloud.x = state.world.width + 180;
+    if (cloud.y > state.world.height + 120) cloud.y = -120;
+    if (cloud.y < -120) cloud.y = state.world.height + 120;
   }
 
   if (player.hp <= 0) {
@@ -462,10 +576,11 @@ function update(dt) {
 function drawShip() {
   const s = player.size;
   ctx.save();
-  ctx.translate(player.x, player.y);
+  ctx.translate(player.x - state.camera.x, player.y - state.camera.y);
+  ctx.rotate(player.heading);
 
   ctx.fillStyle = player.hullColor;
-  ctx.fillRect(-s, -s * 0.62, s * 2, s * 1.24);
+  ctx.fillRect(-s, -s * 0.64, s * 2, s * 1.28);
 
   if (player.ram) {
     ctx.fillStyle = '#bdb7b0';
@@ -481,13 +596,15 @@ function drawShip() {
   const mast = Math.max(8, s * 1.3 * player.mastScale);
   ctx.fillRect(-2, -mast, 4, mast);
 
-  ctx.fillStyle = player.sailColor;
-  ctx.beginPath();
-  ctx.moveTo(2, -mast + 2);
-  ctx.lineTo(s * 1.1, -mast * 0.65);
-  ctx.lineTo(2, -mast * 0.3);
-  ctx.closePath();
-  ctx.fill();
+  if (player.sailOpen) {
+    ctx.fillStyle = player.sailColor;
+    ctx.beginPath();
+    ctx.moveTo(2, -mast + 2);
+    ctx.lineTo(s * 1.1, -mast * 0.65);
+    ctx.lineTo(2, -mast * 0.3);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   const crewCount = Math.min(10, player.crew + player.cannons);
   ctx.fillStyle = '#1f2f3a';
@@ -499,33 +616,104 @@ function drawShip() {
     ctx.fill();
   }
 
+  const gunPorts = Math.max(2, player.gunners);
+  for (let i = 0; i < gunPorts; i++) {
+    const t = gunPorts === 1 ? 0.5 : i / (gunPorts - 1);
+    const along = -s * 0.75 + t * s * 1.5;
+
+    ctx.fillStyle = '#b9bec4';
+    ctx.fillRect(along - 2, -s * 0.74, 4, 3);
+    ctx.fillRect(along - 2, s * 0.71, 4, 3);
+  }
+
+  const cannonPorts = Math.max(0, player.cannons);
+  for (let i = 0; i < cannonPorts; i++) {
+    const t = cannonPorts === 1 ? 0.5 : i / (cannonPorts - 1);
+    const along = -s * 0.65 + t * s * 1.3;
+
+    ctx.fillStyle = '#6f747a';
+    ctx.fillRect(along - 3, -s * 0.84, 6, 5);
+    ctx.fillRect(along - 3, s * 0.79, 6, 5);
+  }
+
   ctx.restore();
+}
+
+function drawWorld() {
+  const camX = state.camera.x;
+  const camY = state.camera.y;
+
+  const tile = 16;
+  for (let y = 0; y < canvas.height + tile; y += tile) {
+    for (let x = 0; x < canvas.width + tile; x += tile) {
+      const worldX = x + camX;
+      const worldY = y + camY;
+      const pattern = ((Math.floor(worldX / tile) + Math.floor(worldY / tile)) % 2 === 0);
+      ctx.fillStyle = pattern ? '#0a2e45' : '#0b334d';
+      ctx.fillRect(x, y, tile, tile);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(132,188,220,0.16)';
+  for (let y = 0; y < canvas.height; y += 20) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + Math.sin((state.time * 1.4) + (y + camY) * 0.03) * 2);
+    ctx.lineTo(canvas.width, y + Math.sin((state.time * 1.4) + (y + camY) * 0.03) * 2);
+    ctx.stroke();
+  }
+
+  for (const island of state.islands) {
+    const sx = island.x - camX;
+    const sy = island.y - camY;
+    if (sx < -island.r - 40 || sx > canvas.width + island.r + 40 || sy < -island.r - 40 || sy > canvas.height + island.r + 40) continue;
+
+    ctx.fillStyle = '#b2a46f';
+    ctx.beginPath();
+    ctx.arc(sx, sy, island.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#6e9d4b';
+    ctx.beginPath();
+    ctx.arc(sx, sy, island.r * 0.68, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawCloudOverlay() {
+  for (const cloud of state.clouds) {
+    const sx = cloud.x - state.camera.x;
+    const sy = cloud.y - state.camera.y;
+    if (sx < -260 || sx > canvas.width + 260 || sy < -160 || sy > canvas.height + 160) continue;
+    ctx.fillStyle = 'rgba(210,225,236,0.14)';
+    ctx.fillRect(sx, sy, cloud.w, cloud.h);
+    ctx.fillRect(sx + cloud.w * 0.2, sy - cloud.h * 0.35, cloud.w * 0.6, cloud.h * 0.45);
+    ctx.fillRect(sx + cloud.w * 0.15, sy + cloud.h * 0.62, cloud.w * 0.5, cloud.h * 0.3);
+  }
+}
+
+function windDirectionLabel() {
+  const a = Math.atan2(state.wind.y, state.wind.x);
+  const dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+  const idx = Math.round(((a + Math.PI) / (Math.PI * 2)) * 8) % 8;
+  return dirs[idx];
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = 'rgba(119,174,206,0.2)';
-  for (let y = 20; y < canvas.height; y += 24) {
-    ctx.beginPath();
-    ctx.moveTo(0, y + Math.sin((state.time + y) * 0.03) * 2);
-    ctx.lineTo(canvas.width, y + Math.sin((state.time + y) * 0.03) * 2);
-    ctx.stroke();
-  }
+  drawWorld();
 
   drawShip();
 
   for (const b of state.bullets) {
-    ctx.fillStyle = '#ffd887';
+    ctx.fillStyle = b.heavy ? '#f1b05f' : '#ffd887';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.arc(b.x - state.camera.x, b.y - state.camera.y, b.heavy ? 3.4 : 2.6, 0, Math.PI * 2);
     ctx.fill();
   }
 
   for (const d of state.drops) {
     ctx.fillStyle = '#ffdd55';
     ctx.beginPath();
-    ctx.arc(d.x, d.y, 4, 0, Math.PI * 2);
+    ctx.arc(d.x - state.camera.x, d.y - state.camera.y, 4, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -536,9 +724,19 @@ function draw() {
     else ctx.fillStyle = '#2f4c5a';
 
     ctx.beginPath();
-    ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+    ctx.arc(e.x - state.camera.x, e.y - state.camera.y, e.size, 0, Math.PI * 2);
     ctx.fill();
+
+    if (e.kind === 'boss') {
+      ctx.fillStyle = '#f3c8d0';
+      ctx.fillRect(e.x - state.camera.x - e.size * 0.6, e.y - state.camera.y - e.size - 10, e.size * 1.2, 6);
+      ctx.fillStyle = '#d74662';
+      const hpRatio = Math.max(0, Math.min(1, e.hp / (260 + state.level * 18 + state.difficultyTier * 45)));
+      ctx.fillRect(e.x - state.camera.x - e.size * 0.6, e.y - state.camera.y - e.size - 10, e.size * 1.2 * hpRatio, 6);
+    }
   }
+
+  drawCloudOverlay();
 
   if (state.upgradesOffered) {
     ctx.fillStyle = 'rgba(5,10,15,0.78)';
@@ -570,11 +768,34 @@ function draw() {
 
   const stageLabel = getLevelConfig(state.stageIndex).name;
   const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
-  statsEl.textContent = `HP ${Math.round(player.hp)}/${player.maxHp} · Lv ${state.level} · Tier ${state.difficultyTier} · Bosses ${state.bossesDefeated} · Gold ${Math.round(state.gold)} · ${modeLabel} · Abilities [${player.slots.join(', ') || 'none'}]`;
-  windEl.textContent = `${stageLabel} · Wind ${state.wind.x.toFixed(2)}, ${state.wind.y.toFixed(2)} · Rowers ${player.rowers} · Next Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s`;
+  const sailState = player.sailOpen ? 'Open' : 'Closed';
+  statsEl.textContent = `HP ${Math.round(player.hp)}/${player.maxHp} · Lv ${state.level} · Tier ${state.difficultyTier} · Bosses ${state.bossesDefeated} · Gold ${Math.round(state.gold)} · ${modeLabel} · Sail ${sailState} · Abilities [${player.slots.join(', ') || 'none'}]`;
+  windEl.textContent = `${stageLabel} · Wind ${windDirectionLabel()} (${state.wind.x.toFixed(2)}, ${state.wind.y.toFixed(2)}) · Speed ${player.speed.toFixed(2)} · Next Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s`;
+
+  ctx.save();
+  ctx.translate(canvas.width - 78, 76);
+  ctx.strokeStyle = 'rgba(220,242,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, 30, 0, Math.PI * 2);
+  ctx.stroke();
+  const wx = state.wind.x;
+  const wy = state.wind.y;
+  const len = Math.hypot(wx, wy) || 1;
+  const ax = (wx / len) * 22;
+  const ay = (wy / len) * 22;
+  ctx.strokeStyle = '#d6ecff';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(ax, ay);
+  ctx.stroke();
+  ctx.fillStyle = '#d6ecff';
+  ctx.fillRect(ax - 2, ay - 2, 4, 4);
+  ctx.restore();
 }
 
 let last = performance.now();
+initWorld();
 function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
