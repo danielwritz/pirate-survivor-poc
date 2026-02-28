@@ -32,12 +32,42 @@ const keys = new Set();
 window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
+const ENDLESS_MODE = true;
+const LEVEL_CONFIGS = [
+  { name: 'Coastal Skirmish', duration: 45, spawnRate: 1.0, bossEvery: 45, windShift: 16 },
+  { name: 'Open Waters', duration: 55, spawnRate: 1.2, bossEvery: 50, windShift: 14 },
+  { name: 'Storm Belt', duration: 65, spawnRate: 1.45, bossEvery: 55, windShift: 11 },
+  { name: 'Kraken Frontier', duration: 75, spawnRate: 1.75, bossEvery: 60, windShift: 9 }
+];
+
+function getLevelConfig(stageIndex) {
+  if (stageIndex < LEVEL_CONFIGS.length) {
+    return LEVEL_CONFIGS[stageIndex];
+  }
+
+  const tail = LEVEL_CONFIGS[LEVEL_CONFIGS.length - 1];
+  const extra = stageIndex - LEVEL_CONFIGS.length + 1;
+
+  return {
+    name: `Endless ${extra}`,
+    duration: Math.max(45, tail.duration - extra * 2),
+    spawnRate: tail.spawnRate + extra * 0.22,
+    bossEvery: Math.max(38, tail.bossEvery - extra),
+    windShift: Math.max(6, tail.windShift - Math.floor(extra * 0.4))
+  };
+}
+
 const state = {
   time: 0,
   gold: 0,
   level: 1,
   xp: 0,
   xpToNext: 10,
+  stageIndex: 0,
+  stageTimer: 0,
+  difficultyTier: 0,
+  bossTimer: 0,
+  bossesDefeated: 0,
   enemies: [],
   bullets: [],
   drops: [],
@@ -62,7 +92,12 @@ const player = {
   cannons: 0,
   crew: 2,
   ram: false,
-  slots: []
+  ramDamage: 46,
+  slots: [],
+  hullColor: '#5f4630',
+  sailColor: '#f0f7ff',
+  mastScale: 1,
+  trimColor: '#d9b78d'
 };
 
 const upgradePool = [
@@ -122,6 +157,53 @@ const upgradePool = [
   }
 ];
 
+const majorUpgradePool = [
+  {
+    name: 'Dreadnought Hull',
+    desc: 'Massive hull growth, +40 max HP',
+    apply() {
+      player.size += 5;
+      player.maxHp += 40;
+      player.hp = Math.min(player.maxHp, player.hp + 28);
+      player.hullColor = '#3f2f24';
+      player.trimColor = '#c7a476';
+      addAbility('Dreadnought');
+    }
+  },
+  {
+    name: 'Crimson Sails',
+    desc: 'Faster ship, faster volleys',
+    apply() {
+      player.baseSpeed += 0.45;
+      player.fireRate = Math.max(0.12, player.fireRate - 0.06);
+      player.sailColor = '#d34d4d';
+      player.mastScale += 0.2;
+      addAbility('CrimsonSails');
+    }
+  },
+  {
+    name: 'Grand Broadside',
+    desc: '+2 cannons, +10 damage',
+    apply() {
+      player.cannons += 2;
+      player.bulletDamage += 10;
+      player.size += 1;
+      addAbility('Broadside');
+    }
+  },
+  {
+    name: 'Iron Ram Prow',
+    desc: 'Deadlier collisions, ram visual',
+    apply() {
+      player.ram = true;
+      player.ramDamage += 38;
+      player.size += 2;
+      player.hullColor = '#4a3a2e';
+      addAbility('IronRam');
+    }
+  }
+];
+
 function addAbility(label) {
   if (player.slots.length < 4 && !player.slots.includes(label)) {
     player.slots.push(label);
@@ -129,6 +211,9 @@ function addAbility(label) {
 }
 
 function spawnEnemy() {
+  const cfg = getLevelConfig(state.stageIndex);
+  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12;
+
   const edge = Math.floor(Math.random() * 4);
   let x, y;
   if (edge === 0) { x = Math.random() * canvas.width; y = -20; }
@@ -138,15 +223,30 @@ function spawnEnemy() {
 
   const t = Math.random();
   let kind = 'pirate';
-  if (t > 0.76) kind = 'monster';
+  if (t > 0.72) kind = 'monster';
   if (t > 0.9) kind = 'rammer';
 
-  const base = 12 + state.level * 1.2;
+  const base = (12 + state.level * 1.2) * difficultyMult;
   const hp = kind === 'monster' ? base * 2.4 : kind === 'rammer' ? base * 1.4 : base;
-  const speed = kind === 'rammer' ? 2.25 : kind === 'monster' ? 1.25 : 1.55;
+  const speed = (kind === 'rammer' ? 2.25 : kind === 'monster' ? 1.25 : 1.55) * (1 + cfg.spawnRate * 0.05);
   const size = kind === 'monster' ? 19 : kind === 'rammer' ? 12 : 14;
 
   state.enemies.push({ x, y, hp, speed, size, kind });
+}
+
+function spawnBoss() {
+  const edge = Math.floor(Math.random() * 4);
+  let x, y;
+  if (edge === 0) { x = Math.random() * canvas.width; y = -40; }
+  if (edge === 1) { x = canvas.width + 40; y = Math.random() * canvas.height; }
+  if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 40; }
+  if (edge === 3) { x = -40; y = Math.random() * canvas.height; }
+
+  const hp = 260 + state.level * 18 + state.difficultyTier * 45;
+  const speed = 1.15 + state.difficultyTier * 0.05;
+  const size = 30 + state.difficultyTier * 1.2;
+
+  state.enemies.push({ x, y, hp, speed, size, kind: 'boss' });
 }
 
 function shootAtNearest() {
@@ -180,8 +280,21 @@ function shootAtNearest() {
 }
 
 function offerUpgrades() {
-  const shuffled = [...upgradePool].sort(() => Math.random() - 0.5);
-  state.upgradesOffered = shuffled.slice(0, 3);
+  const shuffled = [...upgradePool].sort(() => Math.random() - 0.5).slice(0, 3);
+  state.upgradesOffered = {
+    title: 'Choose an Upgrade',
+    options: shuffled,
+    major: false
+  };
+}
+
+function offerMajorUpgrades() {
+  const shuffled = [...majorUpgradePool].sort(() => Math.random() - 0.5).slice(0, 3);
+  state.upgradesOffered = {
+    title: 'Boss Defeated — Choose a Major Upgrade',
+    options: shuffled,
+    major: true
+  };
 }
 
 function gainXp(amount) {
@@ -201,8 +314,8 @@ window.addEventListener('keydown', (e) => {
   if (!state.upgradesOffered) return;
   const key = e.key;
   const idx = key === '1' ? 0 : key === '2' ? 1 : key === '3' ? 2 : -1;
-  if (idx >= 0 && state.upgradesOffered[idx]) {
-    state.upgradesOffered[idx].apply();
+  if (idx >= 0 && state.upgradesOffered.options[idx]) {
+    state.upgradesOffered.options[idx].apply();
     state.upgradesOffered = null;
   }
 });
@@ -213,8 +326,25 @@ function update(dt) {
 
   state.time += dt;
 
+  const cfg = getLevelConfig(state.stageIndex);
+  state.stageTimer += dt;
+  state.bossTimer += dt;
+
+  if (state.stageTimer >= cfg.duration) {
+    state.stageTimer = 0;
+    if (ENDLESS_MODE || state.stageIndex < LEVEL_CONFIGS.length - 1) {
+      state.stageIndex += 1;
+    }
+  }
+
+  const hasBossAlive = state.enemies.some((e) => e.kind === 'boss');
+  if (state.bossTimer >= cfg.bossEvery && !hasBossAlive) {
+    state.bossTimer = 0;
+    spawnBoss();
+  }
+
   state.wind.timer += dt;
-  if (state.wind.timer > 16) {
+  if (state.wind.timer > cfg.windShift) {
     state.wind.timer = 0;
     const angle = Math.random() * Math.PI * 2;
     const strength = 0.2 + Math.random() * 0.35;
@@ -246,7 +376,9 @@ function update(dt) {
     shootAtNearest();
   }
 
-  if (Math.random() < (0.011 + state.level * 0.00025) * dt * 60) spawnEnemy();
+  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12;
+  const spawnChance = (0.0105 * cfg.spawnRate + state.level * 0.00022 + state.difficultyTier * 0.00035) * dt * 60;
+  if (Math.random() < spawnChance) spawnEnemy();
 
   for (const bullet of state.bullets) {
     bullet.x += bullet.vx * dt * 60;
@@ -273,8 +405,16 @@ function update(dt) {
         state.bullets.splice(j, 1);
         if (enemy.hp <= 0) {
           state.enemies.splice(i, 1);
-          state.gold += 2;
-          gainXp(3 + (enemy.kind === 'monster' ? 4 : 0));
+          if (enemy.kind === 'boss') {
+            state.gold += 30;
+            gainXp(20);
+            state.difficultyTier += 1;
+            state.bossesDefeated += 1;
+            offerMajorUpgrades();
+          } else {
+            state.gold += 2;
+            gainXp(3 + (enemy.kind === 'monster' ? 4 : 0));
+          }
           state.drops.push({ x: enemy.x, y: enemy.y, v: 2 + Math.random() * 3 });
           break;
         }
@@ -286,12 +426,16 @@ function update(dt) {
     const enemy = state.enemies[i];
     const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
     if (d < enemy.size + player.size * 0.7) {
-      if (player.ram && enemy.kind !== 'monster') {
+      if (player.ram && enemy.kind !== 'monster' && enemy.kind !== 'boss') {
         state.enemies.splice(i, 1);
         state.gold += 1;
         gainXp(2);
       } else {
-        player.hp -= (enemy.kind === 'monster' ? 12 : 7) * dt * 4;
+        const impact = enemy.kind === 'boss' ? 20 : enemy.kind === 'monster' ? 12 : 7;
+        player.hp -= impact * dt * 4;
+        if (player.ram && enemy.kind === 'boss') {
+          enemy.hp -= player.ramDamage * dt * 1.15;
+        }
       }
     }
   }
@@ -320,14 +464,24 @@ function drawShip() {
   ctx.save();
   ctx.translate(player.x, player.y);
 
-  ctx.fillStyle = '#5f4630';
+  ctx.fillStyle = player.hullColor;
   ctx.fillRect(-s, -s * 0.62, s * 2, s * 1.24);
 
-  ctx.fillStyle = '#d9b78d';
-  const mast = Math.max(8, s * 1.3);
+  if (player.ram) {
+    ctx.fillStyle = '#bdb7b0';
+    ctx.beginPath();
+    ctx.moveTo(s, -5);
+    ctx.lineTo(s + 10, 0);
+    ctx.lineTo(s, 5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = player.trimColor;
+  const mast = Math.max(8, s * 1.3 * player.mastScale);
   ctx.fillRect(-2, -mast, 4, mast);
 
-  ctx.fillStyle = '#f0f7ff';
+  ctx.fillStyle = player.sailColor;
   ctx.beginPath();
   ctx.moveTo(2, -mast + 2);
   ctx.lineTo(s * 1.1, -mast * 0.65);
@@ -376,7 +530,8 @@ function draw() {
   }
 
   for (const e of state.enemies) {
-    if (e.kind === 'monster') ctx.fillStyle = '#7e4ea6';
+    if (e.kind === 'boss') ctx.fillStyle = '#8d2537';
+    else if (e.kind === 'monster') ctx.fillStyle = '#7e4ea6';
     else if (e.kind === 'rammer') ctx.fillStyle = '#d2573f';
     else ctx.fillStyle = '#2f4c5a';
 
@@ -390,11 +545,11 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#f5fbff';
     ctx.font = '24px system-ui';
-    ctx.fillText('Choose an Upgrade', 360, 120);
+    ctx.fillText(state.upgradesOffered.title, state.upgradesOffered.major ? 265 : 360, 120);
     ctx.font = '18px system-ui';
-    state.upgradesOffered.forEach((u, i) => {
+    state.upgradesOffered.options.forEach((u, i) => {
       const y = 200 + i * 95;
-      ctx.fillStyle = '#163349';
+      ctx.fillStyle = state.upgradesOffered.major ? '#4a2f18' : '#163349';
       ctx.fillRect(240, y - 34, 480, 62);
       ctx.fillStyle = '#e8f5ff';
       ctx.fillText(`${i + 1}) ${u.name}`, 262, y - 7);
@@ -413,8 +568,10 @@ function draw() {
     ctx.fillText('Refresh to sail again', 392, 290);
   }
 
-  statsEl.textContent = `HP ${Math.round(player.hp)}/${player.maxHp} · Lv ${state.level} · XP ${Math.round(state.xp)}/${state.xpToNext} · Gold ${Math.round(state.gold)} · Abilities [${player.slots.join(', ') || 'none'}]`;
-  windEl.textContent = `Wind ${state.wind.x.toFixed(2)}, ${state.wind.y.toFixed(2)} · Rowers ${player.rowers}`;
+  const stageLabel = getLevelConfig(state.stageIndex).name;
+  const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
+  statsEl.textContent = `HP ${Math.round(player.hp)}/${player.maxHp} · Lv ${state.level} · Tier ${state.difficultyTier} · Bosses ${state.bossesDefeated} · Gold ${Math.round(state.gold)} · ${modeLabel} · Abilities [${player.slots.join(', ') || 'none'}]`;
+  windEl.textContent = `${stageLabel} · Wind ${state.wind.x.toFixed(2)}, ${state.wind.y.toFixed(2)} · Rowers ${player.rowers} · Next Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s`;
 }
 
 let last = performance.now();

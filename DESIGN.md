@@ -26,12 +26,23 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Rower upgrades reduce wind penalty
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time
+- Periodic boss ship arrivals that gate major progression spikes
+- Boss defeat increases global difficulty tier
+- Config-driven level structure with endless scaling
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling
 - Mobility: rowers, sail mastery
 - Defense: hull reinforcement
 - Utility: future plunder magnets/repairs
+
+## Major Upgrades (Boss Rewards)
+- Dreadnought Hull
+- Crimson Sails
+- Grand Broadside
+- Iron Ram Prow
+
+Major upgrades are intentionally high-impact and visibly alter ship presentation.
 
 ## Visual Direction (POC)
 - Stylized top-down naval silhouette
@@ -40,6 +51,6 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 
 ## Next Build Targets
 1. Island plunder encounters
-2. Better wave director and miniboss timing
+2. Better wave director and boss attack patterns
 3. Distinct ship archetypes (ram, broadside, speed)
 4. Meta-progression between runs
