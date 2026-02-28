@@ -21,7 +21,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Wind + sail propulsion with on-screen wind compass
 - Broadside-only firing from ship port/starboard weapon mounts
 - Distinct gun vs cannon visual ports on ship sides
-- Gun/cannon ports now anchor to polygon hull perimeter (not rectangle approximations) and fire from those exact side mount points
+- Gun/cannon ports now sample the actual hull side-edge polyline and orient to local outward normals, so bow/stern mounts naturally angle with deck geometry
 - Enemy ships use rowing + sail + wind-influenced movement like player ship
 - Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
 - Certain enemy ship types now use loose formation behavior and follow nearby ally ships instead of always chasing the player directly

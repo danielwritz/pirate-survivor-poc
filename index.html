@@ -192,11 +192,13 @@ function clampPlayerCrewToDeck() {
   player.crew = clamp(player.crew, 1, getDeckCrewCapacity(player));
 }
 
-function getMountAlong(index, total, shape, startFactor = 0.9, spanFactor = 1.8) {
-  const startX = shape.sternShoulderX * startFactor;
-  const endX = shape.shoulderX * spanFactor;
-  const t = total <= 1 ? 0.5 : index / (total - 1);
-  return startX + (endX - startX) * t;
+function getHullUpperEdge(shape) {
+  return [
+    { x: shape.sternX, y: 0 },
+    { x: shape.sternShoulderX, y: -shape.beam * 0.46 },
+    { x: shape.shoulderX, y: -shape.beam * 0.62 },
+    { x: shape.bowX, y: 0 }
+  ];
 }
 
 function hullHalfWidthAt(shape, x) {
@@ -218,10 +220,82 @@ function hullHalfWidthAt(shape, x) {
   return Math.abs(topD.y + (topC.y - topD.y) * t);
 }
 
-function drawPerimeterMount(along, halfWidth, length, thickness, color) {
+function samplePolyline(points, tNorm) {
+  const lengths = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x;
+    const dy = points[i + 1].y - points[i].y;
+    const seg = Math.hypot(dx, dy);
+    lengths.push(seg);
+    total += seg;
+  }
+
+  const clampedT = clamp(tNorm, 0, 1);
+  let target = clampedT * total;
+  for (let i = 0; i < lengths.length; i++) {
+    const seg = lengths[i];
+    if (target <= seg || i === lengths.length - 1) {
+      const localT = seg <= 0.0001 ? 0 : target / seg;
+      const a = points[i];
+      const b = points[i + 1];
+      const x = a.x + (b.x - a.x) * localT;
+      const y = a.y + (b.y - a.y) * localT;
+      const txRaw = b.x - a.x;
+      const tyRaw = b.y - a.y;
+      const tLen = Math.hypot(txRaw, tyRaw) || 1;
+      return {
+        x,
+        y,
+        tx: txRaw / tLen,
+        ty: tyRaw / tLen
+      };
+    }
+    target -= seg;
+  }
+
+  const last = points[points.length - 1];
+  return { x: last.x, y: last.y, tx: 1, ty: 0 };
+}
+
+function getHullSideMount(shape, index, total, sideSign, trimStart = 0.1, trimEnd = 0.9) {
+  const upperEdge = getHullUpperEdge(shape);
+  const baseT = total <= 1 ? 0.5 : index / (total - 1);
+  const pathT = trimStart + (trimEnd - trimStart) * baseT;
+  const upper = samplePolyline(upperEdge, pathT);
+
+  let px = upper.x;
+  let py = upper.y;
+  let tx = upper.tx;
+  let ty = upper.ty;
+
+  if (sideSign >= 0) {
+    py = -py;
+    ty = -ty;
+  }
+
+  let nx = -ty;
+  let ny = tx;
+  const nLen = Math.hypot(nx, ny) || 1;
+  nx /= nLen;
+  ny /= nLen;
+
+  const desiredY = sideSign >= 0 ? 1 : -1;
+  if (ny * desiredY < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  return { x: px, y: py, nx, ny };
+}
+
+function drawPerimeterMount(mount, length, thickness, color) {
+  ctx.save();
+  ctx.translate(mount.x, mount.y);
+  ctx.rotate(Math.atan2(mount.ny, mount.nx));
   ctx.fillStyle = color;
-  ctx.fillRect(along - thickness * 0.5, -halfWidth - length, thickness, length);
-  ctx.fillRect(along - thickness * 0.5, halfWidth, thickness, length);
+  ctx.fillRect(0, -thickness * 0.5, length, thickness);
+  ctx.restore();
 }
 
 const GOLD_MAGNET_PULL_FACTOR = 0.62;
@@ -801,12 +875,13 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
     if (cannonPort && !allowCannon) continue;
     if (!cannonPort && !allowGun) continue;
 
-    const along = getMountAlong(i, guns, shape, 0.92, 0.95);
-    const halfWidth = hullHalfWidthAt(shape, along);
+    const mount = getHullSideMount(shape, i, guns, sideSign, 0.12, 0.88);
     const mountLen = cannonPort ? Math.max(8, player.size * 0.48) : Math.max(4.5, player.size * 0.3);
-    const sideOffset = sideSign * (halfWidth + mountLen + 0.4);
-    const spawnX = player.x + forward.x * along + right.x * sideOffset;
-    const spawnY = player.y + forward.y * along + right.y * sideOffset;
+    const muzzleLift = mountLen + (cannonPort ? 0.7 : 0.35);
+    const localX = mount.x + mount.nx * muzzleLift;
+    const localY = mount.y + mount.ny * muzzleLift;
+    const spawnX = player.x + forward.x * localX + right.x * localY;
+    const spawnY = player.y + forward.y * localX + right.y * localY;
 
     const spread = (Math.random() - 0.5) * (cannonPort ? 0.12 : 0.18);
     const cannonAdjust = cannonPort ? clamped : 0;
@@ -845,12 +920,12 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
   if (allowGun) {
     const gunCount = Math.max(1, enemy.gunners);
     for (let i = 0; i < gunCount; i++) {
-      const along = getMountAlong(i, gunCount, shape, 0.92, 0.95);
-      const halfWidth = hullHalfWidthAt(shape, along);
+      const mount = getHullSideMount(shape, i, gunCount, sideSign, 0.12, 0.88);
       const mountLen = Math.max(4, enemy.size * 0.28);
-      const sideOffset = sideSign * (halfWidth + mountLen + 0.35);
-      const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
-      const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+      const localX = mount.x + mount.nx * (mountLen + 0.3);
+      const localY = mount.y + mount.ny * (mountLen + 0.3);
+      const spawnX = enemy.x + fwd.x * localX + right.x * localY;
+      const spawnY = enemy.y + fwd.y * localX + right.y * localY;
       const gunAdjust = clamp(angleDiff(targetAngle, baseDir), -44 * (Math.PI / 180), 44 * (Math.PI / 180));
       const dir = baseDir + gunAdjust + (Math.random() - 0.5) * 0.2;
       state.bullets.push({
@@ -872,12 +947,12 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
     const cannonCount = Math.max(0, enemy.cannons);
     const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
     for (let i = 0; i < cannonCount; i++) {
-      const along = getMountAlong(i, cannonCount, shape, 0.94, 0.9);
-      const halfWidth = hullHalfWidthAt(shape, along);
+      const mount = getHullSideMount(shape, i, cannonCount, sideSign, 0.16, 0.84);
       const mountLen = Math.max(7, enemy.size * 0.42);
-      const sideOffset = sideSign * (halfWidth + mountLen + 0.45);
-      const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
-      const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+      const localX = mount.x + mount.nx * (mountLen + 0.45);
+      const localY = mount.y + mount.ny * (mountLen + 0.45);
+      const spawnX = enemy.x + fwd.x * localX + right.x * localY;
+      const spawnY = enemy.y + fwd.y * localX + right.y * localY;
       const dir = baseDir + clamped + (Math.random() - 0.5) * 0.1;
       state.bullets.push({
         x: spawnX,
@@ -1450,12 +1525,13 @@ function drawShip() {
   const cannonPorts = Math.min(broadsidePorts, player.cannons * 2);
   for (let i = 0; i < broadsidePorts; i++) {
     const cannonPort = i < cannonPorts;
-    const along = getMountAlong(i, broadsidePorts, hull, 0.92, 0.95);
-    const halfWidth = hullHalfWidthAt(hull, along);
     const length = cannonPort ? Math.max(8, s * 0.48) : Math.max(4.5, s * 0.3);
     const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
     const color = cannonPort ? '#5f656c' : '#d5dbe2';
-    drawPerimeterMount(along, halfWidth, length, thickness, color);
+    const portMount = getHullSideMount(hull, i, broadsidePorts, -1, 0.12, 0.88);
+    const starboardMount = getHullSideMount(hull, i, broadsidePorts, 1, 0.12, 0.88);
+    drawPerimeterMount(portMount, length, thickness, color);
+    drawPerimeterMount(starboardMount, length, thickness, color);
   }
 
   ctx.restore();
@@ -1488,15 +1564,17 @@ function drawEnemyShip(enemy) {
 
   const gunPorts = Math.max(1, enemy.gunners);
   for (let i = 0; i < gunPorts; i++) {
-    const along = getMountAlong(i, gunPorts, hull, 0.92, 0.95);
-    const halfWidth = hullHalfWidthAt(hull, along);
-    drawPerimeterMount(along, halfWidth, Math.max(3.8, s * 0.27), Math.max(1.7, s * 0.1), '#d0d6de');
+    const portMount = getHullSideMount(hull, i, gunPorts, -1, 0.12, 0.88);
+    const starboardMount = getHullSideMount(hull, i, gunPorts, 1, 0.12, 0.88);
+    drawPerimeterMount(portMount, Math.max(3.8, s * 0.27), Math.max(1.7, s * 0.1), '#d0d6de');
+    drawPerimeterMount(starboardMount, Math.max(3.8, s * 0.27), Math.max(1.7, s * 0.1), '#d0d6de');
   }
 
   for (let i = 0; i < enemy.cannons; i++) {
-    const along = getMountAlong(i, enemy.cannons, hull, 0.94, 0.9);
-    const halfWidth = hullHalfWidthAt(hull, along);
-    drawPerimeterMount(along, halfWidth, Math.max(6.6, s * 0.42), Math.max(2.5, s * 0.13), '#596068');
+    const portMount = getHullSideMount(hull, i, enemy.cannons, -1, 0.16, 0.84);
+    const starboardMount = getHullSideMount(hull, i, enemy.cannons, 1, 0.16, 0.84);
+    drawPerimeterMount(portMount, Math.max(6.6, s * 0.42), Math.max(2.5, s * 0.13), '#596068');
+    drawPerimeterMount(starboardMount, Math.max(6.6, s * 0.42), Math.max(2.5, s * 0.13), '#596068');
   }
 
   ctx.restore();

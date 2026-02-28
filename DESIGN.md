@@ -39,7 +39,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Side-mounted visual weapons:
   - Guns: smaller, lighter gray rectangles
   - Cannons: larger, darker gray rectangles
-- Side mounts are computed from the geometric hull profile so ports hug real perimeter width by hull section
+- Side mounts are sampled along hull side-edge segments with local outward normals, so weapon orientation responds dynamically to bow/shoulder/stern angle changes
 - Geometric hull silhouettes with pointed bows/stern taper for stronger heading readability
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
