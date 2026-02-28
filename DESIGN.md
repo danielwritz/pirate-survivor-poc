@@ -21,6 +21,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Sail toggle state (E) and braking/anchor drag (S)
 - Auto-shoot combat
 - Enemy steering behaviors include both direct pursuit and ally-follow formation tendencies for certain ship classes
+- Allied enemy subgroups can share flocking-like movement (cohesion/alignment/separation) for light formation travel
 - Enemy archetypes:
   - Pirate skiffs (baseline)
   - Ram boats (fast impact threats)
@@ -59,6 +60,9 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Vessel movement is intentionally slower-paced while shots remain comparatively fast
 - Pace tuning can target a calmer or livelier midpoint without changing projectile tempo
 - Spawn pressure and gun reload cadence are tuned to avoid overly chaotic early-screen bullet spray
+- Boss fire-control checks now bias toward plausible broadside hit windows (player-first targeting, with opportunistic cross-ship collateral)
+- Gold pickup includes range-based magnetic pull toward the player to reduce cleanup downtime
+- Ship kills spawn short-lived geometric fireburst shards (yellow/orange/red) to emphasize impacts
 - Config-driven level structure with endless scaling
 
 ## Interface Behavior

@@ -24,12 +24,15 @@ Canvas now runs fullscreen in the browser viewport.
 - Enemy ships use rowing + sail + wind-influenced movement like player ship
 - Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
 - Certain enemy ship types now use loose formation behavior and follow nearby ally ships instead of always chasing the player directly
+- Formation ships now share lightweight flocking-style movement (cohesion, alignment, separation) while still pressuring the player
 - Gunners and cannons only fire when target is within effective range
+- Bosses now hold fire until a broadside solution is likely to connect; they prioritize the player but can opportunistically blast other ships in their arc
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
 - Slower, separate reload cadence for guns vs cannons (guns faster, cannons slower)
 - Global gun reload cadence tuned slower to reduce early bullet noise
-- Floating gold drops remain at kill positions until collected
+- Gold inside player gun-range radius now magnet-pulls toward the player for faster collection flow
 - Gold drops render as spinning pixel-style coins
+- Ship deaths now spawn geometric yellow/orange/red fiery explosion shards
 - Gold pickup is the level progression resource (gold effectively acts as XP)
 - World-space traversal on a larger sea map (camera follows ship)
 - Land/island tiles plus translucent moving cloud layer
