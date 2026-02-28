@@ -27,11 +27,14 @@ Open `index.html` directly in a browser.
 - Islands are larger and contain destructible village buildings
 - Cannon hits destroy buildings and spawn gold fountains into the water
 - Island defenses (tower cannons) activate as difficulty rises
+- Boats cannot pass through islands; island impacts cause collision damage
+- Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look
 - Visible ship growth and ability slots
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)
 - Dynamic zoom-out as ship scales up
 - Graphical HUD bars (hull, speed, rowing effort, threat)
+- Boat movement pace rebalanced much slower (projectiles remain fast)
 - Level configuration system with endless scaling support
 
 ## Progression Architecture

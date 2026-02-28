@@ -37,13 +37,15 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Floating gold drops remain in-world until collected
 - Gold drops render with spinning coin effect
 - Large traversable sea map with camera follow
-- Land/island scatter with larger islands and village building generation
+- Land/island scatter with larger geometric islands built from pseudo-random hex/triangle patches
+- Islands are physically solid (boats cannot pass through land and take impact damage)
 - Cannon-only building destruction with fountain-like gold bursts
 - Passive islands in early game, defensive tower cannons in later tiers
 - Translucent cloud pass-over layer
 - Periodic boss ship arrivals that gate major progression spikes
 - Boss defeat increases global difficulty tier
 - Ship-size scaling also raises difficulty pressure and enemy loadout quality
+- Vessel movement is intentionally slower-paced while shots remain comparatively fast
 - Config-driven level structure with endless scaling
 
 ## Upgrade Categories

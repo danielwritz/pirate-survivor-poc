@@ -259,14 +259,28 @@ function initWorld() {
     const x = 200 + Math.random() * (state.world.width - 400);
     const y = 200 + Math.random() * (state.world.height - 400);
     const r = 44 + Math.random() * 86;
-    const island = { x, y, r, buildings: [], defenseLevel: 0 };
+    const island = { x, y, r, patches: [], buildings: [], defenseLevel: 0 };
+
+    const patchCount = Math.max(7, Math.floor(r / 10));
+    let maxExtent = r;
+    for (let p = 0; p < patchCount; p++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * r * 0.7;
+      const px = x + Math.cos(ang) * dist;
+      const py = y + Math.sin(ang) * dist;
+      const size = 10 + Math.random() * 18;
+      const sides = Math.random() < 0.58 ? 6 : 3;
+      const rot = Math.random() * Math.PI * 2;
+      island.patches.push({ x: px, y: py, size, sides, rot });
+      maxExtent = Math.max(maxExtent, Math.hypot(px - x, py - y) + size * 1.2);
+    }
+    island.r = maxExtent;
 
     const bCount = Math.max(2, Math.floor(r / 22));
     for (let b = 0; b < bCount; b++) {
-      const ang = Math.random() * Math.PI * 2;
-      const dist = Math.random() * r * 0.5;
-      const bx = x + Math.cos(ang) * dist;
-      const by = y + Math.sin(ang) * dist;
+      const patch = island.patches[Math.floor(Math.random() * island.patches.length)];
+      const bx = patch.x + (Math.random() - 0.5) * patch.size * 0.6;
+      const by = patch.y + (Math.random() - 0.5) * patch.size * 0.6;
       const size = 8 + Math.random() * 18;
       island.buildings.push({
         x: bx,
@@ -295,6 +309,18 @@ function initWorld() {
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
+}
+
+function polygonPath(cx, cy, radius, sides, rot) {
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const a = rot + (i / sides) * Math.PI * 2;
+    const px = cx + Math.cos(a) * radius;
+    const py = cy + Math.sin(a) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
 }
 
 function angleDiff(a, b) {
@@ -343,24 +369,52 @@ function simulateVessel(entity, dt, input) {
   const sailPush = entity.sailOpen ? sailAlignment * (0.1 + entity.size * 0.0015) : 0;
   const drag = input.brake ? 0.052 : 0.018;
   const accel = (rowPower + sailPush) / Math.max(1, entity.mass / 16);
+  const pace = dt * 6;
 
-  entity.speed += accel * dt * 60;
-  entity.speed -= drag * entity.speed * dt * 60;
+  entity.speed += accel * pace;
+  entity.speed -= drag * entity.speed * pace;
   entity.speed = clamp(entity.speed, 0, entity.baseSpeed + 1.6);
 
   const steer = 0.011 + entity.rudder * 0.005 + entity.rowers * 0.0015;
   const speedFactor = 0.3 + Math.min(1.1, entity.speed / 2.3);
-  if (input.turnLeft) entity.heading -= steer * speedFactor * dt * 60;
-  if (input.turnRight) entity.heading += steer * speedFactor * dt * 60;
+  if (input.turnLeft) entity.heading -= steer * speedFactor * pace;
+  if (input.turnRight) entity.heading += steer * speedFactor * pace;
 
   const rowerMitigation = Math.min(0.82, entity.rowers * 0.14);
   const wx = state.wind.x * (1 - rowerMitigation);
   const wy = state.wind.y * (1 - rowerMitigation);
 
-  entity.x += fwd.x * entity.speed * dt * 60 + wx * dt * 26;
-  entity.y += fwd.y * entity.speed * dt * 60 + wy * dt * 26;
+  entity.x += fwd.x * entity.speed * pace + wx * dt * 2.6;
+  entity.y += fwd.y * entity.speed * pace + wy * dt * 2.6;
   entity.x = clamp(entity.x, 24, state.world.width - 24);
   entity.y = clamp(entity.y, 24, state.world.height - 24);
+}
+
+function resolveIslandCollisions(entity, dt, playerCollision = false) {
+  for (const island of state.islands) {
+    const centerDist = Math.hypot(entity.x - island.x, entity.y - island.y);
+    if (centerDist > island.r + entity.size + 20) continue;
+
+    for (const patch of island.patches) {
+      const dx = entity.x - patch.x;
+      const dy = entity.y - patch.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const minDist = patch.size * 0.82 + entity.size * 0.62;
+      if (d < minDist) {
+        const nx = dx / d;
+        const ny = dy / d;
+        const push = minDist - d + 0.1;
+        entity.x += nx * push;
+        entity.y += ny * push;
+        entity.speed *= 0.25;
+
+        if (playerCollision) {
+          const impact = 3.5 + entity.mass * 0.03;
+          player.hp -= impact * dt * 0.5;
+        }
+      }
+    }
+  }
 }
 
 function spawnEnemy() {
@@ -656,26 +710,28 @@ function update(dt) {
   const sailAlignment = player.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
   const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
   const drag = brakePressed ? 0.06 : 0.018;
+  const pace = dt * 6;
 
   const accel = (rowPower + sailPush) / Math.max(1, player.mass / 16);
-  player.speed += accel * dt * 60;
-  player.speed -= drag * player.speed * dt * 60;
+  player.speed += accel * pace;
+  player.speed -= drag * player.speed * pace;
   player.speed = Math.max(0, Math.min(player.baseSpeed + 1.9, player.speed));
 
   const steerAuthority = 0.012 + player.rudder * 0.006 + player.rowers * 0.002;
   const speedFactor = 0.3 + Math.min(1.2, player.speed / 2.4);
-  if (turnLeft) player.heading -= steerAuthority * speedFactor * dt * 60;
-  if (turnRight) player.heading += steerAuthority * speedFactor * dt * 60;
+  if (turnLeft) player.heading -= steerAuthority * speedFactor * pace;
+  if (turnRight) player.heading += steerAuthority * speedFactor * pace;
 
   const rowerMitigation = Math.min(0.85, player.rowers * 0.16);
   const wx = state.wind.x * (1 - rowerMitigation);
   const wy = state.wind.y * (1 - rowerMitigation);
 
-  player.x += fwd.x * player.speed * dt * 60 + wx * dt * 30;
-  player.y += fwd.y * player.speed * dt * 60 + wy * dt * 30;
+  player.x += fwd.x * player.speed * pace + wx * dt * 3;
+  player.y += fwd.y * player.speed * pace + wy * dt * 3;
 
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
+  resolveIslandCollisions(player, dt, true);
 
   const zoomTarget = clamp(1 - (player.size - 16) * 0.008, 0.62, 1);
   state.zoom += (zoomTarget - state.zoom) * 0.09;
@@ -712,6 +768,7 @@ function update(dt) {
       turnLeft: turnLeftEnemy,
       turnRight: turnRightEnemy
     });
+    resolveIslandCollisions(enemy, dt, false);
 
     enemy.fireTimer += dt;
     if (enemy.fireTimer >= enemy.fireRate) {
@@ -999,14 +1056,17 @@ function drawWorld() {
     const sr = island.r * z;
     if (sx < -sr - 40 || sx > canvas.width + sr + 40 || sy < -sr - 40 || sy > canvas.height + sr + 40) continue;
 
-    ctx.fillStyle = '#b2a46f';
-    ctx.beginPath();
-    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#6e9d4b';
-    ctx.beginPath();
-    ctx.arc(sx, sy, sr * 0.68, 0, Math.PI * 2);
-    ctx.fill();
+    for (const patch of island.patches) {
+      const px = (patch.x - camX) * z;
+      const py = (patch.y - camY) * z;
+      const pr = patch.size * z;
+      ctx.fillStyle = patch.sides === 6 ? '#b2a46f' : '#a69663';
+      polygonPath(px, py, pr, patch.sides, patch.rot);
+      ctx.fill();
+      ctx.fillStyle = patch.sides === 6 ? '#6e9d4b' : '#6a9349';
+      polygonPath(px, py, pr * 0.62, patch.sides, patch.rot + 0.08);
+      ctx.fill();
+    }
 
     for (const building of island.buildings) {
       const bp = toScreen(building.x, building.y);
