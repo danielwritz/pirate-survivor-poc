@@ -134,6 +134,10 @@ const player = {
   ram: false,
   ramDamage: 46,
   mass: 28,
+  hullLength: 1,
+  hullBeam: 1,
+  bowSharpness: 1,
+  sternTaper: 1,
   slots: [],
   hullColor: '#5f4630',
   sailColor: '#f0f7ff',
@@ -158,6 +162,8 @@ const upgradePool = [
       player.crew += 1;
       player.gunners += 1;
       player.gunReload = Math.max(0.55, player.gunReload - 0.07);
+      player.hullLength += 0.03;
+      player.bowSharpness += 0.04;
       addAbility('Musketeers');
     }
   },
@@ -168,6 +174,7 @@ const upgradePool = [
       player.cannons += 1;
       player.bulletDamage += 3;
       player.cannonReload = Math.max(1.0, player.cannonReload - 0.1);
+      player.hullBeam += 0.03;
       addAbility('Cannons');
     }
   },
@@ -177,6 +184,7 @@ const upgradePool = [
     apply() {
       player.rowers += 1;
       player.baseSpeed += 0.16;
+      player.hullLength += 0.02;
       addAbility('Rowers');
     }
   },
@@ -186,6 +194,8 @@ const upgradePool = [
     apply() {
       player.maxHp += 15;
       player.hp = Math.min(player.maxHp, player.hp + 10);
+      player.hullBeam += 0.05;
+      player.sternTaper -= 0.03;
       addAbility('Hull');
     }
   },
@@ -195,6 +205,7 @@ const upgradePool = [
     apply() {
       player.ram = true;
       player.size += 2;
+      player.bowSharpness += 0.14;
       addAbility('Ram');
     }
   },
@@ -205,6 +216,8 @@ const upgradePool = [
       player.baseSpeed += 0.25;
       player.size += 1;
       player.mass += 2;
+      player.hullLength += 0.05;
+      player.hullBeam -= 0.03;
       addAbility('Sails');
     }
   },
@@ -235,6 +248,8 @@ const majorUpgradePool = [
       player.maxHp += 40;
       player.hp = Math.min(player.maxHp, player.hp + 28);
       player.mass += 10;
+      player.hullBeam += 0.12;
+      player.sternTaper -= 0.06;
       player.hullColor = '#3f2f24';
       player.trimColor = '#c7a476';
       addAbility('Dreadnought');
@@ -247,6 +262,9 @@ const majorUpgradePool = [
       player.baseSpeed += 0.45;
       player.gunReload = Math.max(0.45, player.gunReload - 0.08);
       player.cannonReload = Math.max(0.9, player.cannonReload - 0.1);
+      player.hullLength += 0.08;
+      player.hullBeam -= 0.06;
+      player.bowSharpness += 0.08;
       player.sailColor = '#d34d4d';
       player.mastScale += 0.2;
       addAbility('CrimsonSails');
@@ -260,6 +278,7 @@ const majorUpgradePool = [
       player.bulletDamage += 10;
       player.size += 1;
       player.mass += 3;
+      player.hullBeam += 0.08;
       addAbility('Broadside');
     }
   },
@@ -271,6 +290,8 @@ const majorUpgradePool = [
       player.ramDamage += 38;
       player.size += 2;
       player.mass += 4;
+      player.bowSharpness += 0.18;
+      player.hullLength += 0.06;
       player.hullColor = '#4a3a2e';
       addAbility('IronRam');
     }
@@ -536,6 +557,10 @@ function spawnEnemy() {
     gunRange: 102 + size * 3.0 + state.difficultyTier * 7,
     cannonRange: Math.max(158 + size * 4.5 + cannons * 14 + state.difficultyTier * 9, 102 + size * 3.0 + state.difficultyTier * 7 + 55),
     bulletDamage: 5 + state.difficultyTier * 1.5 + cannons * 1.2,
+    hullLength: 0.9 + Math.random() * 0.3,
+    hullBeam: 0.86 + Math.random() * 0.3,
+    bowSharpness: 0.9 + Math.random() * 0.45,
+    sternTaper: 0.78 + Math.random() * 0.42,
     hullColor: kind === 'raider' ? '#5c3f35' : kind === 'rammer' ? '#6a3d2f' : '#394f60',
     sailColor: kind === 'raider' ? '#d7d2c1' : '#d4e6f5'
   });
@@ -580,6 +605,10 @@ function spawnBoss() {
     gunRange: 150 + size * 3.3,
     cannonRange: Math.max(245 + size * 4.8 + state.difficultyTier * 14, 150 + size * 3.3 + 80),
     bulletDamage: 10 + state.difficultyTier * 2.4,
+    hullLength: 1 + Math.random() * 0.25,
+    hullBeam: 1 + Math.random() * 0.2,
+    bowSharpness: 1 + Math.random() * 0.3,
+    sternTaper: 0.82 + Math.random() * 0.28,
     hullColor: '#7b2e3d',
     sailColor: '#f1d1d8'
   });
@@ -749,7 +778,8 @@ function offerMajorUpgrades() {
   };
 }
 
-function gainXp(amount) {
+function addGold(amount) {
+  state.gold += amount;
   state.xp += amount;
   while (state.xp >= state.xpToNext) {
     state.xp -= state.xpToNext;
@@ -760,6 +790,52 @@ function gainXp(amount) {
     player.hp = Math.min(player.maxHp, player.hp + 4);
     offerUpgrades();
   }
+}
+
+function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
+  const len = size * clamp(profile.hullLength ?? 1, 0.78, 1.55);
+  const beam = size * clamp(profile.hullBeam ?? 1, 0.7, 1.45);
+  const bow = clamp(profile.bowSharpness ?? 1, 0.72, 1.7);
+  const stern = clamp(profile.sternTaper ?? 1, 0.6, 1.5);
+
+  const bowX = len * (1.05 + bow * 0.14);
+  const shoulderX = len * 0.34;
+  const sternShoulderX = -len * (0.7 + stern * 0.2);
+  const sternX = -len * (0.95 + stern * 0.24);
+
+  ctx.fillStyle = hullColor;
+  ctx.beginPath();
+  ctx.moveTo(bowX, 0);
+  ctx.lineTo(shoulderX, -beam * 0.62);
+  ctx.lineTo(sternShoulderX, -beam * 0.46);
+  ctx.lineTo(sternX, 0);
+  ctx.lineTo(sternShoulderX, beam * 0.46);
+  ctx.lineTo(shoulderX, beam * 0.62);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = trimColor;
+  ctx.beginPath();
+  ctx.moveTo(bowX * 0.82, 0);
+  ctx.lineTo(shoulderX * 0.78, -beam * 0.44);
+  ctx.lineTo(sternShoulderX * 0.72, -beam * 0.3);
+  ctx.lineTo(sternX * 0.74, 0);
+  ctx.lineTo(sternShoulderX * 0.72, beam * 0.3);
+  ctx.lineTo(shoulderX * 0.78, beam * 0.44);
+  ctx.closePath();
+  ctx.fill();
+
+  if (ramEnabled) {
+    ctx.fillStyle = '#bdb7b0';
+    ctx.beginPath();
+    ctx.moveTo(bowX, -4);
+    ctx.lineTo(bowX + 12, 0);
+    ctx.lineTo(bowX, 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  return { len, beam, bowX };
 }
 
 window.addEventListener('keydown', (e) => {
@@ -908,16 +984,14 @@ function update(dt) {
         if (enemy.hp <= 0) {
           state.enemies.splice(i, 1);
           if (enemy.kind === 'boss') {
-            state.gold += 30;
-            gainXp(20);
             state.difficultyTier += 1;
             state.bossesDefeated += 1;
             offerMajorUpgrades();
+            state.drops.push({ x: enemy.x, y: enemy.y, v: 22 + Math.random() * 6 });
           } else {
-            state.gold += 2;
-            gainXp(3 + (enemy.kind === 'raider' ? 4 : 0));
+            const bonus = enemy.kind === 'raider' ? 6 : 3;
+            state.drops.push({ x: enemy.x, y: enemy.y, v: bonus + Math.random() * 2.5 });
           }
-          state.drops.push({ x: enemy.x, y: enemy.y, v: 2 + Math.random() * 3 });
           break;
         }
       }
@@ -978,8 +1052,7 @@ function update(dt) {
     if (d < enemy.size + player.size * 0.7) {
       if (player.ram && enemy.kind !== 'raider' && enemy.kind !== 'boss') {
         state.enemies.splice(i, 1);
-        state.gold += 1;
-        gainXp(2);
+        state.drops.push({ x: enemy.x, y: enemy.y, v: 3 + Math.random() * 2 });
       } else {
         const impact = enemy.kind === 'boss' ? 20 : enemy.kind === 'monster' ? 12 : 7;
         player.hp -= impact * dt * 4;
@@ -1005,7 +1078,7 @@ function update(dt) {
     const dx = player.x - d.x;
     const dy = player.y - d.y;
     if (Math.hypot(dx, dy) < 14) {
-      state.gold += d.v;
+      addGold(d.v);
       state.drops.splice(i, 1);
     }
   }
@@ -1033,21 +1106,13 @@ function drawShip() {
   ctx.rotate(player.heading);
   ctx.scale(state.zoom, state.zoom);
 
-  ctx.fillStyle = player.hullColor;
-  ctx.fillRect(-s, -s * 0.64, s * 2, s * 1.28);
-
-  if (player.ram) {
-    ctx.fillStyle = '#bdb7b0';
-    ctx.beginPath();
-    ctx.moveTo(s, -5);
-    ctx.lineTo(s + 10, 0);
-    ctx.lineTo(s, 5);
-    ctx.closePath();
-    ctx.fill();
-  }
+  const hull = drawHullBody(s, player.hullColor, player.trimColor, player, player.ram);
+  const sLen = hull.len;
+  const sBeam = hull.beam;
+  const bowX = hull.bowX;
 
   ctx.fillStyle = player.trimColor;
-  const mast = Math.max(8, s * 1.3 * player.mastScale);
+  const mast = Math.max(8, s * 1.2 * player.mastScale);
   ctx.fillRect(-2, -mast, 4, mast);
 
   if (player.sailOpen) {
@@ -1063,8 +1128,8 @@ function drawShip() {
   const crewCount = Math.min(10, player.crew + player.cannons);
   ctx.fillStyle = '#1f2f3a';
   for (let i = 0; i < crewCount; i++) {
-    const px = -s * 0.8 + (i % 5) * (s * 0.4);
-    const py = -s * 0.3 + Math.floor(i / 5) * (s * 0.5);
+    const px = -sLen * 0.62 + (i % 5) * (sLen * 0.27);
+    const py = -sBeam * 0.22 + Math.floor(i / 5) * (sBeam * 0.35);
     ctx.beginPath();
     ctx.arc(px, py, 2.2, 0, Math.PI * 2);
     ctx.fill();
@@ -1073,22 +1138,30 @@ function drawShip() {
   const gunPorts = Math.max(2, player.gunners);
   for (let i = 0; i < gunPorts; i++) {
     const t = gunPorts === 1 ? 0.5 : i / (gunPorts - 1);
-    const along = -s * 0.75 + t * s * 1.5;
+    const along = -sLen * 0.62 + t * sLen * 1.24;
 
     ctx.fillStyle = '#d5dbe2';
-    ctx.fillRect(along - 1.6, -s * 0.83, 3.2, 2.2);
-    ctx.fillRect(along - 1.6, s * 0.79, 3.2, 2.2);
+    ctx.fillRect(along - 1.6, -sBeam * 0.67, 3.2, 2.2);
+    ctx.fillRect(along - 1.6, sBeam * 0.63, 3.2, 2.2);
   }
 
   const cannonPorts = Math.max(0, player.cannons);
   for (let i = 0; i < cannonPorts; i++) {
     const t = cannonPorts === 1 ? 0.5 : i / (cannonPorts - 1);
-    const along = -s * 0.65 + t * s * 1.3;
+    const along = -sLen * 0.52 + t * sLen * 1.08;
 
     ctx.fillStyle = '#5f656c';
-    ctx.fillRect(along - 5, -s * 0.98, 10, 4);
-    ctx.fillRect(along - 5, s * 0.94, 10, 4);
+    ctx.fillRect(along - 5, -sBeam * 0.79, 10, 4);
+    ctx.fillRect(along - 5, sBeam * 0.73, 10, 4);
   }
+
+  ctx.fillStyle = '#f2d9a4';
+  ctx.beginPath();
+  ctx.moveTo(bowX + 2, 0);
+  ctx.lineTo(bowX - 9, -5);
+  ctx.lineTo(bowX - 9, 5);
+  ctx.closePath();
+  ctx.fill();
 
   ctx.restore();
 }
@@ -1101,11 +1174,13 @@ function drawEnemyShip(enemy) {
   ctx.rotate(enemy.heading);
   ctx.scale(state.zoom, state.zoom);
 
-  ctx.fillStyle = enemy.hullColor;
-  ctx.fillRect(-s, -s * 0.58, s * 2, s * 1.16);
+  const hull = drawHullBody(s, enemy.hullColor, '#b8997a', enemy, false);
+  const sLen = hull.len;
+  const sBeam = hull.beam;
+  const bowX = hull.bowX;
 
   ctx.fillStyle = '#b8997a';
-  ctx.fillRect(-1.5, -s * 1.18, 3, s * 1.18);
+  ctx.fillRect(-1.5, -s * 1.12, 3, s * 1.12);
 
   if (enemy.sailOpen) {
     ctx.fillStyle = enemy.sailColor;
@@ -1119,19 +1194,27 @@ function drawEnemyShip(enemy) {
 
   for (let i = 0; i < Math.max(1, enemy.gunners); i++) {
     const t = enemy.gunners <= 1 ? 0.5 : i / (enemy.gunners - 1);
-    const along = -s * 0.7 + t * s * 1.4;
+    const along = -sLen * 0.62 + t * sLen * 1.24;
     ctx.fillStyle = '#d0d6de';
-    ctx.fillRect(along - 1.5, -s * 0.81, 3, 2);
-    ctx.fillRect(along - 1.5, s * 0.77, 3, 2);
+    ctx.fillRect(along - 1.5, -sBeam * 0.64, 3, 2);
+    ctx.fillRect(along - 1.5, sBeam * 0.59, 3, 2);
   }
 
   for (let i = 0; i < enemy.cannons; i++) {
     const t = enemy.cannons <= 1 ? 0.5 : i / (enemy.cannons - 1);
-    const along = -s * 0.62 + t * s * 1.24;
+    const along = -sLen * 0.52 + t * sLen * 1.08;
     ctx.fillStyle = '#596068';
-    ctx.fillRect(along - 4.5, -s * 0.95, 9, 3.8);
-    ctx.fillRect(along - 4.5, s * 0.91, 9, 3.8);
+    ctx.fillRect(along - 4.5, -sBeam * 0.76, 9, 3.8);
+    ctx.fillRect(along - 4.5, sBeam * 0.71, 9, 3.8);
   }
+
+  ctx.fillStyle = '#ead6b3';
+  ctx.beginPath();
+  ctx.moveTo(bowX + 1.5, 0);
+  ctx.lineTo(bowX - 7, -4);
+  ctx.lineTo(bowX - 7, 4);
+  ctx.closePath();
+  ctx.fill();
 
   ctx.restore();
 }
@@ -1276,16 +1359,6 @@ function drawRangeIndicators() {
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, ranges.cannon * state.zoom, 0, Math.PI * 2);
     ctx.stroke();
-  }
-
-  ctx.setLineDash([]);
-  ctx.textAlign = 'left';
-  ctx.font = '11px system-ui';
-  ctx.fillStyle = 'rgba(209,233,248,0.9)';
-  ctx.fillText('GUN RANGE', pos.x + 12, pos.y - ranges.gun * state.zoom - 6);
-  if (player.cannons > 0) {
-    ctx.fillStyle = 'rgba(237,205,167,0.92)';
-    ctx.fillText('CANNON RANGE', pos.x + 12, pos.y - ranges.cannon * state.zoom - 6);
   }
 
   ctx.restore();

@@ -28,6 +28,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Slower, separate reload cadence for guns vs cannons (guns faster, cannons slower)
 - Floating gold drops remain at kill positions until collected
 - Gold drops render as spinning pixel-style coins
+- Gold pickup is the level progression resource (gold effectively acts as XP)
 - World-space traversal on a larger sea map (camera follows ship)
 - Land/island tiles plus translucent moving cloud layer
 - Islands are larger and contain destructible village buildings
@@ -37,6 +38,8 @@ Canvas now runs fullscreen in the browser viewport.
 - Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look
 - Procedural island generation now produces wider variety (small, long, bulky, and larger composite islands)
 - Visible ship growth and ability slots
+- Boats now render with more geometric pointed hulls (clearer front/bow direction)
+- Hull profile changes over progression using upgrade-influenced + cosmetic variation
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)
 - Dynamic zoom-out as ship scales up

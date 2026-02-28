@@ -11,7 +11,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 ## Gameplay Loop
 1. Navigate hostile waters.
 2. Auto-fire on nearest threats.
-3. Collect gold and XP from defeated enemies.
+3. Collect gold drops (gold is the progression currency and level resource).
 4. Level up and choose upgrades.
 5. Survive longer against escalating enemy pressure.
 
@@ -37,6 +37,8 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Side-mounted visual weapons:
   - Guns: smaller, lighter gray rectangles
   - Cannons: larger, darker gray rectangles
+- Geometric hull silhouettes with pointed bows/stern taper for stronger heading readability
+- Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
 - Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
