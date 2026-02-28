@@ -25,22 +25,30 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
   - Ram boats (fast impact threats)
   - Sea monsters (high-health pressure)
 - Wind system with HUD compass indicator
+- Graphical status HUD: hull, speed, rowing effort, and threat meter
 - Broadside-only projectiles from side-mounted ports
 - Side-mounted visual weapons:
   - Guns: smaller, lighter gray rectangles
   - Cannons: larger, darker gray rectangles
 - Heavier ship tiers increase inertia and handling weight
+- Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time (hull/sail transformations)
 - Floating gold drops remain in-world until collected
+- Gold drops render with spinning coin effect
 - Large traversable sea map with camera follow
-- Land/island scatter and translucent cloud pass-over layer
+- Land/island scatter with larger islands and village building generation
+- Cannon-only building destruction with fountain-like gold bursts
+- Passive islands in early game, defensive tower cannons in later tiers
+- Translucent cloud pass-over layer
 - Periodic boss ship arrivals that gate major progression spikes
 - Boss defeat increases global difficulty tier
+- Ship-size scaling also raises difficulty pressure and enemy loadout quality
 - Config-driven level structure with endless scaling
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling
+- Offense precision: cannon pivot/trunnion upgrades
 - Mobility: rowers, sail mastery
 - Defense: hull reinforcement
 - Utility: future plunder magnets/repairs

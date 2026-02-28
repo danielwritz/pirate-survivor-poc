@@ -18,13 +18,20 @@ Open `index.html` directly in a browser.
 - Wind + sail propulsion with on-screen wind compass
 - Broadside-only firing from ship port/starboard weapon mounts
 - Distinct gun vs cannon visual ports on ship sides
-- Enemy waves (pirates, rammers, sea monsters)
+- Enemy ships use rowing + sail + wind-influenced movement like player ship
+- Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
 - Floating gold drops remain at kill positions until collected
+- Gold drops render as spinning pixel-style coins
 - World-space traversal on a larger sea map (camera follows ship)
 - Land/island tiles plus translucent moving cloud layer
+- Islands are larger and contain destructible village buildings
+- Cannon hits destroy buildings and spawn gold fountains into the water
+- Island defenses (tower cannons) activate as difficulty rises
 - Visible ship growth and ability slots
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)
+- Dynamic zoom-out as ship scales up
+- Graphical HUD bars (hull, speed, rowing effort, threat)
 - Level configuration system with endless scaling support
 
 ## Progression Architecture
@@ -33,7 +40,6 @@ Open `index.html` directly in a browser.
 - Boss defeats increase difficulty tier and unlock major ship transformations
 
 ## Next Iteration Ideas
-- Islands/plunder encounters
 - Better enemy wave director and boss behaviors
 - Distinct ship classes
 - Persistent meta-progression

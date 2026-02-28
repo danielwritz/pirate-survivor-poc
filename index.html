@@ -84,6 +84,10 @@ const state = {
   wind: { x: 0.35, y: -0.12, timer: 0 },
   world: { width: 3600, height: 2600 },
   camera: { x: 0, y: 0 },
+  zoom: 1,
+  rowEffort: 0,
+  difficultyFromSize: 0,
+  defenseTier: 0,
   islands: [],
   clouds: []
 };
@@ -104,6 +108,7 @@ const player = {
   rowers: 0,
   gunners: 2,
   cannons: 0,
+  cannonPivot: 0,
   crew: 2,
   rudder: 0,
   sailOpen: true,
@@ -181,6 +186,14 @@ const upgradePool = [
       player.rudder += 1;
       addAbility('Rudder');
     }
+  },
+  {
+    name: 'Cannon Trunnions',
+    desc: 'Cannons can auto-pivot +5°',
+    apply() {
+      player.cannonPivot = Math.min(20, player.cannonPivot + 5);
+      addAbility('PivotCannons');
+    }
   }
 ];
 
@@ -245,8 +258,28 @@ function initWorld() {
   for (let i = 0; i < islandCount; i++) {
     const x = 200 + Math.random() * (state.world.width - 400);
     const y = 200 + Math.random() * (state.world.height - 400);
-    const r = 34 + Math.random() * 52;
-    state.islands.push({ x, y, r });
+    const r = 44 + Math.random() * 86;
+    const island = { x, y, r, buildings: [], defenseLevel: 0 };
+
+    const bCount = Math.max(2, Math.floor(r / 22));
+    for (let b = 0; b < bCount; b++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.random() * r * 0.5;
+      const bx = x + Math.cos(ang) * dist;
+      const by = y + Math.sin(ang) * dist;
+      const size = 8 + Math.random() * 18;
+      island.buildings.push({
+        x: bx,
+        y: by,
+        size,
+        hp: 18 + size * 1.6,
+        maxHp: 18 + size * 1.6,
+        tower: false,
+        fireTimer: Math.random()
+      });
+    }
+
+    state.islands.push(island);
   }
 
   for (let i = 0; i < 11; i++) {
@@ -260,9 +293,79 @@ function initWorld() {
   }
 }
 
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function angleDiff(a, b) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}
+
+function updateCamera() {
+  const viewW = canvas.width / state.zoom;
+  const viewH = canvas.height / state.zoom;
+  state.camera.x = clamp(player.x - viewW / 2, 0, Math.max(0, state.world.width - viewW));
+  state.camera.y = clamp(player.y - viewH / 2, 0, Math.max(0, state.world.height - viewH));
+}
+
+function toScreen(wx, wy) {
+  return {
+    x: (wx - state.camera.x) * state.zoom,
+    y: (wy - state.camera.y) * state.zoom
+  };
+}
+
+function ensureIslandDefenses() {
+  const targetTier = Math.floor((state.difficultyTier + state.difficultyFromSize) / 2);
+  if (targetTier <= state.defenseTier) return;
+  state.defenseTier = targetTier;
+
+  for (const island of state.islands) {
+    const towerChance = clamp(0.18 + targetTier * 0.08, 0.18, 0.85);
+    island.defenseLevel = targetTier;
+    for (const b of island.buildings) {
+      if (!b.tower && Math.random() < towerChance) {
+        b.tower = true;
+        b.hp += 14 + targetTier * 4;
+        b.maxHp = b.hp;
+      }
+    }
+  }
+}
+
+function simulateVessel(entity, dt, input) {
+  const fwd = { x: Math.cos(entity.heading), y: Math.sin(entity.heading) };
+  const windMag = Math.hypot(state.wind.x, state.wind.y) || 1;
+  const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
+
+  const rowPower = input.rowing ? (0.12 + entity.rowers * 0.06) : 0;
+  const sailAlignment = entity.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
+  const sailPush = entity.sailOpen ? sailAlignment * (0.1 + entity.size * 0.0015) : 0;
+  const drag = input.brake ? 0.052 : 0.018;
+  const accel = (rowPower + sailPush) / Math.max(1, entity.mass / 16);
+
+  entity.speed += accel * dt * 60;
+  entity.speed -= drag * entity.speed * dt * 60;
+  entity.speed = clamp(entity.speed, 0, entity.baseSpeed + 1.6);
+
+  const steer = 0.011 + entity.rudder * 0.005 + entity.rowers * 0.0015;
+  const speedFactor = 0.3 + Math.min(1.1, entity.speed / 2.3);
+  if (input.turnLeft) entity.heading -= steer * speedFactor * dt * 60;
+  if (input.turnRight) entity.heading += steer * speedFactor * dt * 60;
+
+  const rowerMitigation = Math.min(0.82, entity.rowers * 0.14);
+  const wx = state.wind.x * (1 - rowerMitigation);
+  const wy = state.wind.y * (1 - rowerMitigation);
+
+  entity.x += fwd.x * entity.speed * dt * 60 + wx * dt * 26;
+  entity.y += fwd.y * entity.speed * dt * 60 + wy * dt * 26;
+  entity.x = clamp(entity.x, 24, state.world.width - 24);
+  entity.y = clamp(entity.y, 24, state.world.height - 24);
+}
+
 function spawnEnemy() {
   const cfg = getLevelConfig(state.stageIndex);
-  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12;
+  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09;
 
   const edge = Math.floor(Math.random() * 4);
   const margin = 130;
@@ -277,15 +380,41 @@ function spawnEnemy() {
 
   const t = Math.random();
   let kind = 'pirate';
-  if (t > 0.72) kind = 'monster';
+  if (t > 0.66) kind = 'raider';
   if (t > 0.9) kind = 'rammer';
 
   const base = (12 + state.level * 1.2) * difficultyMult;
-  const hp = kind === 'monster' ? base * 2.4 : kind === 'rammer' ? base * 1.4 : base;
-  const speed = (kind === 'rammer' ? 2.25 : kind === 'monster' ? 1.25 : 1.55) * (1 + cfg.spawnRate * 0.05);
-  const size = kind === 'monster' ? 19 : kind === 'rammer' ? 12 : 14;
+  const size = (kind === 'raider' ? 18 : kind === 'rammer' ? 13 : 15) + state.difficultyFromSize * 0.45;
+  const hp = base * (kind === 'raider' ? 2.1 : kind === 'rammer' ? 1.4 : 1);
+  const baseSpeed = (kind === 'rammer' ? 2.3 : kind === 'raider' ? 1.45 : 1.75) * (1 + cfg.spawnRate * 0.04);
+  const cannons = Math.max(0, Math.floor(state.difficultyTier / 2) + (kind === 'raider' ? 1 : 0) + (Math.random() < 0.25 ? 1 : 0));
+  const gunners = 1 + Math.floor(state.difficultyTier / 2) + (kind === 'raider' ? 2 : 1);
+  const rowers = 1 + Math.floor(state.stageIndex / 2) + (kind === 'rammer' ? 2 : 0);
+  const cannonPivot = clamp((Math.floor(state.difficultyTier / 3) * 5) + (Math.random() < 0.22 ? 5 : 0), 0, 20);
 
-  state.enemies.push({ x, y, hp, speed, size, kind });
+  state.enemies.push({
+    x,
+    y,
+    hp,
+    maxHp: hp,
+    size,
+    kind,
+    heading: Math.random() * Math.PI * 2,
+    speed: 0,
+    baseSpeed,
+    rowers,
+    sailOpen: true,
+    gunners,
+    cannons,
+    cannonPivot,
+    rudder: kind === 'rammer' ? 2 : 1,
+    mass: 20 + size * 0.9,
+    fireRate: 0.72 - Math.min(0.28, state.difficultyTier * 0.03),
+    fireTimer: Math.random() * 0.5,
+    bulletDamage: 5 + state.difficultyTier * 1.5 + cannons * 1.2,
+    hullColor: kind === 'raider' ? '#5c3f35' : kind === 'rammer' ? '#6a3d2f' : '#394f60',
+    sailColor: kind === 'raider' ? '#d7d2c1' : '#d4e6f5'
+  });
 }
 
 function spawnBoss() {
@@ -301,10 +430,31 @@ function spawnBoss() {
   y = Math.max(30, Math.min(state.world.height - 30, y));
 
   const hp = 260 + state.level * 18 + state.difficultyTier * 45;
-  const speed = 1.15 + state.difficultyTier * 0.05;
-  const size = 30 + state.difficultyTier * 1.2;
+  const size = 30 + state.difficultyTier * 1.2 + state.difficultyFromSize * 0.6;
 
-  state.enemies.push({ x, y, hp, speed, size, kind: 'boss' });
+  state.enemies.push({
+    x,
+    y,
+    hp,
+    maxHp: hp,
+    size,
+    kind: 'boss',
+    heading: Math.random() * Math.PI * 2,
+    speed: 0,
+    baseSpeed: 1.2 + state.difficultyTier * 0.06,
+    rowers: 3 + Math.floor(state.difficultyTier / 2),
+    sailOpen: true,
+    gunners: 4 + state.difficultyTier,
+    cannons: 4 + Math.floor(state.difficultyTier / 2),
+    cannonPivot: clamp(5 + Math.floor(state.difficultyTier / 2) * 5, 5, 25),
+    rudder: 2,
+    mass: 46 + size,
+    fireRate: Math.max(0.35, 0.6 - state.difficultyTier * 0.02),
+    fireTimer: 0.2,
+    bulletDamage: 10 + state.difficultyTier * 2.4,
+    hullColor: '#7b2e3d',
+    sailColor: '#f1d1d8'
+  });
 }
 
 function getForwardVector() {
@@ -316,11 +466,14 @@ function getRightVector() {
   return { x: -f.y, y: f.x };
 }
 
-function broadsideFire(sideSign) {
+function broadsideFire(sideSign, target) {
   const right = getRightVector();
   const forward = getForwardVector();
   const guns = Math.max(2, player.gunners + player.cannons * 2);
   const isCannon = (portIndex) => portIndex < player.cannons * 2;
+  const baseDir = player.heading + sideSign * Math.PI / 2;
+  const targetAngle = target ? Math.atan2(target.y - player.y, target.x - player.x) : baseDir;
+  const clamped = clamp(angleDiff(targetAngle, baseDir), -player.cannonPivot * (Math.PI / 180), player.cannonPivot * (Math.PI / 180));
 
   for (let i = 0; i < guns; i++) {
     const t = guns === 1 ? 0.5 : i / (guns - 1);
@@ -330,7 +483,8 @@ function broadsideFire(sideSign) {
     const spawnY = player.y + forward.y * along + right.y * sideOffset;
 
     const spread = (Math.random() - 0.5) * 0.16;
-    const dir = sideSign * (Math.PI / 2 + spread) + player.heading;
+    const cannonAdjust = isCannon(i) ? clamped : angleDiff(targetAngle, baseDir) * 0.5;
+    const dir = baseDir + cannonAdjust + spread;
     const speed = player.bulletSpeed + (isCannon(i) ? 0.45 : 0.2);
     const dmg = player.bulletDamage + (isCannon(i) ? 4 : 0);
 
@@ -340,7 +494,54 @@ function broadsideFire(sideSign) {
       vx: Math.cos(dir) * speed,
       vy: Math.sin(dir) * speed,
       dmg,
-      heavy: isCannon(i)
+      heavy: isCannon(i),
+      owner: 'player'
+    });
+  }
+}
+
+function enemyVolley(enemy, sideSign) {
+  const fwd = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
+  const right = { x: -fwd.y, y: fwd.x };
+  const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+
+  const gunCount = Math.max(1, enemy.gunners);
+  for (let i = 0; i < gunCount; i++) {
+    const t = gunCount === 1 ? 0.5 : i / (gunCount - 1);
+    const along = (t - 0.5) * enemy.size * 1.45;
+    const sideOffset = sideSign * enemy.size * 0.58;
+    const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
+    const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+    const dir = targetAngle + (Math.random() - 0.5) * 0.2;
+    state.bullets.push({
+      x: spawnX,
+      y: spawnY,
+      vx: Math.cos(dir) * 4.6,
+      vy: Math.sin(dir) * 4.6,
+      dmg: enemy.bulletDamage * 0.48,
+      heavy: false,
+      owner: 'enemy'
+    });
+  }
+
+  const cannonCount = Math.max(0, enemy.cannons);
+  const baseDir = enemy.heading + sideSign * Math.PI / 2;
+  const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
+  for (let i = 0; i < cannonCount; i++) {
+    const t = cannonCount === 1 ? 0.5 : i / (cannonCount - 1);
+    const along = (t - 0.5) * enemy.size * 1.2;
+    const sideOffset = sideSign * enemy.size * 0.74;
+    const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
+    const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+    const dir = baseDir + clamped + (Math.random() - 0.5) * 0.1;
+    state.bullets.push({
+      x: spawnX,
+      y: spawnY,
+      vx: Math.cos(dir) * 4.1,
+      vy: Math.sin(dir) * 4.1,
+      dmg: enemy.bulletDamage,
+      heavy: true,
+      owner: 'enemy'
     });
   }
 }
@@ -365,7 +566,7 @@ function shootAtNearest() {
   const dy = target.y - player.y;
   const cross = forward.x * dy - forward.y * dx;
   const sideSign = cross >= 0 ? 1 : -1;
-  broadsideFire(sideSign);
+  broadsideFire(sideSign, target);
 }
 
 function offerUpgrades() {
@@ -451,6 +652,7 @@ function update(dt) {
   const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
 
   const rowPower = forwardPressed ? (0.14 + player.rowers * 0.075) : 0;
+  state.rowEffort = clamp(rowPower / 0.55, 0, 1);
   const sailAlignment = player.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
   const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
   const drag = brakePressed ? 0.06 : 0.018;
@@ -475,8 +677,11 @@ function update(dt) {
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
 
-  state.camera.x = Math.max(0, Math.min(state.world.width - canvas.width, player.x - canvas.width / 2));
-  state.camera.y = Math.max(0, Math.min(state.world.height - canvas.height, player.y - canvas.height / 2));
+  const zoomTarget = clamp(1 - (player.size - 16) * 0.008, 0.62, 1);
+  state.zoom += (zoomTarget - state.zoom) * 0.09;
+  state.difficultyFromSize = Math.floor(Math.max(0, (16 - state.zoom * 16) * 0.9));
+  ensureIslandDefenses();
+  updateCamera();
 
   player.fireTimer += dt;
   if (player.fireTimer >= player.fireRate) {
@@ -484,8 +689,8 @@ function update(dt) {
     shootAtNearest();
   }
 
-  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12;
-  const spawnChance = (0.0105 * cfg.spawnRate + state.level * 0.00022 + state.difficultyTier * 0.00035) * dt * 60;
+  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09;
+  const spawnChance = (0.0105 * cfg.spawnRate + state.level * 0.00022 + state.difficultyTier * 0.00035 + state.difficultyFromSize * 0.00045) * dt * 60;
   if (Math.random() < spawnChance) spawnEnemy();
 
   for (const bullet of state.bullets) {
@@ -495,11 +700,29 @@ function update(dt) {
   state.bullets = state.bullets.filter(b => b.x > -30 && b.x < state.world.width + 30 && b.y > -30 && b.y < state.world.height + 30);
 
   for (const enemy of state.enemies) {
-    const dx = player.x - enemy.x;
-    const dy = player.y - enemy.y;
-    const len = Math.hypot(dx, dy) || 1;
-    enemy.x += (dx / len) * enemy.speed * dt * 60;
-    enemy.y += (dy / len) * enemy.speed * dt * 60;
+    const desired = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    const turnDelta = angleDiff(desired, enemy.heading);
+    const turnLeftEnemy = turnDelta < -0.03;
+    const turnRightEnemy = turnDelta > 0.03;
+    const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+
+    simulateVessel(enemy, dt, {
+      rowing: distToPlayer > enemy.size * 2.6,
+      brake: false,
+      turnLeft: turnLeftEnemy,
+      turnRight: turnRightEnemy
+    });
+
+    enemy.fireTimer += dt;
+    if (enemy.fireTimer >= enemy.fireRate) {
+      enemy.fireTimer = 0;
+      const fwdEnemy = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
+      const dx = player.x - enemy.x;
+      const dy = player.y - enemy.y;
+      const cross = fwdEnemy.x * dy - fwdEnemy.y * dx;
+      const sideSign = cross >= 0 ? 1 : -1;
+      enemyVolley(enemy, sideSign);
+    }
   }
 
   for (let i = state.enemies.length - 1; i >= 0; i--) {
@@ -507,6 +730,7 @@ function update(dt) {
 
     for (let j = state.bullets.length - 1; j >= 0; j--) {
       const b = state.bullets[j];
+      if (b.owner === 'enemy') continue;
       const d = Math.hypot(enemy.x - b.x, enemy.y - b.y);
       if (d < enemy.size + 4) {
         enemy.hp -= b.dmg;
@@ -521,7 +745,7 @@ function update(dt) {
             offerMajorUpgrades();
           } else {
             state.gold += 2;
-            gainXp(3 + (enemy.kind === 'monster' ? 4 : 0));
+            gainXp(3 + (enemy.kind === 'raider' ? 4 : 0));
           }
           state.drops.push({ x: enemy.x, y: enemy.y, v: 2 + Math.random() * 3 });
           break;
@@ -530,11 +754,59 @@ function update(dt) {
     }
   }
 
+  for (const island of state.islands) {
+    for (let i = island.buildings.length - 1; i >= 0; i--) {
+      const building = island.buildings[i];
+      for (let j = state.bullets.length - 1; j >= 0; j--) {
+        const b = state.bullets[j];
+        if (b.owner !== 'player' || !b.heavy) continue;
+        const d = Math.hypot(building.x - b.x, building.y - b.y);
+        if (d < building.size * 0.65 + 4) {
+          building.hp -= b.dmg * 1.05;
+          state.bullets.splice(j, 1);
+          if (building.hp <= 0) {
+            const goldCount = Math.max(2, Math.floor(building.size / 4));
+            for (let g = 0; g < goldCount; g++) {
+              const ang = Math.random() * Math.PI * 2;
+              const dist = Math.random() * building.size * 0.9;
+              state.drops.push({
+                x: building.x + Math.cos(ang) * dist,
+                y: building.y + Math.sin(ang) * dist,
+                v: 1 + building.size * 0.16 + Math.random() * 1.6
+              });
+            }
+            island.buildings.splice(i, 1);
+          }
+          break;
+        }
+      }
+    }
+
+    const activeTowers = island.buildings.filter((b) => b.tower);
+    for (const tower of activeTowers) {
+      tower.fireTimer += dt;
+      const cadence = Math.max(0.7, 1.6 - island.defenseLevel * 0.12);
+      if (tower.fireTimer >= cadence) {
+        tower.fireTimer = 0;
+        const ang = Math.atan2(player.y - tower.y, player.x - tower.x) + (Math.random() - 0.5) * 0.16;
+        state.bullets.push({
+          x: tower.x,
+          y: tower.y,
+          vx: Math.cos(ang) * 4.2,
+          vy: Math.sin(ang) * 4.2,
+          dmg: 5 + island.defenseLevel * 1.5,
+          heavy: true,
+          owner: 'enemy'
+        });
+      }
+    }
+  }
+
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const enemy = state.enemies[i];
     const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
     if (d < enemy.size + player.size * 0.7) {
-      if (player.ram && enemy.kind !== 'monster' && enemy.kind !== 'boss') {
+      if (player.ram && enemy.kind !== 'raider' && enemy.kind !== 'boss') {
         state.enemies.splice(i, 1);
         state.gold += 1;
         gainXp(2);
@@ -545,6 +817,16 @@ function update(dt) {
           enemy.hp -= player.ramDamage * dt * 1.15;
         }
       }
+    }
+  }
+
+  for (let i = state.bullets.length - 1; i >= 0; i--) {
+    const b = state.bullets[i];
+    if (b.owner !== 'enemy') continue;
+    const d = Math.hypot(player.x - b.x, player.y - b.y);
+    if (d < player.size * 0.78 + 4) {
+      player.hp -= b.dmg * (b.heavy ? 0.28 : 0.18);
+      state.bullets.splice(i, 1);
     }
   }
 
@@ -576,8 +858,10 @@ function update(dt) {
 function drawShip() {
   const s = player.size;
   ctx.save();
-  ctx.translate(player.x - state.camera.x, player.y - state.camera.y);
+  const pos = toScreen(player.x, player.y);
+  ctx.translate(pos.x, pos.y);
   ctx.rotate(player.heading);
+  ctx.scale(state.zoom, state.zoom);
 
   ctx.fillStyle = player.hullColor;
   ctx.fillRect(-s, -s * 0.64, s * 2, s * 1.28);
@@ -639,55 +923,160 @@ function drawShip() {
   ctx.restore();
 }
 
+function drawEnemyShip(enemy) {
+  const s = enemy.size;
+  const pos = toScreen(enemy.x, enemy.y);
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.rotate(enemy.heading);
+  ctx.scale(state.zoom, state.zoom);
+
+  ctx.fillStyle = enemy.hullColor;
+  ctx.fillRect(-s, -s * 0.58, s * 2, s * 1.16);
+
+  ctx.fillStyle = '#b8997a';
+  ctx.fillRect(-1.5, -s * 1.18, 3, s * 1.18);
+
+  if (enemy.sailOpen) {
+    ctx.fillStyle = enemy.sailColor;
+    ctx.beginPath();
+    ctx.moveTo(2, -s * 1.12);
+    ctx.lineTo(s * 0.95, -s * 0.76);
+    ctx.lineTo(2, -s * 0.45);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  for (let i = 0; i < Math.max(1, enemy.gunners); i++) {
+    const t = enemy.gunners <= 1 ? 0.5 : i / (enemy.gunners - 1);
+    const along = -s * 0.7 + t * s * 1.4;
+    ctx.fillStyle = '#b8bdc3';
+    ctx.fillRect(along - 2, -s * 0.7, 4, 3);
+    ctx.fillRect(along - 2, s * 0.67, 4, 3);
+  }
+
+  for (let i = 0; i < enemy.cannons; i++) {
+    const t = enemy.cannons <= 1 ? 0.5 : i / (enemy.cannons - 1);
+    const along = -s * 0.62 + t * s * 1.24;
+    ctx.fillStyle = '#6c7278';
+    ctx.fillRect(along - 3, -s * 0.82, 6, 5);
+    ctx.fillRect(along - 3, s * 0.77, 6, 5);
+  }
+
+  ctx.restore();
+}
+
 function drawWorld() {
   const camX = state.camera.x;
   const camY = state.camera.y;
+  const z = state.zoom;
+  const viewW = canvas.width / z;
+  const viewH = canvas.height / z;
 
   const tile = 16;
-  for (let y = 0; y < canvas.height + tile; y += tile) {
-    for (let x = 0; x < canvas.width + tile; x += tile) {
-      const worldX = x + camX;
-      const worldY = y + camY;
+  const startX = Math.floor(camX / tile) * tile;
+  const startY = Math.floor(camY / tile) * tile;
+  for (let worldY = startY; worldY < camY + viewH + tile; worldY += tile) {
+    for (let worldX = startX; worldX < camX + viewW + tile; worldX += tile) {
       const pattern = ((Math.floor(worldX / tile) + Math.floor(worldY / tile)) % 2 === 0);
       ctx.fillStyle = pattern ? '#0a2e45' : '#0b334d';
-      ctx.fillRect(x, y, tile, tile);
+      ctx.fillRect((worldX - camX) * z, (worldY - camY) * z, tile * z + 1, tile * z + 1);
     }
   }
 
   ctx.strokeStyle = 'rgba(132,188,220,0.16)';
-  for (let y = 0; y < canvas.height; y += 20) {
+  for (let y = 0; y < canvas.height; y += 20 * z) {
+    const worldY = camY + y / z;
     ctx.beginPath();
-    ctx.moveTo(0, y + Math.sin((state.time * 1.4) + (y + camY) * 0.03) * 2);
-    ctx.lineTo(canvas.width, y + Math.sin((state.time * 1.4) + (y + camY) * 0.03) * 2);
+    ctx.moveTo(0, y + Math.sin((state.time * 1.4) + worldY * 0.03) * 2 * z);
+    ctx.lineTo(canvas.width, y + Math.sin((state.time * 1.4) + worldY * 0.03) * 2 * z);
     ctx.stroke();
   }
 
   for (const island of state.islands) {
-    const sx = island.x - camX;
-    const sy = island.y - camY;
-    if (sx < -island.r - 40 || sx > canvas.width + island.r + 40 || sy < -island.r - 40 || sy > canvas.height + island.r + 40) continue;
+    const sx = (island.x - camX) * z;
+    const sy = (island.y - camY) * z;
+    const sr = island.r * z;
+    if (sx < -sr - 40 || sx > canvas.width + sr + 40 || sy < -sr - 40 || sy > canvas.height + sr + 40) continue;
 
     ctx.fillStyle = '#b2a46f';
     ctx.beginPath();
-    ctx.arc(sx, sy, island.r, 0, Math.PI * 2);
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#6e9d4b';
     ctx.beginPath();
-    ctx.arc(sx, sy, island.r * 0.68, 0, Math.PI * 2);
+    ctx.arc(sx, sy, sr * 0.68, 0, Math.PI * 2);
     ctx.fill();
+
+    for (const building of island.buildings) {
+      const bp = toScreen(building.x, building.y);
+      const bw = building.size * 0.9 * z;
+      const bh = building.size * z;
+      ctx.fillStyle = building.tower ? '#7e8f9e' : '#ba8a63';
+      ctx.fillRect(bp.x - bw * 0.5, bp.y - bh * 0.55, bw, bh);
+      ctx.fillStyle = building.tower ? '#4f5d69' : '#8d5f40';
+      ctx.fillRect(bp.x - bw * 0.22, bp.y - bh * 0.9, bw * 0.44, bh * 0.34);
+    }
   }
 }
 
 function drawCloudOverlay() {
+  const z = state.zoom;
   for (const cloud of state.clouds) {
-    const sx = cloud.x - state.camera.x;
-    const sy = cloud.y - state.camera.y;
+    const sx = (cloud.x - state.camera.x) * z;
+    const sy = (cloud.y - state.camera.y) * z;
+    const cw = cloud.w * z;
+    const ch = cloud.h * z;
     if (sx < -260 || sx > canvas.width + 260 || sy < -160 || sy > canvas.height + 160) continue;
     ctx.fillStyle = 'rgba(210,225,236,0.14)';
-    ctx.fillRect(sx, sy, cloud.w, cloud.h);
-    ctx.fillRect(sx + cloud.w * 0.2, sy - cloud.h * 0.35, cloud.w * 0.6, cloud.h * 0.45);
-    ctx.fillRect(sx + cloud.w * 0.15, sy + cloud.h * 0.62, cloud.w * 0.5, cloud.h * 0.3);
+    ctx.fillRect(sx, sy, cw, ch);
+    ctx.fillRect(sx + cw * 0.2, sy - ch * 0.35, cw * 0.6, ch * 0.45);
+    ctx.fillRect(sx + cw * 0.15, sy + ch * 0.62, cw * 0.5, ch * 0.3);
   }
+}
+
+function drawHud() {
+  const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
+  const speedRatio = clamp(player.speed / (player.baseSpeed + 1.9), 0, 1);
+  const rowRatio = state.rowEffort;
+  const threatRatio = clamp((state.difficultyTier + state.difficultyFromSize) / 10, 0, 1);
+
+  const panelX = 18;
+  const panelY = 14;
+  const panelW = 390;
+  const barW = 300;
+  const barH = 13;
+
+  ctx.fillStyle = 'rgba(8,20,30,0.62)';
+  ctx.fillRect(panelX - 10, panelY - 8, panelW, 92);
+
+  ctx.fillStyle = '#d8eefc';
+  ctx.font = '12px system-ui';
+  ctx.fillText('HULL', panelX, panelY + 10);
+  ctx.fillText('SPEED', panelX, panelY + 34);
+  ctx.fillText('ROW', panelX, panelY + 58);
+  ctx.fillText('THREAT', panelX, panelY + 82);
+
+  ctx.fillStyle = '#233746';
+  ctx.fillRect(panelX + 52, panelY + 0, barW, barH);
+  ctx.fillRect(panelX + 52, panelY + 24, barW, barH);
+  ctx.fillRect(panelX + 52, panelY + 48, barW, barH);
+  ctx.fillRect(panelX + 52, panelY + 72, barW, barH);
+
+  ctx.fillStyle = '#cd5454';
+  ctx.fillRect(panelX + 52, panelY + 0, barW * hpRatio, barH);
+  ctx.fillStyle = '#72badf';
+  ctx.fillRect(panelX + 52, panelY + 24, barW * speedRatio, barH);
+  ctx.fillStyle = '#9fd889';
+  ctx.fillRect(panelX + 52, panelY + 48, barW * rowRatio, barH);
+  ctx.fillStyle = '#d28d49';
+  ctx.fillRect(panelX + 52, panelY + 72, barW * threatRatio, barH);
+
+  ctx.fillStyle = '#ecf7ff';
+  ctx.fillText(`${Math.round(player.hp)}/${player.maxHp}`, panelX + 358, panelY + 10);
+  ctx.fillText(`${player.speed.toFixed(2)}`, panelX + 358, panelY + 34);
+  ctx.fillText(`${Math.round(rowRatio * 100)}%`, panelX + 358, panelY + 58);
+  ctx.fillText(`T${state.difficultyTier}+S${state.difficultyFromSize}`, panelX + 328, panelY + 82);
 }
 
 function windDirectionLabel() {
@@ -704,35 +1093,34 @@ function draw() {
   drawShip();
 
   for (const b of state.bullets) {
-    ctx.fillStyle = b.heavy ? '#f1b05f' : '#ffd887';
+    ctx.fillStyle = b.owner === 'enemy' ? (b.heavy ? '#f59b80' : '#f8baa5') : (b.heavy ? '#f1b05f' : '#ffd887');
     ctx.beginPath();
-    ctx.arc(b.x - state.camera.x, b.y - state.camera.y, b.heavy ? 3.4 : 2.6, 0, Math.PI * 2);
+    const bp = toScreen(b.x, b.y);
+    ctx.arc(bp.x, bp.y, (b.heavy ? 3.4 : 2.6) * state.zoom, 0, Math.PI * 2);
     ctx.fill();
   }
 
   for (const d of state.drops) {
+    const dp = toScreen(d.x, d.y);
+    const spin = Math.cos(state.time * 7 + d.x * 0.03 + d.y * 0.04);
+    const rx = Math.max(1, 4 * Math.abs(spin) * state.zoom);
+    const ry = 4 * state.zoom;
     ctx.fillStyle = '#ffdd55';
-    ctx.beginPath();
-    ctx.arc(d.x - state.camera.x, d.y - state.camera.y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(dp.x - rx, dp.y - ry, rx * 2, ry * 2);
+    ctx.fillStyle = '#fff3b5';
+    ctx.fillRect(dp.x - rx * 0.25, dp.y - ry * 0.9, rx * 0.5, ry * 1.8);
   }
 
   for (const e of state.enemies) {
-    if (e.kind === 'boss') ctx.fillStyle = '#8d2537';
-    else if (e.kind === 'monster') ctx.fillStyle = '#7e4ea6';
-    else if (e.kind === 'rammer') ctx.fillStyle = '#d2573f';
-    else ctx.fillStyle = '#2f4c5a';
-
-    ctx.beginPath();
-    ctx.arc(e.x - state.camera.x, e.y - state.camera.y, e.size, 0, Math.PI * 2);
-    ctx.fill();
+    drawEnemyShip(e);
 
     if (e.kind === 'boss') {
+      const ep = toScreen(e.x, e.y);
       ctx.fillStyle = '#f3c8d0';
-      ctx.fillRect(e.x - state.camera.x - e.size * 0.6, e.y - state.camera.y - e.size - 10, e.size * 1.2, 6);
+      ctx.fillRect(ep.x - e.size * 0.6 * state.zoom, ep.y - (e.size + 10) * state.zoom, e.size * 1.2 * state.zoom, 6 * state.zoom);
       ctx.fillStyle = '#d74662';
-      const hpRatio = Math.max(0, Math.min(1, e.hp / (260 + state.level * 18 + state.difficultyTier * 45)));
-      ctx.fillRect(e.x - state.camera.x - e.size * 0.6, e.y - state.camera.y - e.size - 10, e.size * 1.2 * hpRatio, 6);
+      const hpRatio = Math.max(0, Math.min(1, e.hp / e.maxHp));
+      ctx.fillRect(ep.x - e.size * 0.6 * state.zoom, ep.y - (e.size + 10) * state.zoom, e.size * 1.2 * hpRatio * state.zoom, 6 * state.zoom);
     }
   }
 
@@ -769,8 +1157,10 @@ function draw() {
   const stageLabel = getLevelConfig(state.stageIndex).name;
   const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
   const sailState = player.sailOpen ? 'Open' : 'Closed';
-  statsEl.textContent = `HP ${Math.round(player.hp)}/${player.maxHp} · Lv ${state.level} · Tier ${state.difficultyTier} · Bosses ${state.bossesDefeated} · Gold ${Math.round(state.gold)} · ${modeLabel} · Sail ${sailState} · Abilities [${player.slots.join(', ') || 'none'}]`;
-  windEl.textContent = `${stageLabel} · Wind ${windDirectionLabel()} (${state.wind.x.toFixed(2)}, ${state.wind.y.toFixed(2)}) · Speed ${player.speed.toFixed(2)} · Next Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s`;
+  statsEl.textContent = `${modeLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Sail ${sailState} · Cannons Pivot ${player.cannonPivot}°`;
+  windEl.textContent = `${stageLabel} · Wind ${windDirectionLabel()} · Boss ${Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer))}s · Zoom ${(state.zoom * 100).toFixed(0)}%`;
+
+  drawHud();
 
   ctx.save();
   ctx.translate(canvas.width - 78, 76);
