@@ -20,6 +20,8 @@ Open `index.html` directly in a browser.
 - Distinct gun vs cannon visual ports on ship sides
 - Enemy ships use rowing + sail + wind-influenced movement like player ship
 - Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
+- Gunners and cannons only fire when target is within effective range
+- Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
 - Floating gold drops remain at kill positions until collected
 - Gold drops render as spinning pixel-style coins
 - World-space traversal on a larger sea map (camera follows ship)
@@ -29,12 +31,14 @@ Open `index.html` directly in a browser.
 - Island defenses (tower cannons) activate as difficulty rises
 - Boats cannot pass through islands; island impacts cause collision damage
 - Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look
+- Procedural island generation now produces wider variety (small, long, bulky, and larger composite islands)
 - Visible ship growth and ability slots
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)
 - Dynamic zoom-out as ship scales up
 - Graphical HUD bars (hull, speed, rowing effort, threat)
 - Boat movement pace rebalanced much slower (projectiles remain fast)
+- Vessel pace increased from the prior slow pass to a livelier midpoint
 - Level configuration system with endless scaling support
 
 ## Progression Architecture

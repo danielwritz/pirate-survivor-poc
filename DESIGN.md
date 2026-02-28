@@ -26,6 +26,10 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
   - Sea monsters (high-health pressure)
 - Wind system with HUD compass indicator
 - Graphical status HUD: hull, speed, rowing effort, and threat meter
+- Weapon range model:
+  - Gunners fire only inside gun range
+  - Cannons fire only inside cannon range
+  - Dashed range circles visualize each band
 - Broadside-only projectiles from side-mounted ports
 - Side-mounted visual weapons:
   - Guns: smaller, lighter gray rectangles
@@ -39,6 +43,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Large traversable sea map with camera follow
 - Land/island scatter with larger geometric islands built from pseudo-random hex/triangle patches
 - Islands are physically solid (boats cannot pass through land and take impact damage)
+- Island generator supports shape diversity (small, long, chunky, large multi-cluster islands)
 - Cannon-only building destruction with fountain-like gold bursts
 - Passive islands in early game, defensive tower cannons in later tiers
 - Translucent cloud pass-over layer
@@ -46,6 +51,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Boss defeat increases global difficulty tier
 - Ship-size scaling also raises difficulty pressure and enemy loadout quality
 - Vessel movement is intentionally slower-paced while shots remain comparatively fast
+- Pace tuning can target a calmer or livelier midpoint without changing projectile tempo
 - Config-driven level structure with endless scaling
 
 ## Upgrade Categories

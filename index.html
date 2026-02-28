@@ -122,6 +122,13 @@ const player = {
   trimColor: '#d9b78d'
 };
 
+function getPlayerRanges() {
+  return {
+    gun: 135 + player.gunners * 7 + state.level * 0.8,
+    cannon: 220 + player.cannons * 18 + player.cannonPivot * 1.4 + state.level * 1.1
+  };
+}
+
 const upgradePool = [
   {
     name: 'Crew Musketeers',
@@ -254,29 +261,65 @@ function addAbility(label) {
 }
 
 function initWorld() {
-  const islandCount = 26;
+  const islandCount = 24;
   for (let i = 0; i < islandCount; i++) {
     const x = 200 + Math.random() * (state.world.width - 400);
     const y = 200 + Math.random() * (state.world.height - 400);
-    const r = 44 + Math.random() * 86;
+    const roll = Math.random();
+    const isSmall = roll < 0.22;
+    const isLong = roll >= 0.22 && roll < 0.5;
+    const isLarge = roll > 0.84;
+    const r = isSmall ? (28 + Math.random() * 36) : isLarge ? (96 + Math.random() * 82) : (50 + Math.random() * 76);
     const island = { x, y, r, patches: [], buildings: [], defenseLevel: 0 };
 
-    const patchCount = Math.max(7, Math.floor(r / 10));
+    const patchCount = isSmall ? (5 + Math.floor(Math.random() * 4)) : isLarge ? (18 + Math.floor(Math.random() * 12)) : (9 + Math.floor(Math.random() * 10));
+    const spineDir = Math.random() * Math.PI * 2;
+    const spineLength = isLong ? (r * (1.6 + Math.random() * 1.4)) : (r * (0.4 + Math.random() * 0.5));
+    const thickness = isLong ? (0.22 + Math.random() * 0.18) : (0.45 + Math.random() * 0.28);
     let maxExtent = r;
+
     for (let p = 0; p < patchCount; p++) {
-      const ang = Math.random() * Math.PI * 2;
-      const dist = Math.random() * r * 0.7;
-      const px = x + Math.cos(ang) * dist;
-      const py = y + Math.sin(ang) * dist;
-      const size = 10 + Math.random() * 18;
+      const t = patchCount <= 1 ? 0.5 : (p / (patchCount - 1));
+      const along = (t - 0.5) * spineLength;
+      const lateral = (Math.random() - 0.5) * r * thickness;
+      const px = x + Math.cos(spineDir) * along - Math.sin(spineDir) * lateral + (Math.random() - 0.5) * r * 0.22;
+      const py = y + Math.sin(spineDir) * along + Math.cos(spineDir) * lateral + (Math.random() - 0.5) * r * 0.22;
+      const size = (isSmall ? 8 : isLarge ? 14 : 10) + Math.random() * (isLarge ? 22 : 16);
       const sides = Math.random() < 0.58 ? 6 : 3;
       const rot = Math.random() * Math.PI * 2;
       island.patches.push({ x: px, y: py, size, sides, rot });
       maxExtent = Math.max(maxExtent, Math.hypot(px - x, py - y) + size * 1.2);
+
+      if (Math.random() < 0.35) {
+        const offAng = Math.random() * Math.PI * 2;
+        const offDist = size * (0.4 + Math.random() * 0.7);
+        const sx = px + Math.cos(offAng) * offDist;
+        const sy = py + Math.sin(offAng) * offDist;
+        const ssize = size * (0.45 + Math.random() * 0.4);
+        const ssides = Math.random() < 0.5 ? 6 : 3;
+        island.patches.push({ x: sx, y: sy, size: ssize, sides: ssides, rot: rot + Math.random() * 0.6 });
+        maxExtent = Math.max(maxExtent, Math.hypot(sx - x, sy - y) + ssize * 1.2);
+      }
     }
+
+    if (isLarge && Math.random() < 0.55) {
+      const subCount = 5 + Math.floor(Math.random() * 5);
+      for (let s = 0; s < subCount; s++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = r * (0.65 + Math.random() * 0.35);
+        const px = x + Math.cos(ang) * dist;
+        const py = y + Math.sin(ang) * dist;
+        const size = 12 + Math.random() * 18;
+        const sides = Math.random() < 0.5 ? 6 : 3;
+        const rot = Math.random() * Math.PI * 2;
+        island.patches.push({ x: px, y: py, size, sides, rot });
+        maxExtent = Math.max(maxExtent, Math.hypot(px - x, py - y) + size * 1.2);
+      }
+    }
+
     island.r = maxExtent;
 
-    const bCount = Math.max(2, Math.floor(r / 22));
+    const bCount = Math.max(2, Math.floor(island.r / 24));
     for (let b = 0; b < bCount; b++) {
       const patch = island.patches[Math.floor(Math.random() * island.patches.length)];
       const bx = patch.x + (Math.random() - 0.5) * patch.size * 0.6;
@@ -369,7 +412,7 @@ function simulateVessel(entity, dt, input) {
   const sailPush = entity.sailOpen ? sailAlignment * (0.1 + entity.size * 0.0015) : 0;
   const drag = input.brake ? 0.052 : 0.018;
   const accel = (rowPower + sailPush) / Math.max(1, entity.mass / 16);
-  const pace = dt * 6;
+  const pace = dt * 12;
 
   entity.speed += accel * pace;
   entity.speed -= drag * entity.speed * pace;
@@ -384,8 +427,8 @@ function simulateVessel(entity, dt, input) {
   const wx = state.wind.x * (1 - rowerMitigation);
   const wy = state.wind.y * (1 - rowerMitigation);
 
-  entity.x += fwd.x * entity.speed * pace + wx * dt * 2.6;
-  entity.y += fwd.y * entity.speed * pace + wy * dt * 2.6;
+  entity.x += fwd.x * entity.speed * pace + wx * dt * 5.2;
+  entity.y += fwd.y * entity.speed * pace + wy * dt * 5.2;
   entity.x = clamp(entity.x, 24, state.world.width - 24);
   entity.y = clamp(entity.y, 24, state.world.height - 24);
 }
@@ -465,6 +508,8 @@ function spawnEnemy() {
     mass: 20 + size * 0.9,
     fireRate: 0.72 - Math.min(0.28, state.difficultyTier * 0.03),
     fireTimer: Math.random() * 0.5,
+    gunRange: 105 + size * 3.1 + state.difficultyTier * 7,
+    cannonRange: 168 + size * 4.4 + cannons * 14 + state.difficultyTier * 8,
     bulletDamage: 5 + state.difficultyTier * 1.5 + cannons * 1.2,
     hullColor: kind === 'raider' ? '#5c3f35' : kind === 'rammer' ? '#6a3d2f' : '#394f60',
     sailColor: kind === 'raider' ? '#d7d2c1' : '#d4e6f5'
@@ -505,6 +550,8 @@ function spawnBoss() {
     mass: 46 + size,
     fireRate: Math.max(0.35, 0.6 - state.difficultyTier * 0.02),
     fireTimer: 0.2,
+    gunRange: 150 + size * 3.3,
+    cannonRange: 245 + size * 4.8 + state.difficultyTier * 14,
     bulletDamage: 10 + state.difficultyTier * 2.4,
     hullColor: '#7b2e3d',
     sailColor: '#f1d1d8'
@@ -520,16 +567,27 @@ function getRightVector() {
   return { x: -f.y, y: f.x };
 }
 
-function broadsideFire(sideSign, target) {
+function broadsideFire(sideSign, target, distanceToTarget) {
   const right = getRightVector();
   const forward = getForwardVector();
   const guns = Math.max(2, player.gunners + player.cannons * 2);
   const isCannon = (portIndex) => portIndex < player.cannons * 2;
+  const ranges = getPlayerRanges();
+  const allowGun = distanceToTarget <= ranges.gun;
+  const allowCannon = distanceToTarget <= ranges.cannon;
+
+  if (!allowGun && !allowCannon) return false;
+
   const baseDir = player.heading + sideSign * Math.PI / 2;
   const targetAngle = target ? Math.atan2(target.y - player.y, target.x - player.x) : baseDir;
   const clamped = clamp(angleDiff(targetAngle, baseDir), -player.cannonPivot * (Math.PI / 180), player.cannonPivot * (Math.PI / 180));
+  let fired = false;
 
   for (let i = 0; i < guns; i++) {
+    const cannonPort = isCannon(i);
+    if (cannonPort && !allowCannon) continue;
+    if (!cannonPort && !allowGun) continue;
+
     const t = guns === 1 ? 0.5 : i / (guns - 1);
     const along = (t - 0.5) * player.size * 1.7;
     const sideOffset = sideSign * (player.size * 0.72);
@@ -537,10 +595,10 @@ function broadsideFire(sideSign, target) {
     const spawnY = player.y + forward.y * along + right.y * sideOffset;
 
     const spread = (Math.random() - 0.5) * 0.16;
-    const cannonAdjust = isCannon(i) ? clamped : 0;
-    const dir = isCannon(i) ? (baseDir + cannonAdjust + spread) : (targetAngle + spread);
-    const speed = player.bulletSpeed + (isCannon(i) ? 0.45 : 0.2);
-    const dmg = player.bulletDamage + (isCannon(i) ? 4 : 0);
+    const cannonAdjust = cannonPort ? clamped : 0;
+    const dir = cannonPort ? (baseDir + cannonAdjust + spread) : (targetAngle + spread);
+    const speed = player.bulletSpeed + (cannonPort ? 0.45 : 0.2);
+    const dmg = player.bulletDamage + (cannonPort ? 4 : 0);
 
     state.bullets.push({
       x: spawnX,
@@ -548,56 +606,70 @@ function broadsideFire(sideSign, target) {
       vx: Math.cos(dir) * speed,
       vy: Math.sin(dir) * speed,
       dmg,
-      heavy: isCannon(i),
+      heavy: cannonPort,
       owner: 'player'
     });
+    fired = true;
   }
+
+  return fired;
 }
 
-function enemyVolley(enemy, sideSign) {
+function enemyVolley(enemy, sideSign, distanceToTarget) {
   const fwd = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
   const right = { x: -fwd.y, y: fwd.x };
   const targetAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  const allowGun = distanceToTarget <= enemy.gunRange;
+  const allowCannon = distanceToTarget <= enemy.cannonRange;
+  let fired = false;
 
-  const gunCount = Math.max(1, enemy.gunners);
-  for (let i = 0; i < gunCount; i++) {
-    const t = gunCount === 1 ? 0.5 : i / (gunCount - 1);
-    const along = (t - 0.5) * enemy.size * 1.45;
-    const sideOffset = sideSign * enemy.size * 0.58;
-    const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
-    const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
-    const dir = targetAngle + (Math.random() - 0.5) * 0.2;
-    state.bullets.push({
-      x: spawnX,
-      y: spawnY,
-      vx: Math.cos(dir) * 4.6,
-      vy: Math.sin(dir) * 4.6,
-      dmg: enemy.bulletDamage * 0.48,
-      heavy: false,
-      owner: 'enemy'
-    });
+  if (allowGun) {
+    const gunCount = Math.max(1, enemy.gunners);
+    for (let i = 0; i < gunCount; i++) {
+      const t = gunCount === 1 ? 0.5 : i / (gunCount - 1);
+      const along = (t - 0.5) * enemy.size * 1.45;
+      const sideOffset = sideSign * enemy.size * 0.58;
+      const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
+      const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+      const dir = targetAngle + (Math.random() - 0.5) * 0.2;
+      state.bullets.push({
+        x: spawnX,
+        y: spawnY,
+        vx: Math.cos(dir) * 4.6,
+        vy: Math.sin(dir) * 4.6,
+        dmg: enemy.bulletDamage * 0.48,
+        heavy: false,
+        owner: 'enemy'
+      });
+      fired = true;
+    }
   }
 
-  const cannonCount = Math.max(0, enemy.cannons);
-  const baseDir = enemy.heading + sideSign * Math.PI / 2;
-  const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
-  for (let i = 0; i < cannonCount; i++) {
-    const t = cannonCount === 1 ? 0.5 : i / (cannonCount - 1);
-    const along = (t - 0.5) * enemy.size * 1.2;
-    const sideOffset = sideSign * enemy.size * 0.74;
-    const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
-    const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
-    const dir = baseDir + clamped + (Math.random() - 0.5) * 0.1;
-    state.bullets.push({
-      x: spawnX,
-      y: spawnY,
-      vx: Math.cos(dir) * 4.1,
-      vy: Math.sin(dir) * 4.1,
-      dmg: enemy.bulletDamage,
-      heavy: true,
-      owner: 'enemy'
-    });
+  if (allowCannon) {
+    const cannonCount = Math.max(0, enemy.cannons);
+    const baseDir = enemy.heading + sideSign * Math.PI / 2;
+    const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
+    for (let i = 0; i < cannonCount; i++) {
+      const t = cannonCount === 1 ? 0.5 : i / (cannonCount - 1);
+      const along = (t - 0.5) * enemy.size * 1.2;
+      const sideOffset = sideSign * enemy.size * 0.74;
+      const spawnX = enemy.x + fwd.x * along + right.x * sideOffset;
+      const spawnY = enemy.y + fwd.y * along + right.y * sideOffset;
+      const dir = baseDir + clamped + (Math.random() - 0.5) * 0.1;
+      state.bullets.push({
+        x: spawnX,
+        y: spawnY,
+        vx: Math.cos(dir) * 4.1,
+        vy: Math.sin(dir) * 4.1,
+        dmg: enemy.bulletDamage,
+        heavy: true,
+        owner: 'enemy'
+      });
+      fired = true;
+    }
   }
+
+  return fired;
 }
 
 function shootAtNearest() {
@@ -613,14 +685,17 @@ function shootAtNearest() {
       target = enemy;
     }
   }
-  if (!target) return;
+  if (!target) return false;
 
   const forward = getForwardVector();
   const dx = target.x - player.x;
   const dy = target.y - player.y;
+  const dist = Math.hypot(dx, dy);
+  const ranges = getPlayerRanges();
+  if (dist > Math.max(ranges.gun, ranges.cannon)) return false;
   const cross = forward.x * dy - forward.y * dx;
   const sideSign = cross >= 0 ? 1 : -1;
-  broadsideFire(sideSign, target);
+  return broadsideFire(sideSign, target, dist);
 }
 
 function offerUpgrades() {
@@ -710,7 +785,7 @@ function update(dt) {
   const sailAlignment = player.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
   const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
   const drag = brakePressed ? 0.06 : 0.018;
-  const pace = dt * 6;
+  const pace = dt * 12;
 
   const accel = (rowPower + sailPush) / Math.max(1, player.mass / 16);
   player.speed += accel * pace;
@@ -726,8 +801,8 @@ function update(dt) {
   const wx = state.wind.x * (1 - rowerMitigation);
   const wy = state.wind.y * (1 - rowerMitigation);
 
-  player.x += fwd.x * player.speed * pace + wx * dt * 3;
-  player.y += fwd.y * player.speed * pace + wy * dt * 3;
+  player.x += fwd.x * player.speed * pace + wx * dt * 6;
+  player.y += fwd.y * player.speed * pace + wy * dt * 6;
 
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
@@ -741,8 +816,8 @@ function update(dt) {
 
   player.fireTimer += dt;
   if (player.fireTimer >= player.fireRate) {
-    player.fireTimer = 0;
-    shootAtNearest();
+    const fired = shootAtNearest();
+    player.fireTimer = fired ? 0 : player.fireRate * 0.82;
   }
 
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09;
@@ -772,13 +847,14 @@ function update(dt) {
 
     enemy.fireTimer += dt;
     if (enemy.fireTimer >= enemy.fireRate) {
-      enemy.fireTimer = 0;
       const fwdEnemy = { x: Math.cos(enemy.heading), y: Math.sin(enemy.heading) };
       const dx = player.x - enemy.x;
       const dy = player.y - enemy.y;
+      const dist = Math.hypot(dx, dy);
       const cross = fwdEnemy.x * dy - fwdEnemy.y * dx;
       const sideSign = cross >= 0 ? 1 : -1;
-      enemyVolley(enemy, sideSign);
+      const fired = enemyVolley(enemy, sideSign, dist);
+      enemy.fireTimer = fired ? 0 : enemy.fireRate * 0.82;
     }
   }
 
@@ -1139,6 +1215,31 @@ function drawHud() {
   ctx.fillText(`T${state.difficultyTier}+S${state.difficultyFromSize}`, panelX + 328, panelY + 82);
 }
 
+function drawRangeIndicators() {
+  const pos = toScreen(player.x, player.y);
+  const ranges = getPlayerRanges();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(181,214,236,0.42)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 7]);
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, ranges.gun * state.zoom, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (player.cannons > 0) {
+    ctx.strokeStyle = 'rgba(229,196,150,0.46)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 10]);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, ranges.cannon * state.zoom, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function windDirectionLabel() {
   const a = Math.atan2(state.wind.y, state.wind.x);
   const dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
@@ -1149,6 +1250,7 @@ function windDirectionLabel() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawWorld();
+  drawRangeIndicators();
 
   drawShip();
 
