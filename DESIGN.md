@@ -22,6 +22,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Auto-shoot combat
 - Enemy steering behaviors include both direct pursuit and ally-follow formation tendencies for certain ship classes
 - Allied enemy subgroups can share flocking-like movement (cohesion/alignment/separation) for light formation travel
+- Spawned enemy ships use varied randomized combat configurations (reload, spread, speed, battery mix) that still scale with difficulty
 - Enemy archetypes:
   - Pirate skiffs (baseline)
   - Ram boats (fast impact threats)
@@ -40,6 +41,8 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
   - Guns: smaller, lighter gray rectangles
   - Cannons: larger, darker gray rectangles
 - Side mounts are sampled along hull side-edge segments with local outward normals, so weapon orientation responds dynamically to bow/shoulder/stern angle changes
+- Weapon-slot assignment disperses cannons across available broadside ports as upgrades increase battery size
+- Cannon muzzle direction and projectile direction are both barrel-aligned and pivot-limited for visual/mechanical consistency
 - Geometric hull silhouettes with pointed bows/stern taper for stronger heading readability
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight

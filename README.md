@@ -11,7 +11,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Steer: `A` / `D`
 - Row forward: `W`
 - Brake / drag anchor: `S`
-- Toggle sail open/closed: `E`
+- Toggle sail open/closed: `Space`
 - Zoom: mouse wheel
 - Combat: auto-fire
 - Level-up choices: `1`, `2`, `3`
@@ -22,8 +22,9 @@ Canvas now runs fullscreen in the browser viewport.
 - Broadside-only firing from ship port/starboard weapon mounts
 - Distinct gun vs cannon visual ports on ship sides
 - Gun/cannon ports now sample the actual hull side-edge polyline and orient to local outward normals, so bow/stern mounts naturally angle with deck geometry
+- Cannon visuals now show live pivoting toward the active target side, and cannon shots follow those barrel directions
 - Enemy ships use rowing + sail + wind-influenced movement like player ship
-- Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
+- Enemy loadouts now vary per ship (reload, spread, projectile speed, battery bias) while still scaling with difficulty
 - Certain enemy ship types now use loose formation behavior and follow nearby ally ships instead of always chasing the player directly
 - Formation ships now share lightweight flocking-style movement (cohesion, alignment, separation) while still pressuring the player
 - Gunners and cannons only fire when target is within effective range
@@ -53,6 +54,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Dynamic zoom-out as ship scales up
 - Graphical HUD bars (hull, speed, rowing effort, threat)
 - HUD includes gun and cannon loading bars with independent fill states
+- HUD now also shows current gun and cannon counts
 - Boat movement pace rebalanced much slower (projectiles remain fast)
 - Vessel pace increased from the prior slow pass to a livelier midpoint
 - Level configuration system with endless scaling support
