@@ -23,9 +23,11 @@ Canvas now runs fullscreen in the browser viewport.
 - Distinct gun vs cannon visual ports on ship sides
 - Enemy ships use rowing + sail + wind-influenced movement like player ship
 - Enemy loadouts scale with difficulty (size, gunners, cannons, cannon pivot)
+- Certain enemy ship types now use loose formation behavior and follow nearby ally ships instead of always chasing the player directly
 - Gunners and cannons only fire when target is within effective range
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
 - Slower, separate reload cadence for guns vs cannons (guns faster, cannons slower)
+- Global gun reload cadence tuned slower to reduce early bullet noise
 - Floating gold drops remain at kill positions until collected
 - Gold drops render as spinning pixel-style coins
 - Gold pickup is the level progression resource (gold effectively acts as XP)
@@ -40,6 +42,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Visible ship growth and ability slots
 - Boats now render with more geometric pointed hulls (clearer front/bow direction)
 - Hull profile changes over progression using upgrade-influenced + cosmetic variation
+- Removed extra beige bow marker triangles from ships to keep silhouettes cleaner
 - Periodic boss ship spawns
 - Major upgrade choices on boss defeat (visual + gameplay impact)
 - Dynamic zoom-out as ship scales up

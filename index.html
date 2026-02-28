@@ -118,9 +118,9 @@ const player = {
   heading: -Math.PI / 2,
   speed: 0,
   baseSpeed: 2.6,
-  gunReload: 1.1,
+  gunReload: 1.35,
   cannonReload: 2.2,
-  gunTimer: 1.1,
+  gunTimer: 1.35,
   cannonTimer: 2.2,
   bulletDamage: 9,
   bulletSpeed: 6,
@@ -161,7 +161,7 @@ const upgradePool = [
     apply() {
       player.crew += 1;
       player.gunners += 1;
-      player.gunReload = Math.max(0.55, player.gunReload - 0.07);
+      player.gunReload = Math.max(0.75, player.gunReload - 0.05);
       player.hullLength += 0.03;
       player.bowSharpness += 0.04;
       addAbility('Musketeers');
@@ -260,7 +260,7 @@ const majorUpgradePool = [
     desc: 'Faster ship, faster volleys',
     apply() {
       player.baseSpeed += 0.45;
-      player.gunReload = Math.max(0.45, player.gunReload - 0.08);
+      player.gunReload = Math.max(0.8, player.gunReload - 0.04);
       player.cannonReload = Math.max(0.9, player.cannonReload - 0.1);
       player.hullLength += 0.08;
       player.hullBeam -= 0.06;
@@ -550,7 +550,7 @@ function spawnEnemy() {
     cannonPivot,
     rudder: kind === 'rammer' ? 2 : 1,
     mass: 20 + size * 0.9,
-    gunReload: Math.max(0.62, 1.15 - state.difficultyTier * 0.04),
+    gunReload: Math.max(0.72, 1.3 - state.difficultyTier * 0.035),
     cannonReload: Math.max(1.05, 2.1 - state.difficultyTier * 0.05),
     gunTimer: Math.random() * 0.8,
     cannonTimer: Math.random() * 1.2,
@@ -598,7 +598,7 @@ function spawnBoss() {
     cannonPivot: clamp(5 + Math.floor(state.difficultyTier / 2) * 5, 5, 25),
     rudder: 2,
     mass: 46 + size,
-    gunReload: Math.max(0.48, 0.9 - state.difficultyTier * 0.03),
+    gunReload: Math.max(0.78, 1.25 - state.difficultyTier * 0.03),
     cannonReload: Math.max(0.82, 1.45 - state.difficultyTier * 0.04),
     gunTimer: 0.4,
     cannonTimer: 0.7,
@@ -930,7 +930,7 @@ function update(dt) {
   if (firedPlayer.firedCannon) player.cannonTimer = 0;
 
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09;
-  const spawnChance = (0.0105 * cfg.spawnRate + state.level * 0.00022 + state.difficultyTier * 0.00035 + state.difficultyFromSize * 0.00045) * dt * 60;
+  const spawnChance = (0.0069 * cfg.spawnRate + state.level * 0.00013 + state.difficultyTier * 0.0002 + state.difficultyFromSize * 0.00025) * dt * 60;
   if (Math.random() < spawnChance) spawnEnemy();
 
   for (const bullet of state.bullets) {
@@ -939,15 +939,52 @@ function update(dt) {
   }
   state.bullets = state.bullets.filter(b => b.x > -30 && b.x < state.world.width + 30 && b.y > -30 && b.y < state.world.height + 30);
 
+  function getEnemySteerTarget(enemy) {
+    if (enemy.kind === 'boss' || enemy.kind === 'rammer') {
+      return { x: player.x, y: player.y };
+    }
+
+    let bestAlly = null;
+    let bestD2 = Infinity;
+    const followRange = 220;
+    for (const ally of state.enemies) {
+      if (ally === enemy || ally.kind === 'boss' || ally.kind === 'rammer') continue;
+      const dx = ally.x - enemy.x;
+      const dy = ally.y - enemy.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < followRange * followRange && d2 < bestD2) {
+        bestD2 = d2;
+        bestAlly = ally;
+      }
+    }
+
+    if (!bestAlly) return { x: player.x, y: player.y };
+
+    if (enemy.kind === 'pirate') {
+      return { x: bestAlly.x, y: bestAlly.y };
+    }
+
+    if (enemy.kind === 'raider') {
+      const lead = 40;
+      return {
+        x: bestAlly.x + Math.cos(bestAlly.heading) * lead,
+        y: bestAlly.y + Math.sin(bestAlly.heading) * lead
+      };
+    }
+
+    return { x: player.x, y: player.y };
+  }
+
   for (const enemy of state.enemies) {
-    const desired = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    const target = getEnemySteerTarget(enemy);
+    const desired = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     const turnDelta = angleDiff(desired, enemy.heading);
     const turnLeftEnemy = turnDelta < -0.03;
     const turnRightEnemy = turnDelta > 0.03;
-    const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+    const distToTarget = Math.hypot(target.x - enemy.x, target.y - enemy.y);
 
     simulateVessel(enemy, dt, {
-      rowing: distToPlayer > enemy.size * 2.6,
+      rowing: distToTarget > enemy.size * 2.4,
       brake: false,
       turnLeft: turnLeftEnemy,
       turnRight: turnRightEnemy
@@ -1109,7 +1146,6 @@ function drawShip() {
   const hull = drawHullBody(s, player.hullColor, player.trimColor, player, player.ram);
   const sLen = hull.len;
   const sBeam = hull.beam;
-  const bowX = hull.bowX;
 
   ctx.fillStyle = player.trimColor;
   const mast = Math.max(8, s * 1.2 * player.mastScale);
@@ -1155,14 +1191,6 @@ function drawShip() {
     ctx.fillRect(along - 5, sBeam * 0.73, 10, 4);
   }
 
-  ctx.fillStyle = '#f2d9a4';
-  ctx.beginPath();
-  ctx.moveTo(bowX + 2, 0);
-  ctx.lineTo(bowX - 9, -5);
-  ctx.lineTo(bowX - 9, 5);
-  ctx.closePath();
-  ctx.fill();
-
   ctx.restore();
 }
 
@@ -1177,7 +1205,6 @@ function drawEnemyShip(enemy) {
   const hull = drawHullBody(s, enemy.hullColor, '#b8997a', enemy, false);
   const sLen = hull.len;
   const sBeam = hull.beam;
-  const bowX = hull.bowX;
 
   ctx.fillStyle = '#b8997a';
   ctx.fillRect(-1.5, -s * 1.12, 3, s * 1.12);
@@ -1207,14 +1234,6 @@ function drawEnemyShip(enemy) {
     ctx.fillRect(along - 4.5, -sBeam * 0.76, 9, 3.8);
     ctx.fillRect(along - 4.5, sBeam * 0.71, 9, 3.8);
   }
-
-  ctx.fillStyle = '#ead6b3';
-  ctx.beginPath();
-  ctx.moveTo(bowX + 1.5, 0);
-  ctx.lineTo(bowX - 7, -4);
-  ctx.lineTo(bowX - 7, 4);
-  ctx.closePath();
-  ctx.fill();
 
   ctx.restore();
 }
