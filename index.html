@@ -601,7 +601,7 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   const allowGun = distanceToTarget <= ranges.gun && allowGunFire;
   const allowCannon = distanceToTarget <= ranges.cannon && allowCannonFire;
 
-  if (!allowGun && !allowCannon) return false;
+  if (!allowGun && !allowCannon) return { firedGun: false, firedCannon: false };
 
   const baseDir = player.heading + sideSign * Math.PI / 2;
   const targetAngle = target ? Math.atan2(target.y - player.y, target.x - player.x) : baseDir;
@@ -701,7 +701,7 @@ function enemyVolley(enemy, sideSign, distanceToTarget, allowGunFire, allowCanno
 }
 
 function shootAtNearest() {
-  if (!state.enemies.length) return;
+  if (!state.enemies.length) return { firedGun: false, firedCannon: false };
   let target = null;
   let best = Infinity;
   for (const enemy of state.enemies) {
