@@ -820,9 +820,9 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
 }
 
 function shootAtNearest() {
-  if (!state.enemies.length) return { firedGun: false, firedCannon: false };
   let target = null;
   let best = Infinity;
+
   for (const enemy of state.enemies) {
     const dx = enemy.x - player.x;
     const dy = enemy.y - player.y;
@@ -832,6 +832,19 @@ function shootAtNearest() {
       target = enemy;
     }
   }
+
+  for (const island of state.islands) {
+    for (const building of island.buildings) {
+      const dx = building.x - player.x;
+      const dy = building.y - player.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        target = building;
+      }
+    }
+  }
+
   if (!target) return { firedGun: false, firedCannon: false };
 
   const forward = getForwardVector();
@@ -1179,20 +1192,25 @@ function update(dt) {
       const building = island.buildings[i];
       for (let j = state.bullets.length - 1; j >= 0; j--) {
         const b = state.bullets[j];
-        if (b.owner !== 'player' || !b.heavy) continue;
+        if (b.owner !== 'player') continue;
         const d = Math.hypot(building.x - b.x, building.y - b.y);
         if (d < building.size * 0.65 + 4) {
-          building.hp -= b.dmg * 1.05;
+          const dmgScale = b.heavy ? 1.05 : 0.58;
+          building.hp -= b.dmg * dmgScale;
           state.bullets.splice(j, 1);
           if (building.hp <= 0) {
             const goldCount = Math.max(2, Math.floor(building.size / 4));
             for (let g = 0; g < goldCount; g++) {
-              const ang = Math.random() * Math.PI * 2;
-              const dist = Math.random() * building.size * 0.9;
+              const radial = Math.atan2(building.y - island.y, building.x - island.x);
+              const ang = radial + (Math.random() - 0.5) * 1.5;
+              const dist = building.size * (0.15 + Math.random() * 0.7);
+              const burst = 1.4 + Math.random() * 3.2;
               state.drops.push({
                 x: building.x + Math.cos(ang) * dist,
                 y: building.y + Math.sin(ang) * dist,
-                v: 1 + building.size * 0.16 + Math.random() * 1.6
+                v: 1 + building.size * 0.16 + Math.random() * 1.6,
+                vx: Math.cos(ang) * burst,
+                vy: Math.sin(ang) * burst
               });
             }
             island.buildings.splice(i, 1);
@@ -1252,6 +1270,17 @@ function update(dt) {
 
   for (let i = state.drops.length - 1; i >= 0; i--) {
     const d = state.drops[i];
+
+    d.vx = d.vx || 0;
+    d.vy = d.vy || 0;
+    d.x += d.vx * dt * 60;
+    d.y += d.vy * dt * 60;
+    d.vx *= 0.92;
+    d.vy *= 0.92;
+
+    d.x = clamp(d.x, 16, state.world.width - 16);
+    d.y = clamp(d.y, 16, state.world.height - 16);
+
     const dx = player.x - d.x;
     const dy = player.y - d.y;
     const dist = Math.hypot(dx, dy) || 1;
