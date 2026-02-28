@@ -39,12 +39,14 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Side-mounted visual weapons:
   - Guns: smaller, lighter gray rectangles
   - Cannons: larger, darker gray rectangles
+- Side mounts are computed from the geometric hull profile so ports hug real perimeter width by hull section
 - Geometric hull silhouettes with pointed bows/stern taper for stronger heading readability
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
 - Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time (hull/sail transformations)
+- Crew occupancy is center-deck distributed with a deck-area-based capacity ceiling that scales with ship growth
 - Floating gold drops remain in-world until collected
 - Gold drops render with spinning coin effect
 - Large traversable sea map with camera follow
