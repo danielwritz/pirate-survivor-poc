@@ -18,7 +18,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 ## POC Mechanics
 - Heading-based steering (A/D) with momentum
 - Row propulsion on demand (W)
-- Sail toggle state (E) and braking/anchor drag (S)
+- Sail toggle state (Space) and braking/anchor drag (S)
 - Auto-shoot combat
 - Enemy steering behaviors include both direct pursuit and ally-follow formation tendencies for certain ship classes
 - Allied enemy subgroups can share flocking-like movement (cohesion/alignment/separation) for light formation travel
@@ -43,9 +43,12 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Side mounts are sampled along hull side-edge segments with local outward normals, so weapon orientation responds dynamically to bow/shoulder/stern angle changes
 - Weapon-slot assignment disperses cannons across available broadside ports as upgrades increase battery size
 - Cannon muzzle direction and projectile direction are both barrel-aligned and pivot-limited for visual/mechanical consistency
+- Armament caps are hull-tier/deck-size constrained (player and spawned ships) to prevent unrealistic over-gunning
+- Base hull tier starts at 2 cannons per side; larger hull tiers and capacity upgrades expand this limit
 - Geometric hull silhouettes with pointed bows/stern taper for stronger heading readability
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
+- Cannon Installments upgrade increases cannon capacity but adds size/mass and handling penalties (slower start, reduced turn authority)
 - Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time (hull/sail transformations)
@@ -76,6 +79,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling
+- Offense infrastructure: cannon installments (broadside capacity growth)
 - Offense precision: cannon pivot/trunnion upgrades
 - Mobility: rowers, sail mastery
 - Defense: hull reinforcement

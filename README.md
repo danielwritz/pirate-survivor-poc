@@ -21,12 +21,14 @@ Canvas now runs fullscreen in the browser viewport.
 - Wind + sail propulsion with on-screen wind compass
 - Broadside-only firing from ship port/starboard weapon mounts
 - Distinct gun vs cannon visual ports on ship sides
-- Gun/cannon ports now sample the actual hull side-edge polyline and orient to local outward normals, so bow/stern mounts naturally angle with deck geometry
-- Cannon visuals now show live pivoting toward the active target side, and cannon shots follow those barrel directions
-- Enemy ships use rowing + sail + wind-influenced movement like player ship
-- Enemy loadouts now vary per ship (reload, spread, projectile speed, battery bias) while still scaling with difficulty
-- Certain enemy ship types now use loose formation behavior and follow nearby ally ships instead of always chasing the player directly
-- Formation ships now share lightweight flocking-style movement (cohesion, alignment, separation) while still pressuring the player
+- Gun/cannon ports sample the actual hull side-edge polyline and orient to local outward normals
+- Cannon visuals show live pivoting toward target side, and cannon shots follow those barrel directions
+- Armament is hull-limited: guns and cannons are capped by ship deck size/tier
+- Base hull tier supports up to 2 cannons per side; larger hull tiers and upgrades unlock higher capacity
+- Generated enemy ships also obey hull-size armament caps to keep loadouts believable
+- New upgrade option: Cannon Installments (raises cannon capacity per side, adds hull weight/inertia)
+- Heavier ships now have stronger momentum penalties (slower start and weaker turning authority)
+- HUD shows armament as current/max (`Guns a/b`, `Cannons c/d per side`) plus ship tier
 - Gunners and cannons only fire when target is within effective range
 - Bosses now hold fire until a broadside solution is likely to connect; they prioritize the player but can opportunistically blast other ships in their arc
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
