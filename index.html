@@ -35,7 +35,7 @@
       </div>
     </div>
     <canvas id="game" width="1280" height="720"></canvas>
-    <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: Space · Mouse wheel zoom · Level-up: 1/2/3</div>
+    <div class="hint">Steer: A/D · Row forward: W · Brake: S · Toggle sail: Space · Toggle anchor: X · Mouse wheel zoom · Level-up: 1/2/3</div>
   </div>
 
 <script src="src/systems/particleEffects.js"></script>
@@ -253,6 +253,17 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || key === ' ') e.preventDefault();
     player.sailOpen = !player.sailOpen;
   }
+
+  if (key === 'x' && !e.repeat && state.mode === 'combat') {
+    player.anchorDropped = !player.anchorDropped;
+    if (player.anchorDropped) {
+      player.speed = 0;
+      state.anchorNoticeText = '⚓ Anchor dropped';
+    } else {
+      state.anchorNoticeText = '⚓ Anchor raised';
+    }
+    state.anchorNoticeTimer = 1.6;
+  }
 });
 
 window.addEventListener('wheel', (e) => {
@@ -312,6 +323,8 @@ const state = {
   difficultyFromSize: 0,
   defenseTier: 0,
   shipValueTier: 0,
+  anchorNoticeTimer: 0,
+  anchorNoticeText: '',
   playerAim: null,
   zoomUserOffset: 0,
   islands: [],
@@ -361,6 +374,7 @@ const player = {
   crew: 2,
   rudder: 0,
   sailOpen: true,
+  anchorDropped: false,
   ram: false,
   ramDamage: 46,
   mass: 28,
@@ -2140,10 +2154,22 @@ function resolveVesselCollision(a, b, dt) {
   const massA = Math.max(1, a.mass);
   const massB = Math.max(1, b.mass);
   const totalMass = massA + massB;
-  a.x -= nx * overlap * (massB / totalMass);
-  a.y -= ny * overlap * (massB / totalMass);
-  b.x += nx * overlap * (massA / totalMass);
-  b.y += ny * overlap * (massA / totalMass);
+  const anchoredA = a === player && player.anchorDropped;
+  const anchoredB = b === player && player.anchorDropped;
+  if (anchoredA && !anchoredB) {
+    b.x += nx * overlap;
+    b.y += ny * overlap;
+    a.speed = 0;
+  } else if (anchoredB && !anchoredA) {
+    a.x -= nx * overlap;
+    a.y -= ny * overlap;
+    b.speed = 0;
+  } else {
+    a.x -= nx * overlap * (massB / totalMass);
+    a.y -= ny * overlap * (massB / totalMass);
+    b.x += nx * overlap * (massA / totalMass);
+    b.y += ny * overlap * (massA / totalMass);
+  }
 
   a.x = clamp(a.x, 24, state.world.width - 24);
   a.y = clamp(a.y, 24, state.world.height - 24);
@@ -2343,6 +2369,7 @@ function update(dt) {
   clampPlayerArmamentToHull();
 
   state.time += dt;
+  state.anchorNoticeTimer = Math.max(0, (state.anchorNoticeTimer || 0) - dt);
   player.impactTimer = Math.max(0, (player.impactTimer || 0) - dt);
   player.repairSuppressed = Math.max(0, (player.repairSuppressed || 0) - dt);
 
@@ -2371,23 +2398,28 @@ function update(dt) {
   const brakePressed = keys.has('s') || keys.has('arrowdown');
   const turnLeft = keys.has('a') || keys.has('arrowleft');
   const turnRight = keys.has('d') || keys.has('arrowright');
+  const anchored = !!player.anchorDropped;
 
   const fwd = getForwardVector();
   const windMag = Math.hypot(state.wind.x, state.wind.y) || 1;
   const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
 
-  const rowPower = forwardPressed ? (0.14 + player.rowers * 0.075) : 0;
+  const rowPower = (!anchored && forwardPressed) ? (0.14 + player.rowers * 0.075) : 0;
   state.rowEffort = clamp(rowPower / 0.55, 0, 1);
-  const sailAlignment = player.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
+  const sailAlignment = (!anchored && player.sailOpen) ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
   const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
   const drag = brakePressed ? 0.06 : 0.018;
   const pace = dt * 12;
 
   const inertia = 1 + Math.max(0, (player.mass - 28) / 44);
   const accel = (rowPower + sailPush) / Math.max(1, player.mass / 16) / inertia;
-  player.speed += accel * pace;
-  player.speed -= drag * player.speed * pace;
-  player.speed = Math.max(0, Math.min(player.baseSpeed + 1.9, player.speed));
+  if (!anchored) {
+    player.speed += accel * pace;
+    player.speed -= drag * player.speed * pace;
+    player.speed = Math.max(0, Math.min(player.baseSpeed + 1.9, player.speed));
+  } else {
+    player.speed = 0;
+  }
 
   const steerAuthorityBase = 0.012 + player.rudder * 0.006 + player.rowers * 0.002;
   const steerAuthority = steerAuthorityBase / (1 + Math.max(0, (player.mass - 28) / 40)) * (1 - player.maneuverPenalty);
@@ -2396,12 +2428,14 @@ function update(dt) {
   if (turnRight) player.heading += steerAuthority * speedFactor * pace;
 
   const rowerMitigation = Math.min(0.85, player.rowers * 0.16);
-  const wx = state.wind.x * (1 - rowerMitigation) * 0.72;
-  const wy = state.wind.y * (1 - rowerMitigation) * 0.72;
+  const wx = state.wind.x * (1 - rowerMitigation) * 0.18;
+  const wy = state.wind.y * (1 - rowerMitigation) * 0.18;
 
-  player.x += fwd.x * player.speed * pace + wx * dt * 6;
-  player.y += fwd.y * player.speed * pace + wy * dt * 6;
-  applyShoreRepulsion(player, dt, 0.72);
+  if (!anchored) {
+    player.x += fwd.x * player.speed * pace + wx * dt * 2.8;
+    player.y += fwd.y * player.speed * pace + wy * dt * 2.8;
+    applyShoreRepulsion(player, dt, 0.5);
+  }
 
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
@@ -3043,7 +3077,7 @@ function drawHud() {
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText(`${modeLabel} · ${stageLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Boss ${bossIn}s`, panelX + panelW / 2, panelY + 16);
-  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${weapon.gunTotal} · Cannons ${weapon.cannonTotal} · Gunners ${player.gunners}/${caps.maxGunners} · Rowers ${player.rowers} · Repair ${player.repairCrew} · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)}) · Crew Demand ${crewDemand.toFixed(1)} · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
+  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · ${player.anchorDropped ? 'Anchor ⚓ DOWN' : 'Anchor ⚓ UP'} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${weapon.gunTotal} · Cannons ${weapon.cannonTotal} · Gunners ${player.gunners}/${caps.maxGunners} · Rowers ${player.rowers} · Repair ${player.repairCrew} · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)}) · Crew Demand ${crewDemand.toFixed(1)} · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#d8eefc';
@@ -3439,6 +3473,22 @@ function draw() {
   ctx.fillStyle = '#d6ecff';
   ctx.fillRect(ax - 2, ay - 2, 4, 4);
   ctx.restore();
+
+  if (player.anchorDropped) {
+    ctx.fillStyle = '#ffd79a';
+    ctx.font = '19px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚓', canvas.width - 78, 122);
+  }
+
+  if ((state.anchorNoticeTimer || 0) > 0 && state.anchorNoticeText) {
+    ctx.fillStyle = 'rgba(6,16,24,0.64)';
+    ctx.fillRect(canvas.width * 0.5 - 110, canvas.height - 74, 220, 36);
+    ctx.fillStyle = '#f6e8c8';
+    ctx.font = '16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.anchorNoticeText, canvas.width * 0.5, canvas.height - 50);
+  }
 }
 
 let last = performance.now();
