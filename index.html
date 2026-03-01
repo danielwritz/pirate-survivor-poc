@@ -2277,6 +2277,47 @@ function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) 
   ctx.stroke();
 }
 
+function drawDeckCrewSpots(hull, crewCount, deckCapacity, committedCrew = 0, spotScale = 1) {
+  const cap = clamp(deckCapacity || 0, 0, 64);
+  if (cap <= 0) return;
+  const occupied = clamp(crewCount || 0, 0, cap);
+  const committed = clamp(committedCrew || 0, 0, occupied);
+
+  const cols = Math.max(1, Math.ceil(Math.sqrt(cap * 1.2)));
+  const rows = Math.max(1, Math.ceil(cap / cols));
+  const spanX = Math.min(hull.len * 1.44 * 0.72, 8 + cols * 3.2);
+  const spanY = Math.min(hull.beam * 0.95, 7 + rows * 3.0);
+  const stepX = cols <= 1 ? 0 : spanX / (cols - 1);
+  const stepY = rows <= 1 ? 0 : spanY / (rows - 1);
+  const radius = (1.7 + spotScale * 0.2);
+
+  for (let i = 0; i < cap; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const px = (col - (cols - 1) / 2) * stepX - hull.len * 0.02;
+    let py = (row - (rows - 1) / 2) * stepY;
+    const hw = hullHalfWidthAt(hull, px) * 0.72;
+    py = clamp(py, -hw, hw);
+
+    if (i < committed) {
+      ctx.fillStyle = '#ffd3a1';
+    } else if (i < occupied) {
+      ctx.fillStyle = '#c6ecff';
+    } else {
+      ctx.fillStyle = 'rgba(150,184,205,0.18)';
+    }
+    ctx.beginPath();
+    ctx.arc(px, py, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(207,235,252,0.35)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(px, py, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   if (!state.upgradesOffered) return;
   const key = e.key;
@@ -3110,7 +3151,19 @@ function drawShipyardScreen() {
     bowSharpness: player.bowSharpness,
     sternTaper: player.sternTaper
   };
-  drawHullBody(previewSize, player.hullColor, player.trimColor, previewProfile, player.ram);
+  const previewHull = drawHullBody(previewSize, player.hullColor, player.trimColor, previewProfile, player.ram);
+  const previewEntity = {
+    size: previewSize,
+    hullDesign: design,
+    hullLength: player.hullLength,
+    hullBeam: player.hullBeam,
+    bowSharpness: player.bowSharpness,
+    sternTaper: player.sternTaper
+  };
+  const previewDeckCap = getDeckCrewCapacity(previewEntity);
+  const previewCrew = clamp(player.crew, 0, previewDeckCap);
+  const committedCrew = Math.min(previewCrew, (player.rowers || 0) + (player.gunners || 0) + (player.repairCrew || 0));
+  drawDeckCrewSpots(previewHull, previewCrew, previewDeckCap, committedCrew, 1);
   ctx.restore();
 
   sy.slotRects = getShipyardWeaponSlotScreenPoints();
