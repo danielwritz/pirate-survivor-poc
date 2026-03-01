@@ -2434,7 +2434,6 @@ function update(dt) {
   if (!anchored) {
     player.x += fwd.x * player.speed * pace + wx * dt * 2.8;
     player.y += fwd.y * player.speed * pace + wy * dt * 2.8;
-    applyShoreRepulsion(player, dt, 0.5);
   }
 
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
