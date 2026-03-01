@@ -978,6 +978,33 @@ function applyShoreRepulsion(entity, dt, strength = 1) {
   entity.speed *= 1 - clamp((Math.hypot(avoid.x, avoid.y) * 0.035), 0, 0.16);
 }
 
+function getVesselSeparationVector(entity) {
+  const ownLen = Math.max(10, getHullDims(entity).len);
+  let ax = 0;
+  let ay = 0;
+
+  const boats = [player, ...state.enemies];
+  for (const other of boats) {
+    if (other === entity) continue;
+
+    const dx = entity.x - other.x;
+    const dy = entity.y - other.y;
+    const d = Math.hypot(dx, dy) || 1;
+
+    const otherLen = Math.max(10, getHullDims(other).len);
+    const hardBody = collisionRadius(entity) + collisionRadius(other);
+    const desiredGap = Math.max(ownLen, hardBody + ownLen * 0.2, ownLen * 0.65 + otherLen * 0.35);
+    if (d >= desiredGap) continue;
+
+    const t = clamp((desiredGap - d) / desiredGap, 0, 1);
+    const push = t * t * 2.5;
+    ax += (dx / d) * push;
+    ay += (dy / d) * push;
+  }
+
+  return { x: ax, y: ay };
+}
+
 function seeded01(seed) {
   const s = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return s - Math.floor(s);
@@ -1752,20 +1779,18 @@ function update(dt) {
   for (const enemy of state.enemies) {
     enemy.impactTimer = Math.max(0, (enemy.impactTimer || 0) - dt);
     const target = getEnemySteerTarget(enemy);
-    const desired = Math.atan2(target.y - enemy.y, target.x - enemy.x);
-    const turnDelta = angleDiff(desired, enemy.heading);
-    const turnLeftEnemy = turnDelta < -0.03;
-    const turnRightEnemy = turnDelta > 0.03;
     const distToTarget = Math.hypot(target.x - enemy.x, target.y - enemy.y);
     const shoreAvoid = getShoreAvoidanceVector(enemy, 200);
+    const vesselAvoid = getVesselSeparationVector(enemy);
     const steerTarget = {
-      x: target.x + shoreAvoid.x * 160,
-      y: target.y + shoreAvoid.y * 160
+      x: target.x + shoreAvoid.x * 160 + vesselAvoid.x * 220,
+      y: target.y + shoreAvoid.y * 160 + vesselAvoid.y * 220
     };
+    const avoidPressure = Math.hypot(vesselAvoid.x, vesselAvoid.y);
 
     simulateVessel(enemy, dt, {
-      rowing: distToTarget > enemy.size * 2.4,
-      brake: false,
+      rowing: distToTarget > enemy.size * 2.4 && avoidPressure < 0.95,
+      brake: avoidPressure > 1.12,
       turnLeft: angleDiff(Math.atan2(steerTarget.y - enemy.y, steerTarget.x - enemy.x), enemy.heading) < -0.03,
       turnRight: angleDiff(Math.atan2(steerTarget.y - enemy.y, steerTarget.x - enemy.x), enemy.heading) > 0.03
     });
