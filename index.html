@@ -1378,6 +1378,8 @@ function initWorld() {
       }
     }
 
+    buildIslandPolygons(island);
+
     state.islands.push(island);
   }
 
@@ -1404,6 +1406,75 @@ function polygonPath(cx, cy, radius, sides, rot) {
     const py = cy + Math.sin(a) * radius;
     if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function cross2(o, a, b) {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+function convexHull(points) {
+  if (!points || points.length < 3) return points || [];
+  const sorted = [...points].sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  const lower = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross2(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross2(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function buildIslandPolygons(island) {
+  const points = [];
+  for (const patch of island.patches) {
+    const sides = patch.sides === 3 ? 3 : 6;
+    for (let i = 0; i < sides; i++) {
+      const a = patch.rot + (i / sides) * Math.PI * 2;
+      points.push({
+        x: patch.x - island.x + Math.cos(a) * patch.size * 0.92,
+        y: patch.y - island.y + Math.sin(a) * patch.size * 0.92
+      });
+    }
+  }
+
+  let outer = convexHull(points);
+  if (!outer.length) {
+    outer = [];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      outer.push({ x: Math.cos(a) * island.r, y: Math.sin(a) * island.r });
+    }
+  }
+
+  const inner = outer.map((pt) => {
+    const ang = Math.atan2(pt.y, pt.x);
+    const inset = 0.68 + Math.sin(ang * 2.4 + island.x * 0.007 + island.y * 0.003) * 0.06;
+    return { x: pt.x * inset, y: pt.y * inset };
+  });
+
+  island.outerPoly = outer;
+  island.innerPoly = inner;
+}
+
+function polygonFromPoints(points) {
+  if (!points || points.length < 3) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
   }
   ctx.closePath();
 }
@@ -2139,7 +2210,9 @@ function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
 
   ctx.strokeStyle = trimColor;
   ctx.lineWidth = 2.2;
-  ctx.lineJoin = 'round';
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'butt';
+  ctx.miterLimit = 2;
   pathHull();
   ctx.stroke();
 
@@ -2154,6 +2227,54 @@ function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
   }
 
   return shape;
+}
+
+function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) {
+  const fwd = { x: Math.cos(entity.heading), y: Math.sin(entity.heading) };
+  const right = { x: -fwd.y, y: fwd.x };
+  const windMag = Math.hypot(state.wind.x, state.wind.y);
+  const windForward = fwd.x * state.wind.x + fwd.y * state.wind.y;
+  const windSide = right.x * state.wind.x + right.y * state.wind.y;
+  const intensity = clamp(windMag / 0.55, 0, 1.5);
+  const openFactor = entity.sailOpen ? 1 : 0;
+  const billow = (0.26 + intensity * 0.92 + Math.max(0, windForward) * 0.5) * openFactor;
+  const bend = clamp(windSide * (1.15 + intensity * 0.8), -1.35, 1.35);
+  const chord = size * (enemySail ? 0.9 : 1.08);
+  const leechX = chord * (0.78 + billow * 0.45);
+  const footY = mastTopY + size * (enemySail ? 0.68 : 0.74);
+
+  if (!entity.sailOpen) {
+    ctx.fillStyle = '#d6ddd2';
+    const furlW = Math.max(7, size * 0.44);
+    ctx.fillRect(1.2, mastTopY + size * 0.1, furlW, 4);
+    ctx.fillRect(1.2, mastTopY + size * 0.2, furlW * 0.85, 3);
+    return;
+  }
+
+  const topCtrlX = leechX * 0.56 + bend * size * 0.22;
+  const topCtrlY = mastTopY + size * (0.08 + intensity * 0.06);
+  const leechY = mastTopY + size * (0.22 + bend * 0.07);
+  const lowCtrlX = leechX * 0.86 + bend * size * 0.42;
+  const lowCtrlY = mastTopY + size * (0.56 - bend * 0.07);
+
+  ctx.fillStyle = sailColor;
+  ctx.beginPath();
+  ctx.moveTo(2, mastTopY + 2);
+  ctx.quadraticCurveTo(topCtrlX, topCtrlY, leechX, leechY);
+  ctx.quadraticCurveTo(lowCtrlX, lowCtrlY, 2, footY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(250,255,255,0.38)';
+  ctx.lineWidth = Math.max(0.8, size * 0.03);
+  ctx.beginPath();
+  ctx.moveTo(3, mastTopY + size * 0.22);
+  ctx.quadraticCurveTo(leechX * 0.52 + bend * size * 0.2, mastTopY + size * 0.3, leechX * 0.88, mastTopY + size * 0.3 + bend * size * 0.06);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(3, mastTopY + size * 0.43);
+  ctx.quadraticCurveTo(leechX * 0.54 + bend * size * 0.25, mastTopY + size * 0.48, leechX * 0.86, mastTopY + size * 0.48 + bend * size * 0.08);
+  ctx.stroke();
 }
 
 window.addEventListener('keydown', (e) => {
@@ -2601,16 +2722,7 @@ function drawShip() {
   ctx.fillStyle = player.trimColor;
   const mast = Math.max(8, s * 1.2 * player.mastScale);
   ctx.fillRect(-2, -mast, 4, mast);
-
-  if (player.sailOpen) {
-    ctx.fillStyle = player.sailColor;
-    ctx.beginPath();
-    ctx.moveTo(2, -mast + 2);
-    ctx.lineTo(s * 1.1, -mast * 0.65);
-    ctx.lineTo(2, -mast * 0.3);
-    ctx.closePath();
-    ctx.fill();
-  }
+  drawReactiveSail(player, s, player.sailColor, -mast, false);
 
   const crewCount = Math.min(player.crew, getDeckCrewCapacity(player));
   ctx.fillStyle = '#1f2f3a';
@@ -2691,16 +2803,7 @@ function drawEnemyShip(enemy) {
 
   ctx.fillStyle = '#b8997a';
   ctx.fillRect(-1.5, -s * 1.12, 3, s * 1.12);
-
-  if (enemy.sailOpen) {
-    ctx.fillStyle = enemy.sailColor;
-    ctx.beginPath();
-    ctx.moveTo(2, -s * 1.12);
-    ctx.lineTo(s * 0.95, -s * 0.76);
-    ctx.lineTo(2, -s * 0.45);
-    ctx.closePath();
-    ctx.fill();
-  }
+  drawReactiveSail(enemy, s, enemy.sailColor, -s * 1.12, true);
 
   const flagBaseX = 2;
   const flagTop = -s * 1.08;
@@ -2786,17 +2889,23 @@ function drawWorld() {
     const sr = island.r * z;
     if (sx < -sr - 40 || sx > canvas.width + sr + 40 || sy < -sr - 40 || sy > canvas.height + sr + 40) continue;
 
-    for (const patch of island.patches) {
-      const px = (patch.x - camX) * z;
-      const py = (patch.y - camY) * z;
-      const pr = patch.size * z;
-      ctx.fillStyle = patch.sides === 6 ? '#b2a46f' : '#a69663';
-      polygonPath(px, py, pr, patch.sides, patch.rot);
-      ctx.fill();
-      ctx.fillStyle = patch.sides === 6 ? '#6e9d4b' : '#6a9349';
-      polygonPath(px, py, pr * 0.62, patch.sides, patch.rot + 0.08);
-      ctx.fill();
-    }
+    if (!island.outerPoly || !island.innerPoly) buildIslandPolygons(island);
+    const outer = island.outerPoly.map((pt) => ({
+      x: (island.x + pt.x - camX) * z,
+      y: (island.y + pt.y - camY) * z
+    }));
+    const inner = island.innerPoly.map((pt) => ({
+      x: (island.x + pt.x - camX) * z,
+      y: (island.y + pt.y - camY) * z
+    }));
+
+    ctx.fillStyle = '#b2a46f';
+    polygonFromPoints(outer);
+    ctx.fill();
+
+    ctx.fillStyle = '#6e9d4b';
+    polygonFromPoints(inner);
+    ctx.fill();
 
     for (const dock of island.docks) {
       const dp = toScreen(dock.x, dock.y);
