@@ -128,10 +128,89 @@ function updateShipyardDrag(px, py) {
   sy.pendingCost = sy.freeEdit ? 0 : getShipDesignCost(d, sy.baseDesign);
 }
 
+function isPointInRect(px, py, rect) {
+  return !!rect && px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
+}
+
+function getShipyardWeaponSlotScreenPoints() {
+  const sy = state.shipyard;
+  if (!sy.editDesign) return [];
+  ensurePlayerWeaponLayout();
+  const slotCount = player.weaponLayout.port.length;
+  const shape = getHullShape({
+    size: 44,
+    hullDesign: sy.editDesign,
+    hullLength: player.hullLength,
+    hullBeam: player.hullBeam,
+    bowSharpness: player.bowSharpness,
+    sternTaper: player.sternTaper
+  });
+  const cx = canvas.width * 0.5;
+  const cy = canvas.height * 0.54;
+  const scale = sy.previewScale;
+  const points = [];
+
+  for (let i = 0; i < slotCount; i++) {
+    const port = getHullSideMount(shape, i, slotCount, -1, 0.12, 0.88);
+    const star = getHullSideMount(shape, i, slotCount, 1, 0.12, 0.88);
+    points.push({
+      side: 'port',
+      index: i,
+      type: player.weaponLayout.port[i],
+      x: cx + port.x * scale,
+      y: cy + port.y * scale,
+      r: 10
+    });
+    points.push({
+      side: 'starboard',
+      index: i,
+      type: player.weaponLayout.starboard[i],
+      x: cx + star.x * scale,
+      y: cy + star.y * scale,
+      r: 10
+    });
+  }
+
+  return points;
+}
+
+function pickShipyardWeaponSlot(px, py) {
+  const sy = state.shipyard;
+  const slots = sy.slotRects || [];
+  for (const slot of slots) {
+    if (Math.hypot(px - slot.x, py - slot.y) <= slot.r) return slot;
+  }
+  return null;
+}
+
 canvas.addEventListener('mousedown', (e) => {
   if (state.mode !== 'shipyard') return;
   const p = pointerOnCanvas(e);
   const sy = state.shipyard;
+
+  for (const [name, rect] of Object.entries(sy.brushRects || {})) {
+    if (isPointInRect(p.x, p.y, rect)) {
+      sy.weaponBrush = name;
+      sy.message = '';
+      return;
+    }
+  }
+
+  const crewRects = sy.crewRects || {};
+  if (isPointInRect(p.x, p.y, crewRects.crewAdd)) return adjustTotalCrew(1);
+  if (isPointInRect(p.x, p.y, crewRects.crewSub)) return adjustTotalCrew(-1);
+  if (isPointInRect(p.x, p.y, crewRects.rowerAdd)) return adjustCrewRole('rowers', 1);
+  if (isPointInRect(p.x, p.y, crewRects.rowerSub)) return adjustCrewRole('rowers', -1);
+  if (isPointInRect(p.x, p.y, crewRects.gunnerAdd)) return adjustCrewRole('gunners', 1);
+  if (isPointInRect(p.x, p.y, crewRects.gunnerSub)) return adjustCrewRole('gunners', -1);
+  if (isPointInRect(p.x, p.y, crewRects.repairAdd)) return adjustCrewRole('repairCrew', 1);
+  if (isPointInRect(p.x, p.y, crewRects.repairSub)) return adjustCrewRole('repairCrew', -1);
+
+  const slot = pickShipyardWeaponSlot(p.x, p.y);
+  if (slot) {
+    applyWeaponPlacement(slot.side, slot.index, sy.weaponBrush || 'gun');
+    return;
+  }
 
   if (sy.launchRect && p.x >= sy.launchRect.x && p.x <= sy.launchRect.x + sy.launchRect.w && p.y >= sy.launchRect.y && p.y <= sy.launchRect.y + sy.launchRect.h) {
     launchFromShipyard();
@@ -140,7 +219,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (sy.resetRect && p.x >= sy.resetRect.x && p.x <= sy.resetRect.x + sy.resetRect.w && p.y >= sy.resetRect.y && p.y <= sy.resetRect.y + sy.resetRect.h) {
     sy.editDesign = { ...sy.baseDesign };
     sy.pendingCost = 0;
-    sy.message = sy.freeEdit ? 'Design your starting ship. Launch when ready.' : 'Refit reset to current hull.';
+    sy.message = sy.freeEdit ? 'Hull reset. Keep placing weapons and crew with your 100 gold.' : 'Refit reset to current hull.';
     return;
   }
 
@@ -209,7 +288,7 @@ function getLevelConfig(stageIndex) {
 
 const state = {
   time: 0,
-  gold: 0,
+  gold: 100,
   level: 1,
   xp: 0,
   xpToNext: 10,
@@ -249,7 +328,11 @@ const state = {
     previewScale: 3.2,
     launchRect: null,
     resetRect: null,
-    message: 'Design your starting ship. Launch when ready.'
+    weaponBrush: 'gun',
+    slotRects: [],
+    brushRects: {},
+    crewRects: {},
+    message: 'Start with 100 gold: place guns/cannons, assign crew roles, then launch.'
   }
 };
 
@@ -295,6 +378,8 @@ const player = {
   trimColor: '#d9b78d'
 };
 
+player.weaponLayout = { port: [], starboard: [] };
+
 const DEFAULT_HULL_DESIGN = {
   bodyHalfLenMul: 0.58,
   bodyHalfBeamMul: 0.72,
@@ -304,12 +389,95 @@ const DEFAULT_HULL_DESIGN = {
 
 player.hullDesign = { ...DEFAULT_HULL_DESIGN };
 
+const SHIPYARD_COST = {
+  gun: 9,
+  cannon: 22,
+  crew: 8
+};
+
 function getPlayerRanges() {
-  const gun = 128 + player.gunners * 7 + state.level * 0.8;
-  const cannon = 236 + player.cannons * 20 + player.cannonPivot * 1.6 + state.level * 1.2;
+  const weapon = getPlayerWeaponCounts();
+  const gun = 124 + weapon.gunTotal * 3 + player.gunners * 4 + state.level * 0.8;
+  const cannon = 236 + weapon.cannonPerSide * 20 + player.cannonPivot * 1.6 + state.level * 1.2;
   return {
     gun,
     cannon: Math.max(gun + 70, cannon)
+  };
+}
+
+function getPlayerWeaponSlotCount() {
+  const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
+  return clamp(Math.max(3, Math.ceil(caps.maxGunners * 0.6) + 2), 3, 12);
+}
+
+function ensurePlayerWeaponLayout() {
+  const slots = getPlayerWeaponSlotCount();
+  if (!player.weaponLayout) {
+    player.weaponLayout = { port: [], starboard: [] };
+  }
+  const normalize = (arr) => {
+    const out = Array.isArray(arr) ? [...arr] : [];
+    while (out.length < slots) out.push('empty');
+    if (out.length > slots) out.length = slots;
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] !== 'gun' && out[i] !== 'cannon') out[i] = 'empty';
+    }
+    return out;
+  };
+  player.weaponLayout.port = normalize(player.weaponLayout.port);
+  player.weaponLayout.starboard = normalize(player.weaponLayout.starboard);
+}
+
+function getPlayerWeaponCounts() {
+  ensurePlayerWeaponLayout();
+  const port = player.weaponLayout.port;
+  const star = player.weaponLayout.starboard;
+  let gunTotal = 0;
+  let cannonTotal = 0;
+  let portCannons = 0;
+  let starCannons = 0;
+
+  for (let i = 0; i < port.length; i++) {
+    if (port[i] === 'gun') gunTotal += 1;
+    if (port[i] === 'cannon') {
+      cannonTotal += 1;
+      portCannons += 1;
+    }
+    if (star[i] === 'gun') gunTotal += 1;
+    if (star[i] === 'cannon') {
+      cannonTotal += 1;
+      starCannons += 1;
+    }
+  }
+
+  return {
+    gunTotal,
+    cannonTotal,
+    cannonPerSide: Math.max(portCannons, starCannons)
+  };
+}
+
+function syncArmamentDerivedStats() {
+  const weapon = getPlayerWeaponCounts();
+  player.cannons = weapon.cannonPerSide;
+}
+
+function getWeaponCrewDemand() {
+  const weapon = getPlayerWeaponCounts();
+  return weapon.gunTotal * 0.55 + weapon.cannonTotal * 1.15;
+}
+
+function getWeaponCrewRatio() {
+  const demand = Math.max(1, getWeaponCrewDemand());
+  return clamp((player.gunners || 0) / demand, 0.25, 1.55);
+}
+
+function getEffectiveReloadTimes() {
+  const ratio = getWeaponCrewRatio();
+  const factor = clamp(1.52 - ratio * 0.58, 0.72, 1.88);
+  return {
+    gun: player.gunReload * factor,
+    cannon: player.cannonReload * (factor * 1.04)
   };
 }
 
@@ -367,9 +535,10 @@ function getShipDesignCost(design, baseDesign) {
 
 function getShipValueScore() {
   const d = player.hullDesign || DEFAULT_HULL_DESIGN;
+  const weapon = getPlayerWeaponCounts();
   const hullValue = d.bodyHalfLenMul * 140 + d.bodyHalfBeamMul * 160 + d.bowTipMul * 120 + d.sternTipMul * 90;
   const crewValue = player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14;
-  const weaponValue = player.cannons * 46 + player.bulletDamage * 3;
+  const weaponValue = weapon.cannonTotal * 28 + weapon.gunTotal * 9 + player.bulletDamage * 3;
   const sizeValue = (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30;
   return Math.max(0, hullValue + crewValue + weaponValue + sizeValue);
 }
@@ -379,6 +548,7 @@ function updateShipValueTier() {
 }
 
 function setShipyardMode(freeEdit) {
+  ensurePlayerWeaponLayout();
   state.mode = 'shipyard';
   state.shipyard.active = true;
   state.shipyard.freeEdit = !!freeEdit;
@@ -387,7 +557,9 @@ function setShipyardMode(freeEdit) {
   state.shipyard.pendingCost = 0;
   state.shipyard.dragHandle = null;
   state.shipyard.dragStart = null;
-  state.shipyard.message = freeEdit ? 'Design your starting ship. Launch when ready.' : 'Boss defeated. Spend gold to refit, then launch next level.';
+  state.shipyard.slotRects = [];
+  state.shipyard.weaponBrush = 'gun';
+  state.shipyard.message = freeEdit ? 'Start with 100 gold: place guns/cannons, assign crew roles, then launch.' : 'Boss defeated. Spend gold to refit, re-arm, and assign crew before launch.';
 }
 
 function applyShipyardDesign() {
@@ -402,13 +574,87 @@ function applyShipyardDesign() {
   player.hullDesign = { ...sy.editDesign };
   sy.baseDesign = { ...player.hullDesign };
   sy.pendingCost = 0;
+  syncArmamentDerivedStats();
   sy.message = '';
   updateShipValueTier();
   return true;
 }
 
+function adjustCrewRole(role, delta) {
+  const sy = state.shipyard;
+  if (delta > 0) {
+    if (getSpareCrewCapacity(player) <= 0) {
+      sy.message = 'No free crew. Hire more crew first.';
+      return;
+    }
+    player[role] += 1;
+    sy.message = '';
+    return;
+  }
+
+  if ((player[role] || 0) <= 0) return;
+  player[role] -= 1;
+  sy.message = '';
+}
+
+function adjustTotalCrew(delta) {
+  const sy = state.shipyard;
+  if (delta > 0) {
+    if (state.gold < SHIPYARD_COST.crew) {
+      sy.message = `Need ${SHIPYARD_COST.crew} gold to hire crew.`;
+      return;
+    }
+    state.gold -= SHIPYARD_COST.crew;
+    player.crew += 1;
+    sy.message = '';
+    return;
+  }
+
+  const committed = (player.rowers || 0) + (player.gunners || 0) + (player.repairCrew || 0);
+  if (player.crew <= committed || player.crew <= 1) {
+    sy.message = 'Unassign roles before reducing total crew.';
+    return;
+  }
+  player.crew -= 1;
+  state.gold += Math.round(SHIPYARD_COST.crew * 0.7);
+  sy.message = '';
+}
+
+function applyWeaponPlacement(side, index, nextType) {
+  ensurePlayerWeaponLayout();
+  const sy = state.shipyard;
+  const lane = player.weaponLayout[side];
+  const prev = lane[index] || 'empty';
+  if (prev === nextType) return;
+
+  const deltaCost = (type) => type === 'cannon' ? SHIPYARD_COST.cannon : type === 'gun' ? SHIPYARD_COST.gun : 0;
+  const cost = deltaCost(nextType) - deltaCost(prev);
+  if (cost > 0 && state.gold < cost) {
+    sy.message = `Need ${cost} gold for that placement.`;
+    return;
+  }
+
+  if (nextType === 'cannon') {
+    const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
+    const sideCannons = lane.filter((t) => t === 'cannon').length;
+    if (sideCannons >= caps.maxCannonsPerSide && prev !== 'cannon') {
+      sy.message = `Cannon cap reached for this hull (${caps.maxCannonsPerSide}/side).`;
+      return;
+    }
+  }
+
+  lane[index] = nextType;
+  state.gold -= Math.max(0, cost);
+  if (cost < 0) state.gold += Math.round(Math.abs(cost) * 0.8);
+  syncArmamentDerivedStats();
+  sy.message = '';
+}
+
 function launchFromShipyard() {
   if (!applyShipyardDesign()) return;
+  clampPlayerCrewToDeck();
+  clampPlayerSupportCrewToDeck();
+  clampPlayerArmamentToHull();
   state.mode = 'combat';
   state.shipyard.active = false;
   state.shipyard.dragHandle = null;
@@ -486,9 +732,22 @@ function clampPlayerSupportCrewToDeck() {
 }
 
 function clampPlayerArmamentToHull() {
+  ensurePlayerWeaponLayout();
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
-  player.cannons = clamp(player.cannons, 0, caps.maxCannonsPerSide);
-  player.gunners = clamp(player.gunners, 1, caps.maxGunners);
+  player.gunners = clamp(player.gunners, 0, caps.maxGunners);
+
+  const trimCannons = (lane) => {
+    let cannons = 0;
+    for (let i = 0; i < lane.length; i++) {
+      if (lane[i] !== 'cannon') continue;
+      cannons += 1;
+      if (cannons > caps.maxCannonsPerSide) lane[i] = 'gun';
+    }
+  };
+
+  trimCannons(player.weaponLayout.port);
+  trimCannons(player.weaponLayout.starboard);
+  syncArmamentDerivedStats();
 }
 
 function damagePlayer(amount) {
@@ -813,6 +1072,26 @@ function pickBossTarget(enemy, playerPlan) {
   return fallback || { target: player, plan: playerPlan };
 }
 
+function autoInstallCannons(perSideCount = 1) {
+  ensurePlayerWeaponLayout();
+  const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
+  const installOnSide = (lane) => {
+    let installed = 0;
+    while (installed < perSideCount) {
+      const sideCannons = lane.filter((t) => t === 'cannon').length;
+      if (sideCannons >= caps.maxCannonsPerSide) break;
+      const emptyIdx = lane.findIndex((t) => t === 'empty');
+      if (emptyIdx < 0) break;
+      lane[emptyIdx] = 'cannon';
+      installed += 1;
+    }
+  };
+
+  installOnSide(player.weaponLayout.port);
+  installOnSide(player.weaponLayout.starboard);
+  syncArmamentDerivedStats();
+}
+
 const upgradePool = [
   {
     name: 'Crew Musketeers',
@@ -832,10 +1111,7 @@ const upgradePool = [
     name: 'Cannons',
     desc: '+1 cannon, +damage',
     apply() {
-      const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
-      if (player.cannons < caps.maxCannonsPerSide) {
-        player.cannons += 1;
-      }
+      autoInstallCannons(1);
       player.bulletDamage += 3;
       player.cannonReload = Math.max(1.0, player.cannonReload - 0.1);
       player.hullBeam += 0.03;
@@ -969,7 +1245,7 @@ const majorUpgradePool = [
     name: 'Grand Broadside',
     desc: '+2 cannons, +10 damage',
     apply() {
-      player.cannons += 2;
+      autoInstallCannons(2);
       player.bulletDamage += 10;
       player.size += 1;
       player.mass += 3;
@@ -1495,10 +1771,9 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   const right = getRightVector();
   const forward = getForwardVector();
   const shape = getHullShape(player);
-  const guns = Math.max(2, player.gunners + player.cannons);
-  const cannonSlots = Math.min(guns, player.cannons);
-  const cannonMask = getDistributedCannonMask(guns, cannonSlots);
-  const isCannon = (portIndex) => cannonMask[portIndex];
+  ensurePlayerWeaponLayout();
+  const lane = sideSign < 0 ? player.weaponLayout.port : player.weaponLayout.starboard;
+  const totalSlots = Math.max(1, lane.length);
   const ranges = getPlayerRanges();
   const allowGun = distanceToTarget <= ranges.gun && allowGunFire;
   const allowCannon = distanceToTarget <= ranges.cannon && allowCannonFire;
@@ -1516,13 +1791,17 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   let gunDirY = 0;
   let cannonDirX = 0;
   let cannonDirY = 0;
+  const crewFireChance = clamp(getWeaponCrewRatio(), 0.3, 1);
 
-  for (let i = 0; i < guns; i++) {
-    const cannonPort = isCannon(i);
+  for (let i = 0; i < totalSlots; i++) {
+    const type = lane[i] || 'empty';
+    if (type === 'empty') continue;
+    const cannonPort = type === 'cannon';
     if (cannonPort && !allowCannon) continue;
     if (!cannonPort && !allowGun) continue;
+    if (Math.random() > crewFireChance) continue;
 
-    const mount = getHullSideMount(shape, i, guns, sideSign, 0.12, 0.88);
+    const mount = getHullSideMount(shape, i, totalSlots, sideSign, 0.12, 0.88);
     const mountLen = cannonPort ? Math.max(8, player.size * 0.48) : Math.max(4.5, player.size * 0.3);
     const muzzleLift = mountLen + (cannonPort ? 0.7 : 0.35);
     const localX = mount.x + mount.nx * muzzleLift;
@@ -1670,10 +1949,14 @@ function shootAtNearest() {
   state.playerAim = aim;
   if (!aim) return { firedGun: false, firedCannon: false };
 
+  const weapon = getPlayerWeaponCounts();
+  if (weapon.gunTotal <= 0 && weapon.cannonTotal <= 0) return { firedGun: false, firedCannon: false };
+
   const ranges = getPlayerRanges();
   if (aim.dist > Math.max(ranges.gun, ranges.cannon)) return { firedGun: false, firedCannon: false };
-  const canGun = player.gunTimer >= player.gunReload;
-  const canCannon = player.cannonTimer >= player.cannonReload;
+  const effective = getEffectiveReloadTimes();
+  const canGun = weapon.gunTotal > 0 && player.gunTimer >= effective.gun;
+  const canCannon = weapon.cannonTotal > 0 && player.cannonTimer >= effective.cannon;
   if (!canGun && !canCannon) return { firedGun: false, firedCannon: false };
   return broadsideFire(aim.sideSign, aim.target, aim.dist, canGun, canCannon);
 }
@@ -1701,12 +1984,13 @@ function getUpgradeCardInfo(upgrade) {
   let blocked = false;
 
   if (upgrade.name === 'Cannons') {
+    const weapon = getPlayerWeaponCounts();
     const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
-    if (player.cannons >= caps.maxCannonsPerSide) {
+    if (weapon.cannonPerSide >= caps.maxCannonsPerSide) {
       blocked = true;
-      desc = `At cap ${player.cannons}/${caps.maxCannonsPerSide} per side. Take Cannon Installments to expand.`;
+      desc = `At cap ${weapon.cannonPerSide}/${caps.maxCannonsPerSide} per side. Take Cannon Installments to expand.`;
     } else {
-      desc = `${upgrade.desc} (${Math.min(caps.maxCannonsPerSide, player.cannons + 1)}/${caps.maxCannonsPerSide} per side)`;
+      desc = `${upgrade.desc} (${Math.min(caps.maxCannonsPerSide, weapon.cannonPerSide + 1)}/${caps.maxCannonsPerSide} per side)`;
     }
   }
 
@@ -2340,31 +2624,44 @@ function drawShip() {
 
   drawDeckDamageMarks(player, hull, 1);
 
-  const broadsidePorts = Math.max(2, player.gunners + player.cannons);
-  const cannonPorts = Math.min(broadsidePorts, player.cannons);
-  const cannonMask = getDistributedCannonMask(broadsidePorts, cannonPorts);
+  ensurePlayerWeaponLayout();
+  const slotCount = Math.max(1, player.weaponLayout.port.length);
   const aim = state.playerAim;
   const targetLocalAngle = aim ? angleDiff(aim.targetAngle, player.heading) : null;
   const pivotRad = player.cannonPivot * (Math.PI / 180);
-  for (let i = 0; i < broadsidePorts; i++) {
-    const cannonPort = cannonMask[i];
-    const length = cannonPort ? Math.max(8, s * 0.48) : Math.max(4.5, s * 0.3);
-    const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
-    const color = cannonPort ? '#5f656c' : '#d5dbe2';
-    const portMount = getHullSideMount(hull, i, broadsidePorts, -1, 0.12, 0.88);
-    const starboardMount = getHullSideMount(hull, i, broadsidePorts, 1, 0.12, 0.88);
+  for (let i = 0; i < slotCount; i++) {
+    const portType = player.weaponLayout.port[i] || 'empty';
+    const starType = player.weaponLayout.starboard[i] || 'empty';
+    if (portType === 'empty' && starType === 'empty') continue;
 
-    let portAim = 0;
-    let starAim = 0;
-    if (cannonPort && aim && targetLocalAngle !== null) {
-      const portBase = Math.atan2(portMount.ny, portMount.nx);
-      const starBase = Math.atan2(starboardMount.ny, starboardMount.nx);
-      if (aim.sideSign < 0) portAim = clamp(angleDiff(targetLocalAngle, portBase), -pivotRad, pivotRad);
-      if (aim.sideSign > 0) starAim = clamp(angleDiff(targetLocalAngle, starBase), -pivotRad, pivotRad);
+    const portMount = getHullSideMount(hull, i, slotCount, -1, 0.12, 0.88);
+    const starboardMount = getHullSideMount(hull, i, slotCount, 1, 0.12, 0.88);
+
+    if (portType !== 'empty') {
+      const cannonPort = portType === 'cannon';
+      const length = cannonPort ? Math.max(8, s * 0.48) : Math.max(4.5, s * 0.3);
+      const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
+      const color = cannonPort ? '#5f656c' : '#d5dbe2';
+      let aimOffset = 0;
+      if (cannonPort && aim && targetLocalAngle !== null && aim.sideSign < 0) {
+        const base = Math.atan2(portMount.ny, portMount.nx);
+        aimOffset = clamp(angleDiff(targetLocalAngle, base), -pivotRad, pivotRad);
+      }
+      drawPerimeterMountWithAim(portMount, length, thickness, color, aimOffset);
     }
 
-    drawPerimeterMountWithAim(portMount, length, thickness, color, portAim);
-    drawPerimeterMountWithAim(starboardMount, length, thickness, color, starAim);
+    if (starType !== 'empty') {
+      const cannonPort = starType === 'cannon';
+      const length = cannonPort ? Math.max(8, s * 0.48) : Math.max(4.5, s * 0.3);
+      const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
+      const color = cannonPort ? '#5f656c' : '#d5dbe2';
+      let aimOffset = 0;
+      if (cannonPort && aim && targetLocalAngle !== null && aim.sideSign > 0) {
+        const base = Math.atan2(starboardMount.ny, starboardMount.nx);
+        aimOffset = clamp(angleDiff(targetLocalAngle, base), -pivotRad, pivotRad);
+      }
+      drawPerimeterMountWithAim(starboardMount, length, thickness, color, aimOffset);
+    }
   }
 
   ctx.restore();
@@ -2556,13 +2853,16 @@ function drawCloudOverlay() {
 }
 
 function drawHud() {
+  const weapon = getPlayerWeaponCounts();
+  const effectiveReloads = getEffectiveReloadTimes();
   const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
-  const gunLoad = clamp(player.gunTimer / player.gunReload, 0, 1);
-  const cannonLoad = clamp(player.cannonTimer / player.cannonReload, 0, 1);
+  const gunLoad = clamp(player.gunTimer / Math.max(0.001, effectiveReloads.gun), 0, 1);
+  const cannonLoad = clamp(player.cannonTimer / Math.max(0.001, effectiveReloads.cannon), 0, 1);
   const stageLabel = getLevelConfig(state.stageIndex).name;
   const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
   const bossIn = Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer));
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
+  const crewDemand = getWeaponCrewDemand();
 
   const panelW = Math.min(560, canvas.width * 0.62);
   const panelX = (canvas.width - panelW) / 2;
@@ -2579,7 +2879,7 @@ function drawHud() {
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText(`${modeLabel} · ${stageLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Boss ${bossIn}s`, panelX + panelW / 2, panelY + 16);
-  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${player.gunners}/${caps.maxGunners} · Cannons ${player.cannons}/${caps.maxCannonsPerSide} per side · Repair ${player.repairCrew} · Tier ${caps.tier} · Pivot ${player.cannonPivot}° · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)})`, panelX + panelW / 2, panelY + 32);
+  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${weapon.gunTotal} · Cannons ${weapon.cannonTotal} · Gunners ${player.gunners}/${caps.maxGunners} · Rowers ${player.rowers} · Repair ${player.repairCrew} · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)}) · Crew Demand ${crewDemand.toFixed(1)} · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#d8eefc';
@@ -2642,6 +2942,8 @@ function drawShipyardScreen() {
     sy.baseDesign = { ...(player.hullDesign || DEFAULT_HULL_DESIGN) };
     sy.editDesign = { ...sy.baseDesign };
   }
+  ensurePlayerWeaponLayout();
+  syncArmamentDerivedStats();
 
   sy.pendingCost = sy.freeEdit ? 0 : getShipDesignCost(sy.editDesign, sy.baseDesign);
 
@@ -2681,6 +2983,21 @@ function drawShipyardScreen() {
   drawHullBody(previewSize, player.hullColor, player.trimColor, previewProfile, player.ram);
   ctx.restore();
 
+  sy.slotRects = getShipyardWeaponSlotScreenPoints();
+  for (const slot of sy.slotRects) {
+    const color = slot.type === 'cannon' ? '#d8a167' : slot.type === 'gun' ? '#9fcfe6' : '#33566f';
+    const ring = slot.type === 'empty' ? '#678aa1' : '#ecf7ff';
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = ring;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   const points = getShipyardHandleScreenPoints();
   if (points) {
     const c = points.center;
@@ -2708,16 +3025,73 @@ function drawShipyardScreen() {
   ctx.font = '17px system-ui';
   ctx.fillStyle = '#c4e1f2';
   ctx.fillText(`Gold: ${Math.round(state.gold)}`, infoX, infoY);
-  ctx.fillText(`Refit Cost: ${sy.pendingCost}`, infoX, infoY + 28);
+  ctx.fillText(`Hull Refit Cost: ${sy.pendingCost}`, infoX, infoY + 28);
 
+  const weapon = getPlayerWeaponCounts();
   const hullValue = Math.round(design.bodyHalfLenMul * 140 + design.bodyHalfBeamMul * 160 + design.bowTipMul * 120 + design.sternTipMul * 90);
-  const totalValue = Math.round(hullValue + player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14 + player.cannons * 46 + player.bulletDamage * 3 + (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30);
+  const totalValue = Math.round(hullValue + player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14 + weapon.cannonTotal * 28 + weapon.gunTotal * 9 + player.bulletDamage * 3 + (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30);
   const predictedTier = clamp(Math.floor(totalValue / 120), 0, 14);
   ctx.fillText(`Ship Value: ${totalValue} (Difficulty Tier +${predictedTier})`, infoX, infoY + 56);
+  ctx.fillText(`Placed: ${weapon.gunTotal} guns, ${weapon.cannonTotal} cannons`, infoX, infoY + 84);
+
+  const crewDemand = getWeaponCrewDemand();
+  const crewRatio = getWeaponCrewRatio();
+  const eff = getEffectiveReloadTimes();
+  ctx.fillText(`Weapon Crew Demand ${crewDemand.toFixed(1)} · Assigned Gunners ${player.gunners} · Efficiency ${Math.round(crewRatio * 100)}%`, infoX, infoY + 112);
+  ctx.fillText(`Reloads: Gun ${eff.gun.toFixed(2)}s · Cannon ${eff.cannon.toFixed(2)}s`, infoX, infoY + 140);
 
   ctx.fillStyle = '#9fc2d9';
   ctx.font = '14px system-ui';
-  ctx.fillText('Drag handles: bow tip, stern tip, hull length, hull beam', infoX, infoY + 84);
+  ctx.fillText('Drag hull handles. Then choose a brush and click slot circles on port/starboard to place weapons.', infoX, infoY + 166);
+
+  const brushY = panelY + 176;
+  const brushX = panelX + panelW - 334;
+  sy.brushRects = {
+    gun: { x: brushX, y: brushY, w: 96, h: 34 },
+    cannon: { x: brushX + 106, y: brushY, w: 96, h: 34 },
+    empty: { x: brushX + 212, y: brushY, w: 96, h: 34 }
+  };
+  for (const [name, rect] of Object.entries(sy.brushRects)) {
+    const active = sy.weaponBrush === name;
+    ctx.fillStyle = active ? '#2f7f5d' : '#2a4a60';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.fillStyle = '#e8f5ff';
+    ctx.textAlign = 'center';
+    const label = name === 'empty' ? 'Clear' : name === 'gun' ? `Gun ${SHIPYARD_COST.gun}g` : `Cannon ${SHIPYARD_COST.cannon}g`;
+    ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 22);
+  }
+
+  const crewPanelX = panelX + panelW - 334;
+  const crewPanelY = panelY + 228;
+  const rowH = 32;
+  const makeRect = (x, y) => ({ x, y, w: 28, h: 24 });
+  sy.crewRects = {
+    crewSub: makeRect(crewPanelX + 176, crewPanelY),
+    crewAdd: makeRect(crewPanelX + 210, crewPanelY),
+    rowerSub: makeRect(crewPanelX + 176, crewPanelY + rowH),
+    rowerAdd: makeRect(crewPanelX + 210, crewPanelY + rowH),
+    gunnerSub: makeRect(crewPanelX + 176, crewPanelY + rowH * 2),
+    gunnerAdd: makeRect(crewPanelX + 210, crewPanelY + rowH * 2),
+    repairSub: makeRect(crewPanelX + 176, crewPanelY + rowH * 3),
+    repairAdd: makeRect(crewPanelX + 210, crewPanelY + rowH * 3)
+  };
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#c4e1f2';
+  ctx.font = '15px system-ui';
+  ctx.fillText(`Crew Total (${SHIPYARD_COST.crew}g hire): ${player.crew}`, crewPanelX, crewPanelY + 17);
+  ctx.fillText(`Rowers: ${player.rowers}`, crewPanelX, crewPanelY + rowH + 17);
+  ctx.fillText(`Muskets/Gunners: ${player.gunners}`, crewPanelX, crewPanelY + rowH * 2 + 17);
+  ctx.fillText(`Repair Crew: ${player.repairCrew}`, crewPanelX, crewPanelY + rowH * 3 + 17);
+
+  for (const [name, rect] of Object.entries(sy.crewRects)) {
+    ctx.fillStyle = '#2a4a60';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.fillStyle = '#e8f5ff';
+    ctx.textAlign = 'center';
+    const symbol = name.endsWith('Add') ? '+' : '−';
+    ctx.fillText(symbol, rect.x + rect.w * 0.5, rect.y + 17);
+  }
 
   const controlsX = panelX + panelW - 320;
   const controlsY = panelY + panelH - 92;
