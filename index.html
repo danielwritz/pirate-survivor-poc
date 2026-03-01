@@ -262,6 +262,7 @@ window.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 const ENDLESS_MODE = true;
+const MAX_ENEMIES_ON_SCREEN = 10;
 const LEVEL_CONFIGS = [
   { name: 'Coastal Skirmish', duration: 45, spawnRate: 1.0, bossEvery: 45, windShift: 16 },
   { name: 'Open Waters', duration: 55, spawnRate: 1.2, bossEvery: 50, windShift: 14 },
@@ -2235,12 +2236,14 @@ function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) 
   const windMag = Math.hypot(state.wind.x, state.wind.y);
   const windForward = fwd.x * state.wind.x + fwd.y * state.wind.y;
   const windSide = right.x * state.wind.x + right.y * state.wind.y;
+  const seed = (entity.id || 0) * 0.61 + (enemySail ? 1.3 : 0.2);
+  const flutter = Math.sin(state.time * 8.4 + seed) * 0.35 + Math.sin(state.time * 13.2 + seed * 1.7) * 0.2;
   const intensity = clamp(windMag / 0.55, 0, 1.5);
   const openFactor = entity.sailOpen ? 1 : 0;
-  const billow = (0.26 + intensity * 0.92 + Math.max(0, windForward) * 0.5) * openFactor;
-  const bend = clamp(windSide * (1.15 + intensity * 0.8), -1.35, 1.35);
+  const billow = (0.28 + intensity * 0.98 + Math.max(0, windForward) * 0.68 + flutter * 0.08) * openFactor;
+  const bend = clamp(windSide * (1.24 + intensity * 0.96) + flutter * 0.22, -1.65, 1.65);
   const chord = size * (enemySail ? 0.9 : 1.08);
-  const leechX = chord * (0.78 + billow * 0.45);
+  const leechX = chord * (0.72 + billow * 0.54);
   const footY = mastTopY + size * (enemySail ? 0.68 : 0.74);
 
   if (!entity.sailOpen) {
@@ -2251,17 +2254,17 @@ function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) 
     return;
   }
 
-  const topCtrlX = leechX * 0.56 + bend * size * 0.22;
-  const topCtrlY = mastTopY + size * (0.08 + intensity * 0.06);
-  const leechY = mastTopY + size * (0.22 + bend * 0.07);
-  const lowCtrlX = leechX * 0.86 + bend * size * 0.42;
-  const lowCtrlY = mastTopY + size * (0.56 - bend * 0.07);
+  const topCtrlX = leechX * 0.52 + bend * size * 0.26;
+  const topCtrlY = mastTopY + size * (0.05 + intensity * 0.08 + flutter * 0.03);
+  const leechY = mastTopY + size * (0.2 + bend * 0.1 + flutter * 0.03);
+  const lowCtrlX = leechX * 0.92 + bend * size * 0.46;
+  const lowCtrlY = mastTopY + size * (0.58 - bend * 0.09 - flutter * 0.04);
 
   ctx.fillStyle = sailColor;
   ctx.beginPath();
   ctx.moveTo(2, mastTopY + 2);
-  ctx.quadraticCurveTo(topCtrlX, topCtrlY, leechX, leechY);
-  ctx.quadraticCurveTo(lowCtrlX, lowCtrlY, 2, footY);
+  ctx.bezierCurveTo(topCtrlX * 0.56, topCtrlY, topCtrlX, mastTopY + size * 0.16, leechX, leechY);
+  ctx.bezierCurveTo(lowCtrlX, mastTopY + size * 0.42, lowCtrlX * 0.64, lowCtrlY, 2, footY);
   ctx.closePath();
   ctx.fill();
 
@@ -2269,11 +2272,11 @@ function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) 
   ctx.lineWidth = Math.max(0.8, size * 0.03);
   ctx.beginPath();
   ctx.moveTo(3, mastTopY + size * 0.22);
-  ctx.quadraticCurveTo(leechX * 0.52 + bend * size * 0.2, mastTopY + size * 0.3, leechX * 0.88, mastTopY + size * 0.3 + bend * size * 0.06);
+  ctx.bezierCurveTo(leechX * 0.36 + bend * size * 0.18, mastTopY + size * (0.24 + flutter * 0.03), leechX * 0.66 + bend * size * 0.24, mastTopY + size * 0.28, leechX * 0.9, mastTopY + size * (0.3 + bend * 0.08));
   ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(3, mastTopY + size * 0.43);
-  ctx.quadraticCurveTo(leechX * 0.54 + bend * size * 0.25, mastTopY + size * 0.48, leechX * 0.86, mastTopY + size * 0.48 + bend * size * 0.08);
+  ctx.bezierCurveTo(leechX * 0.38 + bend * size * 0.2, mastTopY + size * (0.45 + flutter * 0.04), leechX * 0.64 + bend * size * 0.3, mastTopY + size * 0.51, leechX * 0.86, mastTopY + size * (0.49 + bend * 0.09));
   ctx.stroke();
 }
 
@@ -2346,9 +2349,10 @@ function update(dt) {
   const cfg = getLevelConfig(state.stageIndex);
   state.stageTimer += dt;
   state.bossTimer += dt;
+  const enemyCount = state.enemies.length;
 
   const hasBossAlive = state.enemies.some((e) => e.kind === 'boss');
-  if (state.bossTimer >= cfg.bossEvery && !hasBossAlive && !state.bossSpawnedThisStage) {
+  if (state.bossTimer >= cfg.bossEvery && !hasBossAlive && !state.bossSpawnedThisStage && enemyCount < MAX_ENEMIES_ON_SCREEN) {
     state.bossTimer = 0;
     state.bossSpawnedThisStage = true;
     spawnBoss();
@@ -2417,8 +2421,8 @@ function update(dt) {
 
   updateShipValueTier();
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09 + state.shipValueTier * 0.06;
-  const spawnChance = (0.0069 * cfg.spawnRate + state.level * 0.00013 + state.difficultyTier * 0.0002 + state.difficultyFromSize * 0.00025 + state.shipValueTier * 0.00012) * dt * 60;
-  if (Math.random() < spawnChance) spawnEnemy();
+  const spawnChance = (0.0069 * cfg.spawnRate + state.level * 0.00013 + state.difficultyTier * 0.0002 + state.difficultyFromSize * 0.00025 + state.shipValueTier * 0.00012) * 0.5 * dt * 60;
+  if (state.enemies.length < MAX_ENEMIES_ON_SCREEN && Math.random() < spawnChance) spawnEnemy();
 
   for (const bullet of state.bullets) {
     bullet.x += bullet.vx * dt * 60;
