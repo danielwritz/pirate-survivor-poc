@@ -323,6 +323,7 @@ const state = {
   difficultyFromSize: 0,
   defenseTier: 0,
   shipValueTier: 0,
+  goldMagnetBonus: 0,
   anchorNoticeTimer: 0,
   anchorNoticeText: '',
   playerAim: null,
@@ -375,6 +376,8 @@ const player = {
   rudder: 0,
   sailOpen: true,
   anchorDropped: false,
+  collectorSkiffs: [],
+  salvageSkiffCount: 0,
   ram: false,
   ramDamage: 46,
   mass: 28,
@@ -494,6 +497,106 @@ function getEffectiveReloadTimes() {
     gun: player.gunReload * factor,
     cannon: player.cannonReload * (factor * 1.04)
   };
+}
+
+function getGoldMagnetRange() {
+  return getPlayerRanges().gun * (GOLD_MAGNET_PULL_FACTOR + state.goldMagnetBonus);
+}
+
+function getCollectorHomePosition(index, count) {
+  const fwd = { x: Math.cos(player.heading), y: Math.sin(player.heading) };
+  const right = { x: -fwd.y, y: fwd.x };
+  const laneOffset = (index - (count - 1) * 0.5) * 18;
+  const behind = -player.size * 1.25;
+  return {
+    x: player.x + fwd.x * behind + right.x * laneOffset,
+    y: player.y + fwd.y * behind + right.y * laneOffset
+  };
+}
+
+function ensureCollectorSkiffs() {
+  const wanted = clamp(player.salvageSkiffCount || 0, 0, 5);
+  if (!Array.isArray(player.collectorSkiffs)) player.collectorSkiffs = [];
+  while (player.collectorSkiffs.length < wanted) {
+    player.collectorSkiffs.push({
+      x: player.x,
+      y: player.y,
+      vx: 0,
+      vy: 0,
+      carrying: 0,
+      target: null
+    });
+  }
+  if (player.collectorSkiffs.length > wanted) {
+    player.collectorSkiffs.length = wanted;
+  }
+}
+
+function updateCollectorSkiffs(dt) {
+  ensureCollectorSkiffs();
+  if (!player.collectorSkiffs.length) return;
+
+  const magnetRange = getGoldMagnetRange();
+  const taken = new Set();
+  for (const skiff of player.collectorSkiffs) {
+    if (skiff.target && state.drops.includes(skiff.target)) taken.add(skiff.target);
+  }
+
+  for (let i = 0; i < player.collectorSkiffs.length; i++) {
+    const skiff = player.collectorSkiffs[i];
+    const home = getCollectorHomePosition(i, player.collectorSkiffs.length);
+
+    if (skiff.target && !state.drops.includes(skiff.target)) skiff.target = null;
+
+    if (!skiff.carrying && !skiff.target) {
+      let best = null;
+      let bestScore = Infinity;
+      for (const drop of state.drops) {
+        if (taken.has(drop)) continue;
+        const dPlayer = Math.hypot(drop.x - player.x, drop.y - player.y);
+        if (dPlayer < magnetRange * 0.9) continue;
+        const dSkiff = Math.hypot(drop.x - skiff.x, drop.y - skiff.y);
+        if (dSkiff < bestScore) {
+          best = drop;
+          bestScore = dSkiff;
+        }
+      }
+      if (best) {
+        skiff.target = best;
+        taken.add(best);
+      }
+    }
+
+    const target = skiff.carrying ? home : (skiff.target || home);
+    const dx = target.x - skiff.x;
+    const dy = target.y - skiff.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const avoid = getShoreAvoidanceVector({ x: skiff.x, y: skiff.y, size: 5 }, 120);
+    const moveX = dirX + avoid.x * 1.8;
+    const moveY = dirY + avoid.y * 1.8;
+    const moveLen = Math.hypot(moveX, moveY) || 1;
+    const speed = skiff.carrying ? 2.25 : 2.7;
+    skiff.vx = (moveX / moveLen) * speed;
+    skiff.vy = (moveY / moveLen) * speed;
+    skiff.x += skiff.vx * dt * 60;
+    skiff.y += skiff.vy * dt * 60;
+    skiff.x = clamp(skiff.x, 20, state.world.width - 20);
+    skiff.y = clamp(skiff.y, 20, state.world.height - 20);
+
+    if (!skiff.carrying && skiff.target && Math.hypot(skiff.target.x - skiff.x, skiff.target.y - skiff.y) < 12) {
+      skiff.carrying = skiff.target.v;
+      const idx = state.drops.indexOf(skiff.target);
+      if (idx >= 0) state.drops.splice(idx, 1);
+      skiff.target = null;
+    }
+
+    if (skiff.carrying && Math.hypot(home.x - skiff.x, home.y - skiff.y) < 16) {
+      addGold(skiff.carrying);
+      skiff.carrying = 0;
+    }
+  }
 }
 
 function getHullShape(entity) {
@@ -952,7 +1055,7 @@ function getPlayerAutoTarget() {
   };
 }
 
-const GOLD_MAGNET_PULL_FACTOR = 0.62;
+const GOLD_MAGNET_PULL_FACTOR = 0.95;
 const GOLD_MAGNET_BASE_SPEED = 2.1;
 let enemyIdSeed = 1;
 
@@ -1182,6 +1285,16 @@ const upgradePool = [
         clampPlayerSupportCrewToDeck();
       }
       addAbility('RepairCrew');
+    }
+  },
+  {
+    name: 'Salvage Skiffs',
+    desc: '+gold magnet range, +1 auto collector boat',
+    apply() {
+      state.goldMagnetBonus = Math.min(1.25, state.goldMagnetBonus + 0.22);
+      player.salvageSkiffCount = Math.min(5, (player.salvageSkiffCount || 0) + 1);
+      ensureCollectorSkiffs();
+      addAbility('SalvageSkiffs');
     }
   },
   {
@@ -2737,7 +2850,7 @@ function update(dt) {
     const dx = player.x - d.x;
     const dy = player.y - d.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const magnetRange = getPlayerRanges().gun * GOLD_MAGNET_PULL_FACTOR;
+    const magnetRange = getGoldMagnetRange();
     if (dist < magnetRange) {
       const pull = GOLD_MAGNET_BASE_SPEED + (1 - dist / magnetRange) * 5.4;
       d.x += (dx / dist) * pull * dt * 60;
@@ -2748,6 +2861,8 @@ function update(dt) {
       state.drops.splice(i, 1);
     }
   }
+
+  updateCollectorSkiffs(dt);
 
   for (const p of state.particles) {
     p.x += p.vx * dt * 60;
@@ -2934,6 +3049,33 @@ function drawEnemyShip(enemy) {
   ctx.restore();
 }
 
+function drawCollectorSkiffs() {
+  if (!player.collectorSkiffs || !player.collectorSkiffs.length) return;
+  for (const skiff of player.collectorSkiffs) {
+    const pos = toScreen(skiff.x, skiff.y);
+    const heading = Math.atan2(skiff.vy || 0, skiff.vx || 1);
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(heading);
+    ctx.scale(state.zoom, state.zoom);
+    ctx.fillStyle = '#9fb8c7';
+    ctx.beginPath();
+    ctx.moveTo(6, 0);
+    ctx.lineTo(-4.5, -3);
+    ctx.lineTo(-5.2, 0);
+    ctx.lineTo(-4.5, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f2d8a3';
+    ctx.fillRect(-1, -2.2, 1.7, 4.4);
+    if (skiff.carrying > 0) {
+      ctx.fillStyle = '#ffdd55';
+      ctx.fillRect(0.6, -1.5, 2.2, 3);
+    }
+    ctx.restore();
+  }
+}
+
 function drawWorld() {
   const camX = state.camera.x;
   const camY = state.camera.y;
@@ -3052,6 +3194,7 @@ function drawCloudOverlay() {
 function drawHud() {
   const weapon = getPlayerWeaponCounts();
   const effectiveReloads = getEffectiveReloadTimes();
+  const magnetRange = getGoldMagnetRange();
   const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
   const gunLoad = clamp(player.gunTimer / Math.max(0.001, effectiveReloads.gun), 0, 1);
   const cannonLoad = clamp(player.cannonTimer / Math.max(0.001, effectiveReloads.cannon), 0, 1);
@@ -3076,7 +3219,7 @@ function drawHud() {
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText(`${modeLabel} · ${stageLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Boss ${bossIn}s`, panelX + panelW / 2, panelY + 16);
-  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · ${player.anchorDropped ? 'Anchor ⚓ DOWN' : 'Anchor ⚓ UP'} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${weapon.gunTotal} · Cannons ${weapon.cannonTotal} · Gunners ${player.gunners}/${caps.maxGunners} · Rowers ${player.rowers} · Repair ${player.repairCrew} · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)}) · Crew Demand ${crewDemand.toFixed(1)} · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
+  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · ${player.anchorDropped ? 'Anchor ⚓ DOWN' : 'Anchor ⚓ UP'} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${weapon.gunTotal} · Cannons ${weapon.cannonTotal} · Gunners ${player.gunners}/${caps.maxGunners} · Rowers ${player.rowers} · Repair ${player.repairCrew} · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)}) · Crew Demand ${crewDemand.toFixed(1)} · Gold Range ${Math.round(magnetRange)} · Skiffs ${player.salvageSkiffCount || 0} · Pivot ${player.cannonPivot}°`, panelX + panelW / 2, panelY + 32);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#d8eefc';
@@ -3359,6 +3502,7 @@ function draw() {
   drawRangeIndicators();
 
   drawShip();
+  drawCollectorSkiffs();
 
   for (const b of state.bullets) {
     ctx.fillStyle = b.owner === 'enemy' ? (b.heavy ? '#f59b80' : '#f8baa5') : (b.heavy ? '#f1b05f' : '#ffd887');
