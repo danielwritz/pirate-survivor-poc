@@ -1070,8 +1070,8 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   const right = getRightVector();
   const forward = getForwardVector();
   const shape = getHullShape(player);
-  const guns = Math.max(2, player.gunners + player.cannons * 2);
-  const cannonSlots = Math.min(guns, player.cannons * 2);
+  const guns = Math.max(2, player.gunners + player.cannons);
+  const cannonSlots = Math.min(guns, player.cannons);
   const cannonMask = getDistributedCannonMask(guns, cannonSlots);
   const isCannon = (portIndex) => cannonMask[portIndex];
   const ranges = getPlayerRanges();
@@ -1823,8 +1823,8 @@ function drawShip() {
     ctx.fill();
   }
 
-  const broadsidePorts = Math.max(2, player.gunners + player.cannons * 2);
-  const cannonPorts = Math.min(broadsidePorts, player.cannons * 2);
+  const broadsidePorts = Math.max(2, player.gunners + player.cannons);
+  const cannonPorts = Math.min(broadsidePorts, player.cannons);
   const cannonMask = getDistributedCannonMask(broadsidePorts, cannonPorts);
   const aim = state.playerAim;
   const targetLocalAngle = aim ? angleDiff(aim.targetAngle, player.heading) : null;
