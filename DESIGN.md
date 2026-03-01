@@ -49,6 +49,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
 - Cannon Installments upgrade increases cannon capacity but adds size/mass and handling penalties (slower start, reduced turn authority)
+- Upgrade UI surfaces cap-aware messaging so cannon upgrades clearly indicate when hull capacity is maxed
 - Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time (hull/sail transformations)

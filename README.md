@@ -29,6 +29,7 @@ Canvas now runs fullscreen in the browser viewport.
 - New upgrade option: Cannon Installments (raises cannon capacity per side, adds hull weight/inertia)
 - Heavier ships now have stronger momentum penalties (slower start and weaker turning authority)
 - HUD shows armament as current/max (`Guns a/b`, `Cannons c/d per side`) plus ship tier
+- Upgrade cards now warn when `Cannons` is at hull cap and point to `Cannon Installments`
 - Gunners and cannons only fire when target is within effective range
 - Bosses now hold fire until a broadside solution is likely to connect; they prioritize the player but can opportunistically blast other ships in their arc
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)

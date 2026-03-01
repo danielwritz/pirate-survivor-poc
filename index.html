@@ -1154,6 +1154,29 @@ function offerMajorUpgrades() {
   };
 }
 
+function getUpgradeCardInfo(upgrade) {
+  let desc = upgrade.desc;
+  let blocked = false;
+
+  if (upgrade.name === 'Cannons') {
+    const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
+    if (player.cannons >= caps.maxCannonsPerSide) {
+      blocked = true;
+      desc = `At cap ${player.cannons}/${caps.maxCannonsPerSide} per side. Take Cannon Installments to expand.`;
+    } else {
+      desc = `${upgrade.desc} (${Math.min(caps.maxCannonsPerSide, player.cannons + 1)}/${caps.maxCannonsPerSide} per side)`;
+    }
+  }
+
+  if (upgrade.name === 'Cannon Installments') {
+    const current = getShipWeaponCaps(player, player.cannonCapacityBonus);
+    const next = getShipWeaponCaps(player, player.cannonCapacityBonus + 1);
+    desc = `${upgrade.desc} (${current.maxCannonsPerSide}→${next.maxCannonsPerSide} per side)`;
+  }
+
+  return { desc, blocked };
+}
+
 function addGold(amount) {
   state.gold += amount;
   state.xp += amount;
@@ -1939,14 +1962,19 @@ function draw() {
     ctx.fillText(state.upgradesOffered.title, titleX, 120);
     ctx.font = '18px system-ui';
     state.upgradesOffered.options.forEach((u, i) => {
+      const cardInfo = getUpgradeCardInfo(u);
       const y = 200 + i * 95;
-      ctx.fillStyle = state.upgradesOffered.major ? '#4a2f18' : '#163349';
+      if (state.upgradesOffered.major) {
+        ctx.fillStyle = '#4a2f18';
+      } else {
+        ctx.fillStyle = cardInfo.blocked ? '#3a2b2b' : '#163349';
+      }
       ctx.fillRect(cardX, y - 34, cardW, 62);
-      ctx.fillStyle = '#e8f5ff';
+      ctx.fillStyle = cardInfo.blocked ? '#ffd6ba' : '#e8f5ff';
       ctx.textAlign = 'left';
       ctx.fillText(`${i + 1}) ${u.name}`, cardX + 22, y - 7);
-      ctx.fillStyle = '#a8c6d9';
-      ctx.fillText(u.desc, cardX + 22, y + 18);
+      ctx.fillStyle = cardInfo.blocked ? '#f4b09a' : '#a8c6d9';
+      ctx.fillText(cardInfo.desc, cardX + 22, y + 18);
     });
     ctx.textAlign = 'left';
   }
