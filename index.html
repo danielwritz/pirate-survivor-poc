@@ -143,6 +143,7 @@ const player = {
   bowSharpness: 1,
   sternTaper: 1,
   impactTimer: 0,
+  damageSeed: 1337,
   slots: [],
   hullColor: '#5f4630',
   sailColor: '#f0f7ff',
@@ -709,7 +710,7 @@ function initWorld() {
     const isLong = roll >= 0.22 && roll < 0.5;
     const isLarge = roll > 0.84;
     const r = isSmall ? (28 + Math.random() * 36) : isLarge ? (96 + Math.random() * 82) : (50 + Math.random() * 76);
-    const island = { x, y, r, patches: [], buildings: [], defenseLevel: 0 };
+    const island = { x, y, r, patches: [], buildings: [], docks: [], defenseLevel: 0 };
 
     const patchCount = isSmall ? (5 + Math.floor(Math.random() * 4)) : isLarge ? (18 + Math.floor(Math.random() * 12)) : (9 + Math.floor(Math.random() * 10));
     const spineDir = Math.random() * Math.PI * 2;
@@ -773,6 +774,23 @@ function initWorld() {
         tower: false,
         fireTimer: Math.random()
       });
+    }
+
+    if (island.buildings.length) {
+      const dockCount = 1 + Math.floor(Math.random() * (isLarge ? 3 : 2));
+      for (let d = 0; d < dockCount; d++) {
+        const ang = Math.random() * Math.PI * 2;
+        const baseDist = island.r * (0.78 + Math.random() * 0.15);
+        const length = 18 + Math.random() * 34;
+        const width = 6 + Math.random() * 5;
+        island.docks.push({
+          x: island.x + Math.cos(ang) * baseDist,
+          y: island.y + Math.sin(ang) * baseDist,
+          rot: ang,
+          length,
+          width
+        });
+      }
     }
 
     state.islands.push(island);
@@ -896,6 +914,62 @@ function resolveIslandCollisions(entity, dt, playerCollision = false) {
         }
       }
     }
+  }
+}
+
+function getShoreAvoidanceVector(entity, influence = 180) {
+  let ax = 0;
+  let ay = 0;
+  for (const island of state.islands) {
+    const dx = entity.x - island.x;
+    const dy = entity.y - island.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const safe = island.r + influence + entity.size * 0.6;
+    if (d >= safe) continue;
+    const t = clamp((safe - d) / safe, 0, 1);
+    const push = t * t * 2.2;
+    ax += (dx / d) * push;
+    ay += (dy / d) * push;
+  }
+  return { x: ax, y: ay };
+}
+
+function applyShoreRepulsion(entity, dt, strength = 1) {
+  const avoid = getShoreAvoidanceVector(entity, 170);
+  if (!avoid.x && !avoid.y) return;
+  entity.x += avoid.x * dt * 60 * strength;
+  entity.y += avoid.y * dt * 60 * strength;
+  entity.speed *= 1 - clamp((Math.hypot(avoid.x, avoid.y) * 0.035), 0, 0.16);
+}
+
+function seeded01(seed) {
+  const s = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+function drawDeckDamageMarks(entity, hull, zoomScale = 1) {
+  const maxHp = Math.max(1, entity.maxHp || 1);
+  const hp = clamp(entity.hp || maxHp, 0, maxHp);
+  const damage = 1 - hp / maxHp;
+  if (damage <= 0.05) return;
+
+  const marks = Math.max(1, Math.floor(damage * 22));
+  const seedBase = entity.damageSeed || entity.id || 101;
+  const minX = hull.sternShoulderX * 0.88;
+  const maxX = hull.shoulderX * 0.92;
+
+  ctx.fillStyle = '#141516';
+  for (let i = 0; i < marks; i++) {
+    const r1 = seeded01(seedBase + i * 1.37);
+    const r2 = seeded01(seedBase + i * 4.21 + 19.1);
+    const r3 = seeded01(seedBase + i * 7.13 + 3.6);
+    const r4 = seeded01(seedBase + i * 9.71 + 44.2);
+    const x = minX + (maxX - minX) * r1;
+    const halfW = hullHalfWidthAt(hull, x) * (0.58 + r2 * 0.14);
+    const y = (r3 * 2 - 1) * halfW;
+    const size = (1.2 + r4 * 2.5) * zoomScale;
+    polygonPath(x, y, size, r1 > 0.5 ? 4 : 3, r2 * Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -1453,6 +1527,7 @@ function update(dt) {
 
   player.x += fwd.x * player.speed * pace + wx * dt * 6;
   player.y += fwd.y * player.speed * pace + wy * dt * 6;
+  applyShoreRepulsion(player, dt, 0.72);
 
   player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
@@ -1570,13 +1645,19 @@ function update(dt) {
     const turnLeftEnemy = turnDelta < -0.03;
     const turnRightEnemy = turnDelta > 0.03;
     const distToTarget = Math.hypot(target.x - enemy.x, target.y - enemy.y);
+    const shoreAvoid = getShoreAvoidanceVector(enemy, 200);
+    const steerTarget = {
+      x: target.x + shoreAvoid.x * 160,
+      y: target.y + shoreAvoid.y * 160
+    };
 
     simulateVessel(enemy, dt, {
       rowing: distToTarget > enemy.size * 2.4,
       brake: false,
-      turnLeft: turnLeftEnemy,
-      turnRight: turnRightEnemy
+      turnLeft: angleDiff(Math.atan2(steerTarget.y - enemy.y, steerTarget.x - enemy.x), enemy.heading) < -0.03,
+      turnRight: angleDiff(Math.atan2(steerTarget.y - enemy.y, steerTarget.x - enemy.x), enemy.heading) > 0.03
     });
+    applyShoreRepulsion(enemy, dt, 0.9);
     resolveIslandCollisions(enemy, dt, false);
 
     enemy.gunTimer += dt;
@@ -1823,6 +1904,8 @@ function drawShip() {
     ctx.fill();
   }
 
+  drawDeckDamageMarks(player, hull, 1);
+
   const broadsidePorts = Math.max(2, player.gunners + player.cannons);
   const cannonPorts = Math.min(broadsidePorts, player.cannons);
   const cannonMask = getDistributedCannonMask(broadsidePorts, cannonPorts);
@@ -1909,6 +1992,8 @@ function drawEnemyShip(enemy) {
     ctx.fill();
   }
 
+  drawDeckDamageMarks(enemy, hull, 0.95);
+
   const gunPorts = Math.max(1, enemy.gunners);
   for (let i = 0; i < gunPorts; i++) {
     const portMount = getHullSideMount(hull, i, gunPorts, -1, 0.12, 0.88);
@@ -1972,14 +2057,51 @@ function drawWorld() {
       ctx.fill();
     }
 
+    for (const dock of island.docks) {
+      const dp = toScreen(dock.x, dock.y);
+      ctx.save();
+      ctx.translate(dp.x, dp.y);
+      ctx.rotate(dock.rot);
+      const dl = dock.length * z;
+      const dw = dock.width * z;
+      ctx.fillStyle = '#7a5435';
+      ctx.fillRect(0, -dw * 0.5, dl, dw);
+      ctx.fillStyle = '#8c6542';
+      for (let p = 2; p < dl; p += Math.max(3, 4 * z)) {
+        ctx.fillRect(p, -dw * 0.5, 1 * z + 0.6, dw);
+      }
+      ctx.fillStyle = '#604229';
+      const postW = Math.max(1, 1.4 * z);
+      const postH = Math.max(2, 2.5 * z);
+      ctx.fillRect(1, -dw * 0.5 - postH, postW, postH);
+      ctx.fillRect(1, dw * 0.5, postW, postH);
+      ctx.fillRect(dl - 2, -dw * 0.5 - postH, postW, postH);
+      ctx.fillRect(dl - 2, dw * 0.5, postW, postH);
+      ctx.restore();
+    }
+
     for (const building of island.buildings) {
       const bp = toScreen(building.x, building.y);
       const bw = building.size * 0.9 * z;
       const bh = building.size * z;
+      ctx.fillStyle = 'rgba(12,16,22,0.22)';
+      ctx.fillRect(bp.x - bw * 0.46, bp.y + bh * 0.44, bw * 0.92, bh * 0.16);
+
       ctx.fillStyle = building.tower ? '#7e8f9e' : '#ba8a63';
       ctx.fillRect(bp.x - bw * 0.5, bp.y - bh * 0.55, bw, bh);
+
+      ctx.fillStyle = building.tower ? '#97a8b8' : '#cf9a70';
+      ctx.fillRect(bp.x - bw * 0.45, bp.y - bh * 0.49, bw * 0.9, bh * 0.12);
+
       ctx.fillStyle = building.tower ? '#4f5d69' : '#8d5f40';
       ctx.fillRect(bp.x - bw * 0.22, bp.y - bh * 0.9, bw * 0.44, bh * 0.34);
+
+      ctx.fillStyle = building.tower ? '#cfd9e4' : '#f2d2a8';
+      ctx.fillRect(bp.x - bw * 0.08, bp.y - bh * 0.14, bw * 0.16, bh * 0.18);
+      if (!building.tower) {
+        ctx.fillRect(bp.x - bw * 0.3, bp.y - bh * 0.08, bw * 0.12, bh * 0.12);
+        ctx.fillRect(bp.x + bw * 0.18, bp.y - bh * 0.08, bw * 0.12, bh * 0.12);
+      }
     }
   }
 }

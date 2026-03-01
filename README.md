@@ -52,6 +52,10 @@ Canvas now runs fullscreen in the browser viewport.
 - Island defenses now only fire inside player-cannon-like engagement range (no map-wide sniping)
 - Boats cannot pass through islands; island impacts cause collision damage
 - Enemy ships can now collide with each other and with the player, producing contact slowdowns and impact damage
+- Player and enemy helms now apply shoreline-avoidance steering pressure before impact to reduce accidental beaching
+- Player and enemy decks now show accumulating dark geometric damage scars as hull health drops
+- Village islands now include decorative wooden docks that improve readability without blocking ship movement
+- Island settlements have richer geometric structure art (shadows, roof bands, and window details)
 - Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look
 - Procedural island generation now produces wider variety (small, long, bulky, and larger composite islands)
 - Visible ship growth and ability slots

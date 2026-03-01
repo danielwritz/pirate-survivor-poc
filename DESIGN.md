@@ -18,6 +18,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 ## POC Mechanics
 - Heading-based steering (A/D) with momentum
 - Ship contact physics includes vessel-vessel separation, impulse-like speed loss, and heading disturbance on collision
+- Near-shore steering includes island avoidance vectors so ships tend to steer away from landmasses before impact
 - Row propulsion on demand (W)
 - Sail toggle state (Space) and braking/anchor drag (S)
 - Auto-shoot combat
@@ -57,6 +58,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Ability/upgrade choices with up to 4 active slots
 - Visible ship growth over time (hull/sail transformations)
 - Crew occupancy is center-deck distributed with a deck-area-based capacity ceiling that scales with ship growth
+- Deck damage readability: black geometric scorch marks scale with damage for both player and enemy ships
 - Floating gold drops remain in-world until collected
 - Gold drops render with spinning coin effect
 - Large traversable sea map with camera follow
@@ -66,6 +68,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Cannon-only building destruction with fountain-like gold bursts
 - Passive islands in early game, defensive tower cannons in later tiers
 - Tower batteries are range-gated to player-like cannon distance so coastal defenses feel local, not global
+- Village islands include decorative dock structures and richer building shading for stronger coastal-settlement readability
 - Translucent cloud pass-over layer
 - Periodic boss ship arrivals that gate major progression spikes
 - Boss defeat increases global difficulty tier
