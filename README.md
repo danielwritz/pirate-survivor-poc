@@ -2,6 +2,15 @@
 
 Minimal browser prototype for the pirate-themed survivor game concept.
 
+## Latest Session Updates (2026-03-01)
+- Added docked skiff behavior: skiffs stay snapped to ship sides until dispatched for distant gold, then snap back on return.
+- Refined shipwright hull editing model to explicit `bow triangle + center body + stern triangle` with symmetric drag controls.
+- Added a dedicated stern-width scalar and handle for rectangular or tapered rear profiles.
+- Split shipyard interactions into separate `Shape/Size` and `Weapons` modes so weapon slots no longer block hull shaping.
+- Added projectile max-range handling for player, enemy, and tower shots.
+- Added water splash VFX (blue/white circular particles) when shots expire at range.
+- Increased default gameplay camera zoom so the game starts more zoomed in.
+
 ## Run
 Open `index.html` directly in a browser.
 

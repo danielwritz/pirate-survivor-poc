@@ -77,6 +77,7 @@ function getShipyardHandleScreenPoints() {
   const s = 44;
   const bodyHalfLen = sy.editDesign.bodyHalfLenMul * s;
   const bodyHalfBeam = sy.editDesign.bodyHalfBeamMul * s;
+  const sternHalfBeam = bodyHalfBeam * clamp(sy.editDesign.sternBeamMul ?? DEFAULT_HULL_DESIGN.sternBeamMul, 0.34, 1.08);
   const bowTip = sy.editDesign.bowTipMul * s;
   const sternTip = sy.editDesign.sternTipMul * s;
   return {
@@ -86,7 +87,8 @@ function getShipyardHandleScreenPoints() {
       bow: { x: cx + (bodyHalfLen + bowTip) * scale, y: cy },
       stern: { x: cx - (bodyHalfLen + sternTip) * scale, y: cy },
       len: { x: cx + bodyHalfLen * scale, y: cy },
-      beam: { x: cx, y: cy - bodyHalfBeam * scale }
+      beam: { x: cx, y: cy - bodyHalfBeam * scale },
+      sternBeam: { x: cx - bodyHalfLen * scale, y: cy - sternHalfBeam * scale }
     }
   };
 }
@@ -113,16 +115,17 @@ function updateShipyardDrag(px, py) {
   const d = sy.editDesign;
 
   if (sy.dragHandle === 'bow') {
-    const minX = d.bodyHalfLenMul * s + 10;
-    d.bowTipMul = clamp((localX - minX) / s + 0.22, 0.2, 1.25);
+    d.bowTipMul = clamp(localX / s - d.bodyHalfLenMul, 0.2, 1.25);
   } else if (sy.dragHandle === 'stern') {
-    const sternX = -localX;
-    const minX = d.bodyHalfLenMul * s + 8;
-    d.sternTipMul = clamp((sternX - minX) / s + 0.18, 0.12, 1.15);
+    d.sternTipMul = clamp((-localX / s) - d.bodyHalfLenMul, 0.12, 1.15);
   } else if (sy.dragHandle === 'len') {
     d.bodyHalfLenMul = clamp(Math.abs(localX) / s, 0.36, 0.95);
   } else if (sy.dragHandle === 'beam') {
     d.bodyHalfBeamMul = clamp(Math.abs(localY) / s, 0.38, 1.12);
+  } else if (sy.dragHandle === 'sternBeam') {
+    const sternHalfBeam = Math.abs(localY) / s;
+    const bodyHalfBeam = Math.max(0.01, d.bodyHalfBeamMul);
+    d.sternBeamMul = clamp(sternHalfBeam / bodyHalfBeam, 0.34, 1.08);
   }
 
   sy.pendingCost = sy.freeEdit ? 0 : getShipDesignCost(d, sy.baseDesign);
@@ -188,11 +191,27 @@ canvas.addEventListener('pointerdown', (e) => {
   const p = pointerOnCanvas(e);
   const sy = state.shipyard;
 
-  for (const [name, rect] of Object.entries(sy.brushRects || {})) {
-    if (isPointInRect(p.x, p.y, rect)) {
-      sy.weaponBrush = name;
-      sy.message = '';
-      return;
+  const modeRects = sy.modeRects || {};
+  if (isPointInRect(p.x, p.y, modeRects.shape)) {
+    sy.editMode = 'shape';
+    sy.dragHandle = null;
+    sy.message = '';
+    return;
+  }
+  if (isPointInRect(p.x, p.y, modeRects.weapons)) {
+    sy.editMode = 'weapons';
+    sy.dragHandle = null;
+    sy.message = '';
+    return;
+  }
+
+  if (sy.editMode === 'weapons') {
+    for (const [name, rect] of Object.entries(sy.brushRects || {})) {
+      if (isPointInRect(p.x, p.y, rect)) {
+        sy.weaponBrush = name;
+        sy.message = '';
+        return;
+      }
     }
   }
 
@@ -206,10 +225,12 @@ canvas.addEventListener('pointerdown', (e) => {
   if (isPointInRect(p.x, p.y, crewRects.repairAdd)) return adjustCrewRole('repairCrew', 1);
   if (isPointInRect(p.x, p.y, crewRects.repairSub)) return adjustCrewRole('repairCrew', -1);
 
-  const slot = pickShipyardWeaponSlot(p.x, p.y);
-  if (slot) {
-    applyWeaponPlacement(slot.side, slot.index, sy.weaponBrush || 'gun');
-    return;
+  if (sy.editMode === 'weapons') {
+    const slot = pickShipyardWeaponSlot(p.x, p.y);
+    if (slot) {
+      applyWeaponPlacement(slot.side, slot.index, sy.weaponBrush || 'gun');
+      return;
+    }
   }
 
   if (sy.launchRect && p.x >= sy.launchRect.x && p.x <= sy.launchRect.x + sy.launchRect.w && p.y >= sy.launchRect.y && p.y <= sy.launchRect.y + sy.launchRect.h) {
@@ -223,10 +244,12 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
-  const handle = pickShipyardHandle(p.x, p.y);
-  if (handle) {
-    sy.dragHandle = handle;
-    sy.dragStart = p;
+  if (sy.editMode === 'shape') {
+    const handle = pickShipyardHandle(p.x, p.y);
+    if (handle) {
+      sy.dragHandle = handle;
+      sy.dragStart = p;
+    }
   }
 });
 
@@ -318,7 +341,7 @@ const state = {
   wind: { x: 0.35, y: -0.12, timer: 0 },
   world: { width: 3600, height: 2600 },
   camera: { x: 0, y: 0 },
-  zoom: 1,
+  zoom: 1.28,
   rowEffort: 0,
   difficultyFromSize: 0,
   defenseTier: 0,
@@ -335,6 +358,7 @@ const state = {
   shipyard: {
     active: true,
     freeEdit: true,
+    editMode: 'shape',
     pendingCost: 0,
     dragHandle: null,
     dragStart: null,
@@ -343,6 +367,7 @@ const state = {
     previewScale: 3.2,
     launchRect: null,
     resetRect: null,
+    modeRects: {},
     weaponBrush: 'gun',
     slotRects: [],
     brushRects: {},
@@ -401,6 +426,7 @@ player.weaponLayout = { port: [], starboard: [] };
 const DEFAULT_HULL_DESIGN = {
   bodyHalfLenMul: 0.58,
   bodyHalfBeamMul: 0.72,
+  sternBeamMul: 1,
   bowTipMul: 0.55,
   sternTipMul: 0.4
 };
@@ -517,26 +543,37 @@ function isPointOnIsland(x, y) {
 function getCollectorHomePosition(index, count) {
   const fwd = { x: Math.cos(player.heading), y: Math.sin(player.heading) };
   const right = { x: -fwd.y, y: fwd.x };
-  const laneOffset = (index - (count - 1) * 0.5) * 18;
-  const behind = -player.size * 1.25;
+  const lane = Math.floor(index / 2);
+  const side = index % 2 === 0 ? -1 : 1;
+  const foreAft = (lane - Math.floor((count - 1) / 4)) * 10;
+  const sideOffset = player.size * 0.98 + 8 + lane * 0.4;
   return {
-    x: player.x + fwd.x * behind + right.x * laneOffset,
-    y: player.y + fwd.y * behind + right.y * laneOffset
+    x: player.x + fwd.x * foreAft + right.x * (side * sideOffset),
+    y: player.y + fwd.y * foreAft + right.y * (side * sideOffset)
   };
 }
 
+function getDesiredCollectorSkiffCount() {
+  const crewBased = 1 + Math.floor(Math.max(0, (player.crew || 0) - 2) / 4);
+  const bonus = player.salvageSkiffCount || 0;
+  return clamp(crewBased + bonus, 1, 8);
+}
+
 function ensureCollectorSkiffs() {
-  const wanted = clamp(player.salvageSkiffCount || 0, 0, 5);
+  const wanted = getDesiredCollectorSkiffCount();
   if (!Array.isArray(player.collectorSkiffs)) player.collectorSkiffs = [];
   while (player.collectorSkiffs.length < wanted) {
+    const idx = player.collectorSkiffs.length;
+    const dock = getCollectorHomePosition(idx, wanted);
     player.collectorSkiffs.push({
-      x: player.x,
-      y: player.y,
+      x: dock.x,
+      y: dock.y,
       vx: 0,
       vy: 0,
       carrying: 0,
       target: null,
-      runner: null
+      runner: null,
+      docked: true
     });
   }
   if (player.collectorSkiffs.length > wanted) {
@@ -556,7 +593,15 @@ function updateCollectorSkiffs(dt) {
 
   for (let i = 0; i < player.collectorSkiffs.length; i++) {
     const skiff = player.collectorSkiffs[i];
-    const home = getCollectorHomePosition(i, player.collectorSkiffs.length);
+    const dock = getCollectorHomePosition(i, player.collectorSkiffs.length);
+    if (skiff.docked == null) skiff.docked = true;
+
+    if (skiff.docked && !skiff.target && !skiff.carrying && !skiff.runner) {
+      skiff.x = dock.x;
+      skiff.y = dock.y;
+      skiff.vx = 0;
+      skiff.vy = 0;
+    }
 
     if (skiff.runner) {
       const runner = skiff.runner;
@@ -599,12 +644,15 @@ function updateCollectorSkiffs(dt) {
         }
       }
       if (best) {
+        skiff.docked = false;
         skiff.target = best;
         taken.add(best);
       }
     }
 
-    const target = skiff.carrying ? home : (skiff.target || home);
+    if (skiff.docked) continue;
+
+    const target = skiff.carrying ? dock : (skiff.target || dock);
     const dx = target.x - skiff.x;
     const dy = target.y - skiff.y;
     const dist = Math.hypot(dx, dy) || 1;
@@ -639,9 +687,16 @@ function updateCollectorSkiffs(dt) {
       skiff.target = null;
     }
 
-    if (skiff.carrying && Math.hypot(home.x - skiff.x, home.y - skiff.y) < 16) {
+    if (skiff.carrying && Math.hypot(dock.x - skiff.x, dock.y - skiff.y) < 16) {
+      skiff.x = dock.x;
+      skiff.y = dock.y;
       addGold(skiff.carrying);
       skiff.carrying = 0;
+      skiff.target = null;
+      skiff.runner = null;
+      skiff.vx = 0;
+      skiff.vy = 0;
+      skiff.docked = true;
     }
   }
 }
@@ -652,6 +707,8 @@ function getHullShape(entity) {
     const design = entity.hullDesign;
     const bodyHalfLen = size * clamp(design.bodyHalfLenMul, 0.36, 0.95);
     const bodyHalfBeam = size * clamp(design.bodyHalfBeamMul, 0.38, 1.12);
+    const sternBeamMul = clamp(design.sternBeamMul ?? 1, 0.34, 1.08);
+    const sternHalfBeam = bodyHalfBeam * sternBeamMul;
     const bowTip = size * clamp(design.bowTipMul, 0.2, 1.25);
     const sternTip = size * clamp(design.sternTipMul, 0.12, 1.15);
     const beam = Math.max(2.2, bodyHalfBeam / 0.62);
@@ -666,7 +723,9 @@ function getHullShape(entity) {
       stern: 1,
       bowX,
       shoulderX,
+      shoulderHalfBeam: bodyHalfBeam,
       sternShoulderX,
+      sternHalfBeam,
       sternX
     };
   }
@@ -684,24 +743,30 @@ function getHullShape(entity) {
     stern,
     bowX: len * (1.05 + bow * 0.14),
     shoulderX: len * 0.34,
+    shoulderHalfBeam: beam * 0.62,
     sternShoulderX: -len * (0.7 + stern * 0.2),
+    sternHalfBeam: beam * 0.46,
     sternX: -len * (0.95 + stern * 0.24)
   };
 }
 
 function getShipDesignCost(design, baseDesign) {
   if (!design || !baseDesign) return 0;
+  const sternBeamA = design.sternBeamMul ?? 1;
+  const sternBeamB = baseDesign.sternBeamMul ?? 1;
   const body = Math.abs(design.bodyHalfLenMul - baseDesign.bodyHalfLenMul) * 160;
   const beam = Math.abs(design.bodyHalfBeamMul - baseDesign.bodyHalfBeamMul) * 180;
+  const sternBeam = Math.abs(sternBeamA - sternBeamB) * 170;
   const bow = Math.abs(design.bowTipMul - baseDesign.bowTipMul) * 140;
   const stern = Math.abs(design.sternTipMul - baseDesign.sternTipMul) * 120;
-  return Math.round(body + beam + bow + stern);
+  return Math.round(body + beam + sternBeam + bow + stern);
 }
 
 function getShipValueScore() {
   const d = player.hullDesign || DEFAULT_HULL_DESIGN;
+  const sternBeamMul = d.sternBeamMul ?? 1;
   const weapon = getPlayerWeaponCounts();
-  const hullValue = d.bodyHalfLenMul * 140 + d.bodyHalfBeamMul * 160 + d.bowTipMul * 120 + d.sternTipMul * 90;
+  const hullValue = d.bodyHalfLenMul * 140 + d.bodyHalfBeamMul * 160 + sternBeamMul * 120 + d.bowTipMul * 120 + d.sternTipMul * 90;
   const crewValue = player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14;
   const weaponValue = weapon.cannonTotal * 28 + weapon.gunTotal * 9 + player.bulletDamage * 3;
   const sizeValue = (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30;
@@ -717,6 +782,7 @@ function setShipyardMode(freeEdit) {
   state.mode = 'shipyard';
   state.shipyard.active = true;
   state.shipyard.freeEdit = !!freeEdit;
+  state.shipyard.editMode = 'shape';
   state.shipyard.baseDesign = { ...(player.hullDesign || DEFAULT_HULL_DESIGN) };
   state.shipyard.editDesign = { ...state.shipyard.baseDesign };
   state.shipyard.pendingCost = 0;
@@ -857,7 +923,7 @@ function getHullDims(entity) {
 function getDeckCrewCapacity(entity) {
   const shape = getHullShape(entity);
   const deckLength = shape.shoulderX - shape.sternShoulderX;
-  const deckBeam = ((shape.beam * 0.62) + (shape.beam * 0.46)) * 0.5 * 2;
+  const deckBeam = shape.shoulderHalfBeam + shape.sternHalfBeam;
   const area = deckLength * deckBeam;
   return clamp(Math.floor(area / 56) + 2, 2, 48);
 }
@@ -934,16 +1000,16 @@ function damagePlayer(amount) {
 function getHullUpperEdge(shape) {
   return [
     { x: shape.sternX, y: 0 },
-    { x: shape.sternShoulderX, y: -shape.beam * 0.46 },
-    { x: shape.shoulderX, y: -shape.beam * 0.62 },
+    { x: shape.sternShoulderX, y: -shape.sternHalfBeam },
+    { x: shape.shoulderX, y: -shape.shoulderHalfBeam },
     { x: shape.bowX, y: 0 }
   ];
 }
 
 function hullHalfWidthAt(shape, x) {
   const topA = { x: shape.bowX, y: 0 };
-  const topB = { x: shape.shoulderX, y: -shape.beam * 0.62 };
-  const topC = { x: shape.sternShoulderX, y: -shape.beam * 0.46 };
+  const topB = { x: shape.shoulderX, y: -shape.shoulderHalfBeam };
+  const topC = { x: shape.sternShoulderX, y: -shape.sternHalfBeam };
   const topD = { x: shape.sternX, y: 0 };
 
   const px = clamp(x, shape.sternX, shape.bowX);
@@ -1153,6 +1219,33 @@ function spawnDeckBurst(x, y, dirX, dirY, heavy = false) {
   state.particles.push(...particles);
 }
 
+function spawnWaterSplash(x, y, heavy = false) {
+  const count = heavy ? 12 : 7;
+  const colors = heavy
+    ? ['#c7ebff', '#9fd5f4', '#72b6df', '#ffffff']
+    : ['#d6f0ff', '#9ed0ee', '#7fb9df', '#f4fcff'];
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = (0.35 + Math.random() * (heavy ? 1.45 : 1.05)) * 0.8;
+    const life = 0.18 + Math.random() * (heavy ? 0.32 : 0.24);
+    state.particles.push({
+      x,
+      y,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: 1.2 + Math.random() * (heavy ? 3.2 : 2.3),
+      rot: 0,
+      spin: 0,
+      life,
+      maxLife: life,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      sides: 8,
+      drift: -0.05 - Math.random() * 0.1,
+      circle: true
+    });
+  }
+}
+
 function enemyThreatTier(kind, stageIndex, difficultyTier) {
   if (kind === 'boss') return 5;
   const raw = 1 + Math.floor((stageIndex * 0.65 + difficultyTier) * 0.5);
@@ -1339,7 +1432,7 @@ const upgradePool = [
     desc: '+gold magnet range, +1 auto collector boat',
     apply() {
       state.goldMagnetBonus = Math.min(1.25, state.goldMagnetBonus + 0.22);
-      player.salvageSkiffCount = Math.min(5, (player.salvageSkiffCount || 0) + 1);
+      player.salvageSkiffCount = Math.min(4, (player.salvageSkiffCount || 0) + 1);
       ensureCollectorSkiffs();
       addAbility('SalvageSkiffs');
     }
@@ -1561,7 +1654,20 @@ function initWorld() {
       const fx = patch.x + Math.cos(ang) * off;
       const fy = patch.y + Math.sin(ang) * off;
       if (Math.random() < 0.55) {
-        island.foliage.push({ kind: 'tree', x: fx, y: fy, trunk: 4 + Math.random() * 4, crown: 5 + Math.random() * 6 });
+        const crown = 5 + Math.random() * 6;
+        const clusterCount = 5 + Math.floor(Math.random() * 4);
+        const canopy = [];
+        for (let c = 0; c < clusterCount; c++) {
+          const cAng = Math.random() * Math.PI * 2;
+          const cDist = crown * (0.08 + Math.random() * 0.62);
+          canopy.push({
+            ox: Math.cos(cAng) * cDist,
+            oy: Math.sin(cAng) * cDist * 0.9,
+            r: crown * (0.38 + Math.random() * 0.62),
+            tone: Math.floor(Math.random() * 4)
+          });
+        }
+        island.foliage.push({ kind: 'tree', x: fx, y: fy, trunk: 4 + Math.random() * 4, crown, canopy });
       } else {
         island.foliage.push({ kind: 'shrub', x: fx, y: fy, width: 6 + Math.random() * 10, height: 4 + Math.random() * 6 });
       }
@@ -2086,6 +2192,7 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
     const dir = cannonPort ? (mountWorldAngle + cannonAdjust + spread) : (mountWorldAngle + gunAdjust + spread);
     const speed = player.bulletSpeed + (cannonPort ? 0.45 : 0.2);
     const dmg = player.bulletDamage + (cannonPort ? 4 : 0);
+    const maxRange = (cannonPort ? ranges.cannon : ranges.gun) * (0.98 + Math.random() * 0.06);
 
     state.bullets.push({
       x: spawnX,
@@ -2095,7 +2202,9 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
       dmg,
       heavy: cannonPort,
       owner: 'player',
-      sourceSize: player.size
+      sourceSize: player.size,
+      maxRange,
+      travel: 0
     });
     spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), cannonPort);
     if (cannonPort) {
@@ -2161,7 +2270,9 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
         owner: 'enemy',
         shooterId: enemy.id,
         sourceKind: enemy.kind,
-        sourceSize: enemy.size
+        sourceSize: enemy.size,
+        maxRange: enemy.gunRange * (0.98 + Math.random() * 0.06),
+        travel: 0
       });
       spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), false);
       firedGun = true;
@@ -2192,7 +2303,9 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
         owner: 'enemy',
         shooterId: enemy.id,
         sourceKind: enemy.kind,
-        sourceSize: enemy.size
+        sourceSize: enemy.size,
+        maxRange: enemy.cannonRange * (0.98 + Math.random() * 0.06),
+        travel: 0
       });
       spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), true);
       firedCannon = true;
@@ -2392,16 +2505,16 @@ function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
     bowSharpness: profile.bowSharpness,
     sternTaper: profile.sternTaper
   });
-  const { len, beam, bowX, shoulderX, sternShoulderX, sternX } = shape;
+  const { len, beam, bowX, shoulderX, sternShoulderX, sternX, shoulderHalfBeam, sternHalfBeam } = shape;
 
   const pathHull = () => {
     ctx.beginPath();
     ctx.moveTo(bowX, 0);
-    ctx.lineTo(shoulderX, -beam * 0.62);
-    ctx.lineTo(sternShoulderX, -beam * 0.46);
+    ctx.lineTo(shoulderX, -shoulderHalfBeam);
+    ctx.lineTo(sternShoulderX, -sternHalfBeam);
     ctx.lineTo(sternX, 0);
-    ctx.lineTo(sternShoulderX, beam * 0.46);
-    ctx.lineTo(shoulderX, beam * 0.62);
+    ctx.lineTo(sternShoulderX, sternHalfBeam);
+    ctx.lineTo(shoulderX, shoulderHalfBeam);
     ctx.closePath();
   };
 
@@ -2614,7 +2727,7 @@ function update(dt) {
   player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
   resolveIslandCollisions(player, dt, true);
 
-  const zoomTarget = clamp(1 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.6);
+  const zoomTarget = clamp(1.28 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.6);
   state.zoom += (zoomTarget - state.zoom) * 0.09;
   state.difficultyFromSize = Math.floor(Math.max(0, (16 - state.zoom * 16) * 0.9));
   ensureIslandDefenses();
@@ -2631,11 +2744,24 @@ function update(dt) {
   const spawnChance = (0.0069 * cfg.spawnRate + state.level * 0.00013 + state.difficultyTier * 0.0002 + state.difficultyFromSize * 0.00025 + state.shipValueTier * 0.00012) * 0.5 * dt * 60;
   if (state.enemies.length < MAX_ENEMIES_ON_SCREEN && Math.random() < spawnChance) spawnEnemy();
 
-  for (const bullet of state.bullets) {
-    bullet.x += bullet.vx * dt * 60;
-    bullet.y += bullet.vy * dt * 60;
+  for (let i = state.bullets.length - 1; i >= 0; i--) {
+    const bullet = state.bullets[i];
+    const stepX = bullet.vx * dt * 60;
+    const stepY = bullet.vy * dt * 60;
+    bullet.x += stepX;
+    bullet.y += stepY;
+    const stepDist = Math.hypot(stepX, stepY);
+    bullet.travel = (bullet.travel || 0) + stepDist;
+    const maxRange = bullet.maxRange || (bullet.heavy ? 320 : 230);
+    if (bullet.travel >= maxRange) {
+      spawnWaterSplash(bullet.x, bullet.y, !!bullet.heavy);
+      state.bullets.splice(i, 1);
+      continue;
+    }
+    if (bullet.x < -30 || bullet.x > state.world.width + 30 || bullet.y < -30 || bullet.y > state.world.height + 30) {
+      state.bullets.splice(i, 1);
+    }
   }
-  state.bullets = state.bullets.filter(b => b.x > -30 && b.x < state.world.width + 30 && b.y > -30 && b.y < state.world.height + 30);
 
   function getEnemySteerTarget(enemy) {
     if (enemy.kind === 'boss' || enemy.kind === 'rammer') {
@@ -2859,7 +2985,9 @@ function update(dt) {
           dmg: 5 + island.defenseLevel * 1.5,
           heavy: true,
           owner: 'enemy',
-          sourceSize: Math.max(14, tower.size * 0.9)
+          sourceSize: Math.max(14, tower.size * 0.9),
+          maxRange: batteryRange * 1.02,
+          travel: 0
         });
       }
     }
@@ -3112,26 +3240,34 @@ function drawEnemyShip(enemy) {
 
 function drawCollectorSkiffs() {
   if (!player.collectorSkiffs || !player.collectorSkiffs.length) return;
-  for (const skiff of player.collectorSkiffs) {
+  for (let i = 0; i < player.collectorSkiffs.length; i++) {
+    const skiff = player.collectorSkiffs[i];
     const pos = toScreen(skiff.x, skiff.y);
     const heading = Math.atan2(skiff.vy || 0, skiff.vx || 1);
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.rotate(heading);
     ctx.scale(state.zoom, state.zoom);
-    ctx.fillStyle = '#9fb8c7';
-    ctx.beginPath();
-    ctx.moveTo(6, 0);
-    ctx.lineTo(-4.5, -3);
-    ctx.lineTo(-5.2, 0);
-    ctx.lineTo(-4.5, 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#f2d8a3';
-    ctx.fillRect(-1, -2.2, 1.7, 4.4);
+    ctx.fillStyle = '#8a623e';
+    ctx.fillRect(-5.8, -3.1, 11.6, 6.2);
+    ctx.fillStyle = '#a4744b';
+    ctx.fillRect(-5.2, -2.6, 10.4, 1.4);
+    ctx.fillStyle = '#201d1a';
+    if (i % 2 === 0) {
+      ctx.beginPath();
+      ctx.arc(-0.3, 0, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-1.8, 1.2);
+      ctx.lineTo(1.2, 1.2);
+      ctx.lineTo(-0.3, -1.5);
+      ctx.closePath();
+      ctx.fill();
+    }
     if (skiff.carrying > 0) {
       ctx.fillStyle = '#ffdd55';
-      ctx.fillRect(0.6, -1.5, 2.2, 3);
+      ctx.fillRect(1.2, -1.4, 2.5, 2.8);
     }
     ctx.restore();
 
@@ -3230,14 +3366,6 @@ function drawWorld() {
         const trunkH = plant.trunk * z;
         ctx.fillStyle = '#6b4c33';
         ctx.fillRect(fp.x - trunkW * 0.5, fp.y - trunkH * 0.2, trunkW, trunkH);
-        ctx.fillStyle = '#5f9147';
-        ctx.beginPath();
-        ctx.arc(fp.x, fp.y - trunkH * 0.55, plant.crown * z, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#6ea553';
-        ctx.beginPath();
-        ctx.arc(fp.x + plant.crown * z * 0.24, fp.y - trunkH * 0.66, plant.crown * z * 0.65, 0, Math.PI * 2);
-        ctx.fill();
       } else {
         ctx.fillStyle = '#5f8d4a';
         ctx.fillRect(fp.x - plant.width * z * 0.5, fp.y - plant.height * z * 0.4, plant.width * z, plant.height * z);
@@ -3279,6 +3407,30 @@ function drawWorld() {
       if (!building.tower) {
         ctx.fillRect(bp.x - bw * 0.3, bp.y - bh * 0.08, bw * 0.12, bh * 0.12);
         ctx.fillRect(bp.x + bw * 0.18, bp.y - bh * 0.08, bw * 0.12, bh * 0.12);
+      }
+    }
+
+    for (const plant of island.foliage || []) {
+      if (plant.kind !== 'tree') continue;
+      const fp = toScreen(plant.x, plant.y);
+      const trunkH = plant.trunk * z;
+      const canopyBaseX = fp.x;
+      const canopyBaseY = fp.y - trunkH * 0.58;
+      const canopy = plant.canopy && plant.canopy.length
+        ? plant.canopy
+        : [{ ox: 0, oy: 0, r: plant.crown, tone: 1 }];
+
+      for (const blob of canopy) {
+        const px = canopyBaseX + blob.ox * z;
+        const py = canopyBaseY + blob.oy * z;
+        const radius = Math.max(1.2, blob.r * z);
+        if (blob.tone === 0) ctx.fillStyle = '#4d7f3e';
+        else if (blob.tone === 1) ctx.fillStyle = '#5d9149';
+        else if (blob.tone === 2) ctx.fillStyle = '#6ba551';
+        else ctx.fillStyle = '#7bb35d';
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -3420,6 +3572,26 @@ function drawShipyardScreen() {
   ctx.textAlign = 'center';
   ctx.fillText(title, panelX + panelW * 0.5, panelY + 42);
 
+  const modeY = panelY + 56;
+  const modeW = 124;
+  const modeH = 34;
+  const modeGap = 10;
+  const modeStartX = rightX + 14;
+  sy.modeRects = {
+    shape: { x: modeStartX, y: modeY, w: modeW, h: modeH },
+    weapons: { x: modeStartX + modeW + modeGap, y: modeY, w: modeW, h: modeH }
+  };
+  for (const key of ['shape', 'weapons']) {
+    const rect = sy.modeRects[key];
+    const active = sy.editMode === key;
+    ctx.fillStyle = active ? '#2f7f5d' : '#2a4a60';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.fillStyle = '#e8f5ff';
+    ctx.font = '15px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(key === 'shape' ? 'Shape/Size' : 'Weapons', rect.x + rect.w * 0.5, rect.y + 22);
+  }
+
   const design = sy.editDesign;
   const previewSize = 44;
   const previewScale = clamp(Math.min(leftW, panelH) / 230, 2.2, 4.1);
@@ -3454,47 +3626,53 @@ function drawShipyardScreen() {
   drawDeckCrewSpots(previewHull, previewCrew, previewDeckCap, committedCrew, 1);
   ctx.restore();
 
-  sy.slotRects = getShipyardWeaponSlotScreenPoints();
-  for (const slot of sy.slotRects) {
-    const color = slot.type === 'cannon' ? '#d8a167' : slot.type === 'gun' ? '#9fcfe6' : '#33566f';
-    const ring = slot.type === 'empty' ? '#678aa1' : '#ecf7ff';
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = ring;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
-    ctx.stroke();
-    if (slot.type === 'gun') {
-      ctx.fillStyle = '#f2fbff';
-      ctx.fillRect(slot.x - 5, slot.y - 1, 10, 2);
+  if (sy.editMode === 'weapons') {
+    sy.slotRects = getShipyardWeaponSlotScreenPoints();
+    for (const slot of sy.slotRects) {
+      const color = slot.type === 'cannon' ? '#d8a167' : slot.type === 'gun' ? '#9fcfe6' : '#33566f';
+      const ring = slot.type === 'empty' ? '#678aa1' : '#ecf7ff';
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = ring;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(slot.x, slot.y, slot.r, 0, Math.PI * 2);
+      ctx.stroke();
+      if (slot.type === 'gun') {
+        ctx.fillStyle = '#f2fbff';
+        ctx.fillRect(slot.x - 5, slot.y - 1, 10, 2);
+      }
+      if (slot.type === 'cannon') {
+        ctx.fillStyle = '#2d2e31';
+        ctx.fillRect(slot.x - 6, slot.y - 2, 12, 4);
+      }
     }
-    if (slot.type === 'cannon') {
-      ctx.fillStyle = '#2d2e31';
-      ctx.fillRect(slot.x - 6, slot.y - 2, 12, 4);
-    }
+  } else {
+    sy.slotRects = [];
   }
 
-  const points = getShipyardHandleScreenPoints();
-  if (points) {
-    const c = points.center;
-    ctx.strokeStyle = 'rgba(167,208,234,0.32)';
-    ctx.lineWidth = 2;
-    for (const pt of Object.values(points.handles)) {
-      ctx.beginPath();
-      ctx.moveTo(c.x, c.y);
-      ctx.lineTo(pt.x, pt.y);
-      ctx.stroke();
-    }
+  if (sy.editMode === 'shape') {
+    const points = getShipyardHandleScreenPoints();
+    if (points) {
+      const c = points.center;
+      ctx.strokeStyle = 'rgba(167,208,234,0.32)';
+      ctx.lineWidth = 2;
+      for (const pt of Object.values(points.handles)) {
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y);
+        ctx.lineTo(pt.x, pt.y);
+        ctx.stroke();
+      }
 
-    for (const [name, pt] of Object.entries(points.handles)) {
-      const active = sy.dragHandle === name;
-      ctx.fillStyle = active ? '#ffd58f' : '#9fd3f3';
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, active ? 9 : 7, 0, Math.PI * 2);
-      ctx.fill();
+      for (const [name, pt] of Object.entries(points.handles)) {
+        const active = sy.dragHandle === name;
+        ctx.fillStyle = active ? '#ffd58f' : '#9fd3f3';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, active ? 9 : 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -3507,7 +3685,8 @@ function drawShipyardScreen() {
   ctx.fillText(`Hull Refit Cost: ${sy.pendingCost}`, infoX, infoY + 28);
 
   const weapon = getPlayerWeaponCounts();
-  const hullValue = Math.round(design.bodyHalfLenMul * 140 + design.bodyHalfBeamMul * 160 + design.bowTipMul * 120 + design.sternTipMul * 90);
+  const sternBeamMul = design.sternBeamMul ?? 1;
+  const hullValue = Math.round(design.bodyHalfLenMul * 140 + design.bodyHalfBeamMul * 160 + sternBeamMul * 120 + design.bowTipMul * 120 + design.sternTipMul * 90);
   const totalValue = Math.round(hullValue + player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14 + weapon.cannonTotal * 28 + weapon.gunTotal * 9 + player.bulletDamage * 3 + (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30);
   const predictedTier = clamp(Math.floor(totalValue / 120), 0, 14);
   ctx.fillText(`Ship Value: ${totalValue} (Difficulty Tier +${predictedTier})`, infoX, infoY + 56);
@@ -3518,26 +3697,35 @@ function drawShipyardScreen() {
   const eff = getEffectiveReloadTimes();
   ctx.fillText(`Weapon Crew Demand ${crewDemand.toFixed(1)} · Assigned Gunners ${player.gunners} · Efficiency ${Math.round(crewRatio * 100)}%`, infoX, infoY + 112);
   ctx.fillText(`Reloads: Gun ${eff.gun.toFixed(2)}s · Cannon ${eff.cannon.toFixed(2)}s`, infoX, infoY + 140);
+  ctx.fillText(`Stern Width: ${Math.round(sternBeamMul * 100)}% of mid-beam`, infoX, infoY + 168);
 
   ctx.fillStyle = '#9fc2d9';
   ctx.font = '14px system-ui';
-  ctx.fillText('Drag hull handles. Choose brush, then click slot circles on each side to place weapons.', infoX, infoY + 166);
+  if (sy.editMode === 'shape') {
+    ctx.fillText('Shape/Size mode: drag hull handles to resize triangle ends and center body symmetrically.', infoX, infoY + 194);
+  } else {
+    ctx.fillText('Weapons mode: click slot circles to place guns/cannons. Shape handles are hidden in this mode.', infoX, infoY + 194);
+  }
 
-  const brushY = infoY + 196;
+  const brushY = infoY + 224;
   const brushX = rightX + 14;
-  sy.brushRects = {
-    gun: { x: brushX, y: brushY, w: 96, h: 34 },
-    cannon: { x: brushX + 106, y: brushY, w: 96, h: 34 },
-    empty: { x: brushX + 212, y: brushY, w: 96, h: 34 }
-  };
-  for (const [name, rect] of Object.entries(sy.brushRects)) {
-    const active = sy.weaponBrush === name;
-    ctx.fillStyle = active ? '#2f7f5d' : '#2a4a60';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.fillStyle = '#e8f5ff';
-    ctx.textAlign = 'center';
-    const label = name === 'empty' ? 'Clear' : name === 'gun' ? `Gun ${SHIPYARD_COST.gun}g` : `Cannon ${SHIPYARD_COST.cannon}g`;
-    ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 22);
+  if (sy.editMode === 'weapons') {
+    sy.brushRects = {
+      gun: { x: brushX, y: brushY, w: 96, h: 34 },
+      cannon: { x: brushX + 106, y: brushY, w: 96, h: 34 },
+      empty: { x: brushX + 212, y: brushY, w: 96, h: 34 }
+    };
+    for (const [name, rect] of Object.entries(sy.brushRects)) {
+      const active = sy.weaponBrush === name;
+      ctx.fillStyle = active ? '#2f7f5d' : '#2a4a60';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = '#e8f5ff';
+      ctx.textAlign = 'center';
+      const label = name === 'empty' ? 'Clear' : name === 'gun' ? `Gun ${SHIPYARD_COST.gun}g` : `Cannon ${SHIPYARD_COST.cannon}g`;
+      ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 22);
+    }
+  } else {
+    sy.brushRects = {};
   }
 
   const crewPanelX = rightX + 14;
@@ -3640,8 +3828,14 @@ function draw() {
     ctx.rotate(p.rot);
     ctx.globalAlpha = life;
     ctx.fillStyle = p.color;
-    polygonPath(0, 0, pr, p.sides, 0);
-    ctx.fill();
+    if (p.circle) {
+      ctx.beginPath();
+      ctx.arc(0, 0, pr, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      polygonPath(0, 0, pr, p.sides, 0);
+      ctx.fill();
+    }
     ctx.restore();
   }
 

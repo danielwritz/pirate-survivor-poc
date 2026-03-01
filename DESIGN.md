@@ -94,6 +94,13 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Fullscreen canvas viewport by default
 - Mouse-wheel zoom augments automatic size-based camera zoom
 
+## Latest Implementation Notes (2026-03-01)
+- Shipyard now has explicit `Shape/Size` and `Weapons` modes so interaction targets do not overlap.
+- Hull shaping uses a triangle-body-triangle model with symmetric control handles and a dedicated stern-width scalar.
+- Collector skiffs now use docked state behavior (mounted to ship sides while idle, dispatched only for collection tasks).
+- Projectiles are range-limited with per-shot travel tracking; expired shots splash into water instead of flying indefinitely.
+- Camera default baseline zoom is increased for a closer, more readable combat view.
+
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling
 - Offense infrastructure: cannon installments (broadside capacity growth)
