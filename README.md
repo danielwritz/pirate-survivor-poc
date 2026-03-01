@@ -3,6 +3,9 @@
 Minimal browser prototype for the pirate-themed survivor game concept.
 
 ## Latest Session Updates (2026-03-01)
+- Added first-run starter ship presets (prebuilt loadouts) in the shipyard; players now choose a preset before first launch.
+- Increased boss damage output against the player for both projectile hits and direct ship collision impacts.
+- Added a dedicated Sound Effects Showcase museum page for interactive procedural audio testing.
 - Added docked skiff behavior: skiffs stay snapped to ship sides until dispatched for distant gold, then snap back on return.
 - Refined shipwright hull editing model to explicit `bow triangle + center body + stern triangle` with symmetric drag controls.
 - Added a dedicated stern-width scalar and handle for rectangular or tapered rear profiles.
@@ -12,10 +15,11 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 - Increased default gameplay camera zoom so the game starts more zoomed in.
 - Added shared ship/armament core modules (`src/core/shipMath.js`, `src/core/armament.js`) used by museum parity flows.
 - Added JSON upgrade rule engine (`src/systems/upgradeRuleEngine.js`) with rule-trace output.
-- Migrated upgrade descriptors to rule schema v2 in `dev/data/upgrades.json` (operation-based rules).
+- Migrated upgrade descriptors to rule schema v2 in `data/upgrades.json` (operation-based rules, shared by runtime and dev museum).
 - Main runtime upgrade offers now consume JSON upgrade rules instead of hardcoded apply blocks.
 - Upgrade Browser now renders sail + mount parity and exposes raw JSON, evaluated JSON, and applied-rule trace.
 - Weapon/VFX and Island Viewer pages now include JSON inspector panes for source + live evaluated state.
+- Added baseline unit-test harness (`Vitest`) with initial coverage for core ship math, armament rules, and upgrade rule execution.
 
 ## Run
 Serve the workspace root with a local HTTP server, then open `index.html`.
@@ -23,6 +27,10 @@ Serve the workspace root with a local HTTP server, then open `index.html`.
 Example:
 - `npx serve .`
 - then open the URL it prints (typically `http://localhost:3000`)
+
+Unit tests:
+- `npm install`
+- `npm test`
 
 Canvas now runs fullscreen in the browser viewport.
 
@@ -32,6 +40,7 @@ Developer museum screens are available under `dev/`.
 - Weapon/VFX screen: `dev/weapon-vfx-showcase.html`
 - Upgrade Browser: `dev/upgrade-browser.html`
 - Island Viewer: `dev/island-viewer.html`
+- Sound Effects Showcase: `dev/sfx-showcase.html`
 
 ## Development Architecture Direction
 - Build everything as reusable modules with clear, narrow APIs (`core`, `systems`, `entities`, `rendering`, `dev`).
@@ -42,6 +51,12 @@ Developer museum screens are available under `dev/`.
 - For upgrades specifically, use operation-based rule arrays (`add`, `set`, `mul`, `clamp`, `autoInstallCannons`, `ensureRepairCrew`, `addAbility`, `call`) to keep gameplay and museum behavior aligned.
 - Keep mutable state inside manager/state factories rather than hidden globals to support testing and reuse.
 - Use museum pages under `dev/` as visual tests for modules and descriptors before integrating into main gameplay.
+- Standardize manager APIs for AI-agent implementation work:
+	- `init(context)` for setup and dependency binding.
+	- `update(dt, context)` for deterministic gameplay state transitions.
+	- `draw(ctx, context)` for render-only behavior.
+	- `dispose(context)` for cleanup and teardown.
+- Treat `data/` as canonical descriptor source for runtime + dev museum; avoid duplicating gameplay descriptor logic in page scripts.
 
 ## Controls
 - Steer: `A` / `D`

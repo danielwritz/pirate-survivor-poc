@@ -13,7 +13,8 @@ import {
   getSpareCrewCapacity,
   clampSupportCrew,
   clampArmamentToHull,
-  autoInstallCannons
+  autoInstallCannons,
+  autoInstallGuns
 } from '../../src/core/armament.js';
 import { applyUpgradeRuleSet, createUpgradeCatalog } from '../../src/systems/upgradeRuleEngine.js';
 
@@ -135,16 +136,50 @@ function drawShipSnapshot(ctx, root, x, y, label, previewWind, previewTime) {
 export function createUpgradeBrowserManager(descriptor) {
   const catalog = createUpgradeCatalog(descriptor);
   const baselineRoot = cloneJsonSafe(descriptor.baseline || {});
+  const standardIds = new Set(catalog.standard.map((u) => u.id));
+  const majorIds = new Set(catalog.major.map((u) => u.id));
 
   const state = {
-    selectedIds: new Set(),
+    selectedCounts: new Map(),
     selectedUpgradeId: null,
     baselineRoot,
     resultRoot: cloneJsonSafe(baselineRoot),
     trace: [],
     previewTime: 0,
-    previewWind: { x: 0.42, y: -0.09 }
+    previewWind: { x: 0.42, y: -0.09 },
+    zoom: 1,
+    cameraX: 410,
+    cameraY: 310,
+    sceneWidth: 820,
+    sceneHeight: 620
   };
+
+  function screenToWorld(screenX, screenY, viewWidth, viewHeight) {
+    return {
+      x: (screenX - viewWidth * 0.5) / state.zoom + state.cameraX,
+      y: (screenY - viewHeight * 0.5) / state.zoom + state.cameraY
+    };
+  }
+
+  function worldToScreen(worldX, worldY, viewWidth, viewHeight) {
+    return {
+      x: (worldX - state.cameraX) * state.zoom + viewWidth * 0.5,
+      y: (worldY - state.cameraY) * state.zoom + viewHeight * 0.5
+    };
+  }
+
+  function panByPixels(deltaScreenX, deltaScreenY) {
+    state.cameraX -= deltaScreenX / state.zoom;
+    state.cameraY -= deltaScreenY / state.zoom;
+  }
+
+  function zoomAtScreen(nextZoom, screenX, screenY, viewWidth, viewHeight) {
+    const targetZoom = Math.max(0.00001, Number(nextZoom) || state.zoom);
+    const worldBefore = screenToWorld(screenX, screenY, viewWidth, viewHeight);
+    state.zoom = targetZoom;
+    state.cameraX = worldBefore.x - (screenX - viewWidth * 0.5) / state.zoom;
+    state.cameraY = worldBefore.y - (screenY - viewHeight * 0.5) / state.zoom;
+  }
 
   function ensureRepairCrew(player) {
     const deckCap = getDeckCrewCapacity(player);
@@ -162,6 +197,7 @@ export function createUpgradeBrowserManager(descriptor) {
   function envHooks() {
     return {
       autoInstallCannons: (player, perSide) => autoInstallCannons(player, perSide),
+      autoInstallGuns: (player, perSide) => autoInstallGuns(player, perSide),
       ensureRepairCrew,
       clampArmament: (root) => clampArmamentToHull(root.player),
       ensureCollectorSkiffs: () => {},
@@ -184,16 +220,21 @@ export function createUpgradeBrowserManager(descriptor) {
     const current = cloneJsonSafe(baselineRoot);
     const trace = [];
 
-    for (const id of state.selectedIds) {
-      const upgrade = catalog.byId.get(id);
-      if (!upgrade) continue;
-      const ruleTrace = applyUpgradeRuleSet(current, upgrade.rules || [], { env: envHooks() });
-      for (const item of ruleTrace) {
-        trace.push({
-          upgradeId: upgrade.id,
-          upgradeName: upgrade.name,
-          ...item
-        });
+    const ordered = [...catalog.standard, ...catalog.major];
+    for (const upgrade of ordered) {
+      const count = Math.max(0, Number(state.selectedCounts.get(upgrade.id) || 0));
+      if (count <= 0) continue;
+
+      for (let applicationIndex = 1; applicationIndex <= count; applicationIndex++) {
+        const ruleTrace = applyUpgradeRuleSet(current, upgrade.rules || [], { env: envHooks() });
+        for (const item of ruleTrace) {
+          trace.push({
+            upgradeId: upgrade.id,
+            upgradeName: upgrade.name,
+            applicationIndex,
+            ...item
+          });
+        }
       }
     }
 
@@ -201,11 +242,35 @@ export function createUpgradeBrowserManager(descriptor) {
     state.trace = trace;
   }
 
-  function toggle(id) {
-    if (state.selectedIds.has(id)) state.selectedIds.delete(id);
-    else state.selectedIds.add(id);
+  function getCount(id) {
+    return Math.max(0, Number(state.selectedCounts.get(id) || 0));
+  }
+
+  function setCount(id, nextCount) {
+    const upgrade = catalog.byId.get(id);
+    if (!upgrade) return;
+    const normalized = Math.max(0, Math.floor(Number(nextCount) || 0));
+    const clamped = majorIds.has(id) ? Math.min(1, normalized) : normalized;
+
+    if (clamped <= 0) state.selectedCounts.delete(id);
+    else state.selectedCounts.set(id, clamped);
+
     state.selectedUpgradeId = id;
     recompute();
+  }
+
+  function increment(id) {
+    const count = getCount(id);
+    setCount(id, count + 1);
+  }
+
+  function decrement(id) {
+    const count = getCount(id);
+    setCount(id, Math.max(0, count - 1));
+  }
+
+  function toggle(id) {
+    setCount(id, getCount(id) > 0 ? 0 : 1);
   }
 
   function selectUpgrade(id) {
@@ -213,41 +278,58 @@ export function createUpgradeBrowserManager(descriptor) {
   }
 
   function clear() {
-    state.selectedIds.clear();
+    state.selectedCounts.clear();
     state.selectedUpgradeId = null;
     recompute();
   }
 
   function drawPreview(ctx, width, height, dt = 1 / 60) {
     state.previewTime += dt;
+    state.sceneWidth = width;
+    state.sceneHeight = height;
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#0a2235';
     ctx.fillRect(0, 0, width, height);
 
+    ctx.save();
+    ctx.translate(width * 0.5, height * 0.5);
+    ctx.scale(state.zoom, state.zoom);
+    ctx.translate(-state.cameraX, -state.cameraY);
+
     ctx.strokeStyle = 'rgba(159,194,217,0.14)';
-    for (let x = 0; x <= width; x += 40) {
+    const worldLeft = state.cameraX - (width * 0.5) / state.zoom;
+    const worldRight = state.cameraX + (width * 0.5) / state.zoom;
+    const worldTop = state.cameraY - (height * 0.5) / state.zoom;
+    const worldBottom = state.cameraY + (height * 0.5) / state.zoom;
+    const startX = Math.floor(worldLeft / 40) * 40;
+    const endX = Math.ceil(worldRight / 40) * 40;
+    const startY = Math.floor(worldTop / 40) * 40;
+    const endY = Math.ceil(worldBottom / 40) * 40;
+
+    for (let x = startX; x <= endX; x += 40) {
       ctx.beginPath();
       ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, height);
+      ctx.lineTo(x + 0.5, state.sceneHeight);
       ctx.stroke();
     }
-    for (let y = 0; y <= height; y += 40) {
+    for (let y = startY; y <= endY; y += 40) {
       ctx.beginPath();
       ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(width, y + 0.5);
+      ctx.lineTo(state.sceneWidth, y + 0.5);
       ctx.stroke();
     }
 
-    drawShipSnapshot(ctx, state.baselineRoot, width * 0.3, height * 0.45, 'Before', state.previewWind, state.previewTime);
-    drawShipSnapshot(ctx, state.resultRoot, width * 0.7, height * 0.45, 'After', state.previewWind, state.previewTime);
+    drawShipSnapshot(ctx, state.baselineRoot, state.sceneWidth * 0.3, state.sceneHeight * 0.45, 'Before', state.previewWind, state.previewTime);
+    drawShipSnapshot(ctx, state.resultRoot, state.sceneWidth * 0.7, state.sceneHeight * 0.45, 'After', state.previewWind, state.previewTime);
 
     ctx.strokeStyle = 'rgba(232,245,255,0.3)';
     ctx.setLineDash([8, 8]);
     ctx.beginPath();
-    ctx.moveTo(width * 0.5, 40);
-    ctx.lineTo(width * 0.5, height - 40);
+    ctx.moveTo(state.sceneWidth * 0.5, 40);
+    ctx.lineTo(state.sceneWidth * 0.5, state.sceneHeight - 40);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
   }
 
   function getInspection() {
@@ -258,9 +340,18 @@ export function createUpgradeBrowserManager(descriptor) {
     const countsBefore = getWeaponCounts(before);
     const countsAfter = getWeaponCounts(after);
 
-    const selectedUpgrades = Array.from(state.selectedIds)
-      .map((id) => catalog.byId.get(id))
-      .filter(Boolean);
+    const selectedUpgrades = Array.from(state.selectedCounts.entries())
+      .map(([id, count]) => {
+        const upgrade = catalog.byId.get(id);
+        if (!upgrade) return null;
+        return { ...upgrade, count };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const ia = [...catalog.standard, ...catalog.major].findIndex((u) => u.id === a.id);
+        const ib = [...catalog.standard, ...catalog.major].findIndex((u) => u.id === b.id);
+        return ia - ib;
+      });
 
     const selectedUpgrade = state.selectedUpgradeId ? catalog.byId.get(state.selectedUpgradeId) : null;
     const selectedTrace = selectedUpgrade
@@ -286,10 +377,20 @@ export function createUpgradeBrowserManager(descriptor) {
     state,
     descriptor,
     catalog,
+    standardIds,
+    majorIds,
+    getCount,
+    setCount,
+    increment,
+    decrement,
     toggle,
     selectUpgrade,
     clear,
     drawPreview,
+    screenToWorld,
+    worldToScreen,
+    panByPixels,
+    zoomAtScreen,
     getInspection
   };
 }

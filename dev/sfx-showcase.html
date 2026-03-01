@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sound Effects Showcase - Pirate Survivor Dev Museum</title>
+  <style>
+    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    a { color: #9fc2d9; text-decoration: none; }
+    a:hover { color: #d6ecff; }
+    .layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; }
+    .panel { border: 1px solid #30516b; border-radius: 8px; background: #10293c; padding: 12px; }
+    .desc { color: #b8d5e9; font-size: 13px; line-height: 1.35; margin-bottom: 10px; }
+    .field { display: grid; gap: 4px; font-size: 12px; color: #b8d5e9; margin-bottom: 8px; }
+    .field input[type="range"] { width: 100%; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .buttonGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    button {
+      border: 1px solid #4f7896;
+      background: #123149;
+      color: #e8f5ff;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    button:hover { background: #17405e; }
+    .wide { grid-column: span 2; text-align: center; }
+    #audioToggle.is-muted { background: #3a2023; border-color: #88545b; color: #ffd4d8; }
+    .stage { display: grid; gap: 10px; }
+    canvas { width: 100%; max-width: 760px; height: auto; border: 1px solid #33546e; border-radius: 7px; background: #0f2b41; }
+    .stats { display: grid; gap: 4px; font-size: 12px; color: #d3e7f8; }
+    .tag { color: #9fc2d9; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1>Sound Effects Showcase</h1>
+      <a href="/dev/index.html">← Back to Museum</a>
+    </div>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="desc">
+          Interactive procedural SFX tester for runtime audio generation. Adjust source position/direction and trigger the same weapon and impact sounds used in combat.
+        </div>
+
+        <div class="row">
+          <label class="field">
+            Source X
+            <input id="sourceX" type="range" min="-380" max="380" step="1" value="220" />
+            <span id="sourceXVal">220</span>
+          </label>
+          <label class="field">
+            Source Y
+            <input id="sourceY" type="range" min="-220" max="220" step="1" value="-60" />
+            <span id="sourceYVal">-60</span>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            Source Direction (deg)
+            <input id="dirDeg" type="range" min="-180" max="180" step="1" value="160" />
+            <span id="dirDegVal">160°</span>
+          </label>
+          <label class="field">
+            Player Heading (deg)
+            <input id="playerHeading" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="playerHeadingVal">0°</span>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            Volley Count
+            <input id="count" type="range" min="1" max="10" step="1" value="4" />
+            <span id="countVal">4</span>
+          </label>
+          <label class="field">
+            Source Size
+            <input id="size" type="range" min="10" max="54" step="1" value="24" />
+            <span id="sizeVal">24</span>
+          </label>
+        </div>
+
+        <div class="buttonGrid">
+          <button id="unlockBtn" type="button" class="wide">Initialize Audio</button>
+          <button id="audioToggle" type="button" class="wide">SFX: ON</button>
+          <button id="uiBtn" type="button">UI Chirp</button>
+          <button id="gunVolleyBtn" type="button">Gun Volley</button>
+          <button id="cannonVolleyBtn" type="button">Cannon Volley</button>
+          <button id="gunImpactBtn" type="button">Gun Impact</button>
+          <button id="cannonImpactBtn" type="button">Cannon Impact</button>
+          <button id="leftPresetBtn" type="button">Preset: Port Side</button>
+          <button id="rightPresetBtn" type="button">Preset: Starboard</button>
+          <button id="frontPresetBtn" type="button">Preset: Forward</button>
+          <button id="rearPresetBtn" type="button">Preset: Aft</button>
+        </div>
+      </section>
+
+      <section class="panel stage">
+        <canvas id="stage" width="760" height="430"></canvas>
+        <div class="stats" id="stats"></div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createGameAudioSystem, normalizeOr } from '../src/systems/audioSystem.js';
+
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    const statsEl = document.getElementById('stats');
+
+    const sourceXEl = document.getElementById('sourceX');
+    const sourceYEl = document.getElementById('sourceY');
+    const dirDegEl = document.getElementById('dirDeg');
+    const countEl = document.getElementById('count');
+    const sizeEl = document.getElementById('size');
+    const playerHeadingEl = document.getElementById('playerHeading');
+
+    const sourceXValEl = document.getElementById('sourceXVal');
+    const sourceYValEl = document.getElementById('sourceYVal');
+    const dirDegValEl = document.getElementById('dirDegVal');
+    const countValEl = document.getElementById('countVal');
+    const sizeValEl = document.getElementById('sizeVal');
+    const playerHeadingValEl = document.getElementById('playerHeadingVal');
+
+    const audioToggleBtn = document.getElementById('audioToggle');
+
+    const state = {
+      sourceX: Number(sourceXEl.value),
+      sourceY: Number(sourceYEl.value),
+      dirDeg: Number(dirDegEl.value),
+      count: Number(countEl.value),
+      sourceSize: Number(sizeEl.value),
+      playerHeadingDeg: Number(playerHeadingEl.value),
+      triggerCount: 0,
+      lastTrigger: 'none'
+    };
+
+    function degToRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    function getPlayerForward() {
+      const h = degToRad(state.playerHeadingDeg);
+      return { x: Math.cos(h), y: Math.sin(h) };
+    }
+
+    function getPlayerRight() {
+      const f = getPlayerForward();
+      return { x: -f.y, y: f.x };
+    }
+
+    const audioSystem = createGameAudioSystem({
+      getPlayerPosition: () => ({ x: 0, y: 0 }),
+      getForwardVector: () => getPlayerForward(),
+      getRightVector: () => getPlayerRight(),
+      button: audioToggleBtn
+    });
+
+    function updateUiValues() {
+      sourceXValEl.textContent = String(state.sourceX);
+      sourceYValEl.textContent = String(state.sourceY);
+      dirDegValEl.textContent = `${state.dirDeg}°`;
+      countValEl.textContent = String(state.count);
+      sizeValEl.textContent = String(state.sourceSize);
+      playerHeadingValEl.textContent = `${state.playerHeadingDeg}°`;
+    }
+
+    function setStateFromInputs() {
+      state.sourceX = Number(sourceXEl.value);
+      state.sourceY = Number(sourceYEl.value);
+      state.dirDeg = Number(dirDegEl.value);
+      state.count = Number(countEl.value);
+      state.sourceSize = Number(sizeEl.value);
+      state.playerHeadingDeg = Number(playerHeadingEl.value);
+      updateUiValues();
+    }
+
+    for (const el of [sourceXEl, sourceYEl, dirDegEl, countEl, sizeEl, playerHeadingEl]) {
+      el.addEventListener('input', setStateFromInputs);
+    }
+
+    function trigger(label, cb) {
+      audioSystem.unlockAudio();
+      cb();
+      state.triggerCount += 1;
+      state.lastTrigger = label;
+    }
+
+    function sourceDir() {
+      const a = degToRad(state.dirDeg);
+      return normalizeOr(Math.cos(a), Math.sin(a), 1, 0);
+    }
+
+    document.getElementById('unlockBtn').addEventListener('click', () => {
+      audioSystem.unlockAudio();
+      audioSystem.playUiChirp();
+    });
+
+    document.getElementById('uiBtn').addEventListener('click', () => {
+      trigger('UI Chirp', () => audioSystem.playUiChirp());
+    });
+
+    document.getElementById('gunVolleyBtn').addEventListener('click', () => {
+      trigger('Gun Volley', () => {
+        const d = sourceDir();
+        audioSystem.playGunVolleySfx(state.sourceX, state.sourceY, d.x, d.y, state.count, state.sourceSize);
+      });
+    });
+
+    document.getElementById('cannonVolleyBtn').addEventListener('click', () => {
+      trigger('Cannon Volley', () => {
+        const d = sourceDir();
+        audioSystem.playCannonVolleySfx(state.sourceX, state.sourceY, d.x, d.y, state.count, state.sourceSize);
+      });
+    });
+
+    document.getElementById('gunImpactBtn').addEventListener('click', () => {
+      trigger('Gun Impact', () => {
+        const d = sourceDir();
+        audioSystem.playGunImpactSfx(state.sourceX, state.sourceY, d.x, d.y, state.sourceSize);
+      });
+    });
+
+    document.getElementById('cannonImpactBtn').addEventListener('click', () => {
+      trigger('Cannon Impact', () => {
+        const d = sourceDir();
+        audioSystem.playCannonImpactSfx(state.sourceX, state.sourceY, d.x, d.y, state.sourceSize);
+      });
+    });
+
+    function applyPreset(sourceX, sourceY, dirDeg) {
+      sourceXEl.value = String(sourceX);
+      sourceYEl.value = String(sourceY);
+      dirDegEl.value = String(dirDeg);
+      setStateFromInputs();
+    }
+
+    document.getElementById('leftPresetBtn').addEventListener('click', () => applyPreset(-220, 0, 0));
+    document.getElementById('rightPresetBtn').addEventListener('click', () => applyPreset(220, 0, 180));
+    document.getElementById('frontPresetBtn').addEventListener('click', () => applyPreset(0, -180, 90));
+    document.getElementById('rearPresetBtn').addEventListener('click', () => applyPreset(0, 190, -90));
+
+    function drawArrow(x, y, dirX, dirY, length, color) {
+      const tipX = x + dirX * length;
+      const tipY = y + dirY * length;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+
+      const leftX = tipX - dirX * 10 - dirY * 6;
+      const leftY = tipY - dirY * 10 + dirX * 6;
+      const rightX = tipX - dirX * 10 + dirY * 6;
+      const rightY = tipY - dirY * 10 - dirX * 6;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(leftX, leftY);
+      ctx.lineTo(rightX, rightY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawStage() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0d2b40';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const cx = canvas.width * 0.5;
+      const cy = canvas.height * 0.5;
+
+      ctx.strokeStyle = 'rgba(146,194,227,0.18)';
+      for (let x = 0; x <= canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      const srcX = cx + state.sourceX;
+      const srcY = cy + state.sourceY;
+      const shotDir = sourceDir();
+
+      const pf = getPlayerForward();
+      drawArrow(cx, cy, pf.x, pf.y, 44, '#8fd2ff');
+      drawArrow(srcX, srcY, shotDir.x, shotDir.y, 52, '#ffcc73');
+
+      ctx.fillStyle = '#e7f4ff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0f2434';
+      ctx.fillRect(cx - 8, cy - 2, 16, 4);
+
+      ctx.fillStyle = '#f3ba67';
+      ctx.beginPath();
+      ctx.arc(srcX, srcY, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      const dist = Math.hypot(state.sourceX, state.sourceY);
+      statsEl.innerHTML = `
+        <div><span class="tag">Source:</span> (${state.sourceX}, ${state.sourceY}) · distance ${dist.toFixed(1)}</div>
+        <div><span class="tag">Direction:</span> ${state.dirDeg}° · player heading ${state.playerHeadingDeg}°</div>
+        <div><span class="tag">Payload:</span> count ${state.count} · source size ${state.sourceSize}</div>
+        <div><span class="tag">Last trigger:</span> ${state.lastTrigger} · total ${state.triggerCount}</div>
+        <div><span class="tag">Audio path:</span> src/systems/audioSystem.js</div>
+      `;
+
+      requestAnimationFrame(drawStage);
+    }
+
+    setStateFromInputs();
+    requestAnimationFrame(drawStage);
+  </script>
+</body>
+</html>

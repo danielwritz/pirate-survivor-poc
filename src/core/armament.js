@@ -101,14 +101,62 @@ export function autoInstallCannons(entity, perSideCount = 1) {
   normalizeWeaponLayout(entity);
   const caps = getShipWeaponCaps(entity, entity.cannonCapacityBonus || 0);
 
+  const centerOutIndices = (length) => {
+    const out = [];
+    if (length <= 0) return out;
+    const center = (length - 1) / 2;
+    for (let i = 0; i < length; i++) out.push(i);
+    out.sort((a, b) => {
+      const da = Math.abs(a - center);
+      const db = Math.abs(b - center);
+      if (da !== db) return da - db;
+      return a - b;
+    });
+    return out;
+  };
+
   const installOnSide = (lane) => {
     let installed = 0;
+    const indices = centerOutIndices(lane.length);
     while (installed < perSideCount) {
       const sideCannons = lane.filter((t) => t === 'cannon').length;
       if (sideCannons >= caps.maxCannonsPerSide) break;
-      const emptyIdx = lane.findIndex((t) => t === 'empty');
-      if (emptyIdx < 0) break;
+      const emptyIdx = indices.find((idx) => lane[idx] === 'empty');
+      if (emptyIdx == null) break;
       lane[emptyIdx] = 'cannon';
+      installed += 1;
+    }
+  };
+
+  installOnSide(entity.weaponLayout.port);
+  installOnSide(entity.weaponLayout.starboard);
+  syncArmamentDerivedStats(entity);
+}
+
+export function autoInstallGuns(entity, perSideCount = 1) {
+  normalizeWeaponLayout(entity);
+
+  const centerOutIndices = (length) => {
+    const out = [];
+    if (length <= 0) return out;
+    const center = (length - 1) / 2;
+    for (let i = 0; i < length; i++) out.push(i);
+    out.sort((a, b) => {
+      const da = Math.abs(a - center);
+      const db = Math.abs(b - center);
+      if (da !== db) return da - db;
+      return a - b;
+    });
+    return out;
+  };
+
+  const installOnSide = (lane) => {
+    let installed = 0;
+    const indices = centerOutIndices(lane.length);
+    while (installed < perSideCount) {
+      const emptyIdx = indices.find((idx) => lane[idx] === 'empty');
+      if (emptyIdx == null) break;
+      lane[emptyIdx] = 'gun';
       installed += 1;
     }
   };

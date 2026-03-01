@@ -103,6 +103,16 @@ export function applyUpgradeRuleSet(rootState, rules, options = {}) {
       continue;
     }
 
+    if (rule.op === 'autoInstallGuns') {
+      if (typeof env.autoInstallGuns === 'function') {
+        env.autoInstallGuns(rootState.player, Number(rule.perSide || 1));
+        pushTrace(trace, rule, null, null, `Installed up to ${Number(rule.perSide || 1)} guns per side`);
+      } else {
+        pushTrace(trace, rule, null, null, 'Skipped: autoInstallGuns hook unavailable');
+      }
+      continue;
+    }
+
     if (rule.op === 'ensureRepairCrew') {
       if (typeof env.ensureRepairCrew === 'function') {
         const snapshotBefore = {

@@ -2,6 +2,9 @@ export function createInitialShipyardState() {
   return {
     active: true,
     freeEdit: true,
+    starterPresetChosen: false,
+    starterPresetId: null,
+    starterPresetRects: [],
     editMode: 'shape',
     pendingCost: 0,
     dragHandle: null,
@@ -16,7 +19,7 @@ export function createInitialShipyardState() {
     slotRects: [],
     brushRects: {},
     crewRects: {},
-    message: 'Start with 100 gold: place guns/cannons, assign crew roles, then launch.'
+    message: 'Choose a starter ship preset, then tune it and launch.'
   };
 }
 
@@ -55,6 +58,12 @@ export function createGameState() {
     clouds: [],
     mode: 'shipyard',
     bossSpawnedThisStage: false,
-    shipyard: createInitialShipyardState()
+    shipyard: createInitialShipyardState(),
+    devtools: {
+      visible: false,
+      selectedKind: 'pirate',
+      spawnOnClick: true,
+      cursorWorld: { x: 0, y: 0 }
+    }
   };
 }

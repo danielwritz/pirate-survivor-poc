@@ -16,8 +16,8 @@ export function createPlayer() {
   const player = {
     x: 1800,
     y: 1300,
-    hp: 100,
-    maxHp: 100,
+    hp: 80,
+    maxHp: 80,
     size: 16,
     heading: -Math.PI / 2,
     speed: 0,

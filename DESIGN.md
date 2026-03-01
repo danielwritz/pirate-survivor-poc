@@ -118,7 +118,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Museum pages now expose JSON inspectors for source descriptor data and live evaluated state (plus rule trace where applicable).
 
 ## Upgrade Rule Schema v2 (Current)
-- Descriptor file: `dev/data/upgrades.json`
+- Descriptor file: `data/upgrades.json`
 - Top-level shape:
   - `schemaVersion`
   - `baseline` (`player`, `state`)
@@ -131,6 +131,25 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
   - Gameplay semantic ops: `autoInstallCannons`, `ensureRepairCrew`, `addAbility`
   - Hook op: `call` for manager/runtime-scoped side effects (e.g. clamping armament or ensuring skiffs)
 - Rule evaluation emits an applied trace for debugging and museum inspection.
+
+## Manager Contract Standard (AI-Agent Ready)
+- Runtime managers should follow a consistent lifecycle API:
+  - `init(context)`
+  - `update(dt, context)`
+  - `draw(ctx, context)`
+  - `dispose(context)`
+- `GameManager` owns orchestration order and mode flow; domain managers own feature state transitions and side-effect boundaries.
+- New mechanics (example: boarding crews/fighters) should be introduced as domain managers plus config descriptors, not as ad-hoc loop blocks.
+- Shared pure logic belongs in `src/core` / `src/systems`; dev museum pages should import those modules rather than fork behavior.
+- Descriptor ownership lives in `data/` so runtime and museum stay synchronized from a single source-of-truth.
+
+## Testing Baseline
+- Unit tests run with Vitest (`npm test`) and target deterministic logic in `src/core` and `src/systems`.
+- Required baseline coverage for new mechanics:
+  - Config parsing/validation behavior.
+  - Rule evaluation side-effects and traces.
+  - Domain math and cap/clamp invariants.
+- Museum pages remain visual integration probes; they do not replace unit tests.
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling

@@ -23,6 +23,10 @@
       text-align: left;
     }
     .row.active { border-color: #89b3cf; background: #1c4766; }
+    .rowTop { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .stack { display: inline-flex; align-items: center; gap: 6px; }
+    .stack button { padding: 2px 7px; font-size: 12px; min-width: 26px; }
+    .count { min-width: 24px; text-align: center; color: #d6ecff; font-size: 12px; }
     .row .name { font-weight: 700; font-size: 13px; }
     .row .desc { margin-top: 2px; color: #c9e0f0; font-size: 12px; }
     .group { margin: 8px 0 4px; color: #9fc2d9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -30,6 +34,8 @@
     button { border: 1px solid #4f7896; background: #123149; color: #e8f5ff; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
     button:hover { background: #17405e; }
     .stats { margin-top: 10px; border-top: 1px solid #30516b; padding-top: 8px; display: grid; gap: 4px; font-size: 12px; color: #cfe3f3; }
+    .field { display: grid; gap: 4px; font-size: 12px; color: #b8d5e9; margin-top: 8px; }
+    .field input { background: #0f2b41; color: #e8f5ff; border: 1px solid #3b607a; border-radius: 6px; padding: 6px 8px; }
     .right { display: grid; grid-template-rows: auto 290px; gap: 12px; }
     .inspectors { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .inspect {
@@ -66,6 +72,10 @@
         <div class="utility">
           <button id="clearBtn" type="button">Clear Selection</button>
         </div>
+        <label class="field">Zoom
+          <input id="zoom" type="number" min="0.00001" step="0.01" value="1" />
+        </label>
+        <div class="field">Camera: drag on canvas to pan · use mouse wheel to zoom at cursor.</div>
         <div class="stats" id="stats"></div>
       </section>
 
@@ -93,7 +103,21 @@
     import { createDevCanvas } from './shared/devCanvas.js';
     import { createUpgradeBrowserManager } from './shared/upgradeBrowserManager.js';
 
-    const descriptor = await fetch('./data/upgrades.json').then((r) => r.json());
+    async function fetchFirstJson(urls, fallbackValue) {
+      for (const url of urls) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) return response.json();
+        } catch {
+        }
+      }
+      return fallbackValue;
+    }
+
+    const descriptor = await fetchFirstJson(
+      ['../data/upgrades.json', './data/upgrades.json'],
+      { standard: [], major: [] }
+    );
     const manager = createUpgradeBrowserManager(descriptor);
 
     const listEl = document.getElementById('upgradeList');
@@ -101,27 +125,89 @@
     const selectedJsonEl = document.getElementById('selectedJson');
     const evaluatedJsonEl = document.getElementById('evaluatedJson');
     const traceJsonEl = document.getElementById('traceJson');
+    const zoomEl = document.getElementById('zoom');
     const stageEl = document.getElementById('stage');
     const { canvas, ctx } = createDevCanvas(stageEl, { width: 820, height: 620 });
+    canvas.style.cursor = 'grab';
+
+    function syncZoomInput() {
+      zoomEl.value = String(Number(manager.state.zoom.toFixed(5)));
+    }
+
+    syncZoomInput();
+    zoomEl.addEventListener('change', () => {
+      const next = Number(zoomEl.value);
+      if (!Number.isFinite(next) || next <= 0) {
+        syncZoomInput();
+        return;
+      }
+      manager.zoomAtScreen(next, canvas.width * 0.5, canvas.height * 0.5, canvas.width, canvas.height);
+      syncZoomInput();
+    });
 
     function renderList() {
       listEl.innerHTML = '';
 
-      function renderGroup(label, upgrades) {
+      function renderGroup(label, upgrades, stackable = false) {
         const group = document.createElement('div');
         group.className = 'group';
         group.textContent = label;
         listEl.appendChild(group);
 
         for (const upgrade of upgrades) {
-          const row = document.createElement('button');
-          row.type = 'button';
+          const row = document.createElement('div');
           row.className = 'row';
-          if (manager.state.selectedIds.has(upgrade.id)) row.classList.add('active');
-          row.innerHTML = `<div class="name">${upgrade.name}</div><div class="desc">${upgrade.desc}</div>`;
+          const count = manager.getCount(upgrade.id);
+          if (count > 0) row.classList.add('active');
+
+          const rowTop = document.createElement('div');
+          rowTop.className = 'rowTop';
+          const name = document.createElement('div');
+          name.className = 'name';
+          name.textContent = upgrade.name;
+          rowTop.appendChild(name);
+
+          if (stackable) {
+            const stack = document.createElement('div');
+            stack.className = 'stack';
+            const minus = document.createElement('button');
+            minus.type = 'button';
+            minus.textContent = '−';
+            minus.title = 'Remove one';
+            minus.addEventListener('click', (event) => {
+              event.stopPropagation();
+              manager.decrement(upgrade.id);
+              renderList();
+            });
+
+            const countEl = document.createElement('span');
+            countEl.className = 'count';
+            countEl.textContent = String(count);
+
+            const plus = document.createElement('button');
+            plus.type = 'button';
+            plus.textContent = '+';
+            plus.title = 'Add one';
+            plus.addEventListener('click', (event) => {
+              event.stopPropagation();
+              manager.increment(upgrade.id);
+              renderList();
+            });
+
+            stack.append(minus, countEl, plus);
+            rowTop.appendChild(stack);
+          }
+
+          const desc = document.createElement('div');
+          desc.className = 'desc';
+          desc.textContent = upgrade.desc;
+
+          row.append(rowTop, desc);
           row.addEventListener('click', () => {
-            manager.toggle(upgrade.id);
-            renderList();
+            if (!stackable) {
+              manager.toggle(upgrade.id);
+              renderList();
+            }
           });
           row.addEventListener('mouseenter', () => {
             manager.selectUpgrade(upgrade.id);
@@ -130,22 +216,22 @@
         }
       }
 
-      renderGroup('Standard Upgrades', descriptor.standard || []);
-      renderGroup('Major Upgrades', descriptor.major || []);
+      renderGroup('Standard Upgrades', descriptor.standard || [], true);
+      renderGroup('Major Upgrades', descriptor.major || [], false);
     }
 
     function renderStats() {
       const inspection = manager.getInspection();
       const before = manager.state.baselineRoot.player;
       const after = manager.state.resultRoot.player;
-      const selected = Array.from(manager.state.selectedIds);
+      const selected = inspection.selectedUpgrades || [];
       const capsBefore = inspection.derived.before.caps;
       const capsAfter = inspection.derived.after.caps;
       const countsBefore = inspection.derived.before.counts;
       const countsAfter = inspection.derived.after.counts;
 
       statsEl.innerHTML = `
-        <div><strong>Selected:</strong> ${selected.length ? selected.join(', ') : 'none'}</div>
+        <div><strong>Selected:</strong> ${selected.length ? selected.map((u) => `${u.id}×${u.count}`).join(', ') : 'none'}</div>
         <div><strong>Size:</strong> ${before.size.toFixed(2)} → ${after.size.toFixed(2)}</div>
         <div><strong>Mass:</strong> ${before.mass.toFixed(2)} → ${after.mass.toFixed(2)}</div>
         <div><strong>Max HP:</strong> ${before.maxHp.toFixed(2)} → ${after.maxHp.toFixed(2)}</div>
@@ -155,6 +241,8 @@
         <div><strong>Hull L/B:</strong> ${before.hullLength.toFixed(2)}/${before.hullBeam.toFixed(2)} → ${after.hullLength.toFixed(2)}/${after.hullBeam.toFixed(2)}</div>
         <div><strong>Cannons/Side Cap:</strong> ${countsBefore.cannonPerSide}/${capsBefore.maxCannonsPerSide} → ${countsAfter.cannonPerSide}/${capsAfter.maxCannonsPerSide}</div>
         <div><strong>Gunner Cap:</strong> ${capsBefore.maxGunners} → ${capsAfter.maxGunners}</div>
+        <div><strong>Zoom:</strong> ${manager.state.zoom.toFixed(5)}</div>
+        <div><strong>Camera:</strong> ${manager.state.cameraX.toFixed(1)}, ${manager.state.cameraY.toFixed(1)}</div>
       `;
 
       selectedJsonEl.textContent = JSON.stringify(inspection.selectedUpgrade || {}, null, 2);
@@ -166,6 +254,55 @@
       manager.clear();
       renderList();
     });
+
+    let isDragging = false;
+    let dragPointerId = null;
+    let lastClientX = 0;
+    let lastClientY = 0;
+
+    canvas.addEventListener('pointerdown', (event) => {
+      isDragging = true;
+      dragPointerId = event.pointerId;
+      lastClientX = event.clientX;
+      lastClientY = event.clientY;
+      canvas.style.cursor = 'grabbing';
+      canvas.setPointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!isDragging || event.pointerId !== dragPointerId) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const dx = (event.clientX - lastClientX) * scaleX;
+      const dy = (event.clientY - lastClientY) * scaleY;
+      manager.panByPixels(dx, dy);
+      lastClientX = event.clientX;
+      lastClientY = event.clientY;
+    });
+
+    function stopDrag(event) {
+      if (!isDragging || event.pointerId !== dragPointerId) return;
+      isDragging = false;
+      dragPointerId = null;
+      canvas.style.cursor = 'grab';
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+
+    canvas.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const sx = ((event.clientX - rect.left) / rect.width) * canvas.width;
+      const sy = ((event.clientY - rect.top) / rect.height) * canvas.height;
+      const zoomFactor = Math.exp(-event.deltaY * 0.0015);
+      manager.zoomAtScreen(manager.state.zoom * zoomFactor, sx, sy, canvas.width, canvas.height);
+      syncZoomInput();
+    }, { passive: false });
 
     let last = performance.now();
     function frame(now) {
