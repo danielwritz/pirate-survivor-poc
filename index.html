@@ -71,8 +71,8 @@ function pointerOnCanvas(e) {
 function getShipyardHandleScreenPoints() {
   const sy = state.shipyard;
   if (!sy.editDesign) return null;
-  const cx = canvas.width * 0.5;
-  const cy = canvas.height * 0.54;
+  const cx = sy.previewCenterX ?? (canvas.width * 0.5);
+  const cy = sy.previewCenterY ?? (canvas.height * 0.54);
   const scale = sy.previewScale;
   const s = 44;
   const bodyHalfLen = sy.editDesign.bodyHalfLenMul * s;
@@ -145,8 +145,8 @@ function getShipyardWeaponSlotScreenPoints() {
     bowSharpness: player.bowSharpness,
     sternTaper: player.sternTaper
   });
-  const cx = canvas.width * 0.5;
-  const cy = canvas.height * 0.54;
+  const cx = sy.previewCenterX ?? (canvas.width * 0.5);
+  const cy = sy.previewCenterY ?? (canvas.height * 0.54);
   const scale = sy.previewScale;
   const points = [];
 
@@ -3069,12 +3069,21 @@ function drawShipyardScreen() {
   ctx.fillStyle = 'rgba(5,12,18,0.62)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const panelW = Math.min(940, canvas.width * 0.9);
-  const panelH = Math.min(620, canvas.height * 0.9);
+  const panelW = Math.min(1160, canvas.width * 0.96);
+  const panelH = Math.min(700, canvas.height * 0.94);
   const panelX = (canvas.width - panelW) * 0.5;
   const panelY = (canvas.height - panelH) * 0.5;
   ctx.fillStyle = 'rgba(11,28,40,0.9)';
   ctx.fillRect(panelX, panelY, panelW, panelH);
+
+  const leftW = Math.floor(panelW * 0.58);
+  const rightX = panelX + leftW + 24;
+  ctx.strokeStyle = 'rgba(139,180,204,0.18)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(panelX + leftW, panelY + 64);
+  ctx.lineTo(panelX + leftW, panelY + panelH - 18);
+  ctx.stroke();
 
   const title = sy.freeEdit ? 'Shipwright: Design Your Starting Hull' : `Shipwright Refit: Stage ${state.stageIndex + 1}`;
   ctx.fillStyle = '#e8f5ff';
@@ -3084,11 +3093,13 @@ function drawShipyardScreen() {
 
   const design = sy.editDesign;
   const previewSize = 44;
-  const previewScale = clamp(Math.min(canvas.width, canvas.height) / 280, 2.3, 3.8);
+  const previewScale = clamp(Math.min(leftW, panelH) / 230, 2.2, 4.1);
   sy.previewScale = previewScale;
 
-  const previewCx = canvas.width * 0.5;
-  const previewCy = canvas.height * 0.54;
+  const previewCx = panelX + leftW * 0.5;
+  const previewCy = panelY + panelH * 0.55;
+  sy.previewCenterX = previewCx;
+  sy.previewCenterY = previewCy;
   ctx.save();
   ctx.translate(previewCx, previewCy);
   ctx.scale(previewScale, previewScale);
@@ -3146,7 +3157,7 @@ function drawShipyardScreen() {
     }
   }
 
-  const infoX = panelX + 42;
+  const infoX = rightX + 14;
   const infoY = panelY + 86;
   ctx.textAlign = 'left';
   ctx.font = '17px system-ui';
@@ -3171,8 +3182,8 @@ function drawShipyardScreen() {
   ctx.font = '14px system-ui';
   ctx.fillText('Drag hull handles. Choose brush, then click slot circles on each side to place weapons.', infoX, infoY + 166);
 
-  const brushY = panelY + 176;
-  const brushX = panelX + panelW - 334;
+  const brushY = infoY + 196;
+  const brushX = rightX + 14;
   sy.brushRects = {
     gun: { x: brushX, y: brushY, w: 96, h: 34 },
     cannon: { x: brushX + 106, y: brushY, w: 96, h: 34 },
@@ -3188,9 +3199,9 @@ function drawShipyardScreen() {
     ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 22);
   }
 
-  const crewPanelX = panelX + panelW - 334;
-  const crewPanelY = panelY + 228;
-  const rowH = 32;
+  const crewPanelX = rightX + 14;
+  const crewPanelY = brushY + 56;
+  const rowH = 36;
   const makeRect = (x, y) => ({ x, y, w: 34, h: 28 });
   sy.crewRects = {
     crewSub: makeRect(crewPanelX + 176, crewPanelY),
@@ -3220,7 +3231,7 @@ function drawShipyardScreen() {
     ctx.fillText(symbol, rect.x + rect.w * 0.5, rect.y + 20);
   }
 
-  const controlsX = panelX + panelW - 320;
+  const controlsX = rightX + 2;
   const controlsY = panelY + panelH - 92;
   const canAfford = sy.freeEdit || state.gold >= sy.pendingCost;
 
@@ -3242,7 +3253,7 @@ function drawShipyardScreen() {
     ctx.fillStyle = '#ffd5b0';
     ctx.font = '15px system-ui';
     ctx.textAlign = 'left';
-    ctx.fillText(sy.message, infoX, controlsY + 64);
+    ctx.fillText(sy.message, panelX + 24, panelY + panelH - 24);
   }
 }
 
