@@ -503,6 +503,17 @@ function getGoldMagnetRange() {
   return getPlayerRanges().gun * (GOLD_MAGNET_PULL_FACTOR + state.goldMagnetBonus);
 }
 
+function isPointOnIsland(x, y) {
+  for (const island of state.islands) {
+    const centerDist = Math.hypot(x - island.x, y - island.y);
+    if (centerDist > island.r + 22) continue;
+    for (const patch of island.patches) {
+      if (Math.hypot(x - patch.x, y - patch.y) <= patch.size * 0.86) return true;
+    }
+  }
+  return false;
+}
+
 function getCollectorHomePosition(index, count) {
   const fwd = { x: Math.cos(player.heading), y: Math.sin(player.heading) };
   const right = { x: -fwd.y, y: fwd.x };
@@ -524,7 +535,8 @@ function ensureCollectorSkiffs() {
       vx: 0,
       vy: 0,
       carrying: 0,
-      target: null
+      target: null,
+      runner: null
     });
   }
   if (player.collectorSkiffs.length > wanted) {
@@ -545,6 +557,31 @@ function updateCollectorSkiffs(dt) {
   for (let i = 0; i < player.collectorSkiffs.length; i++) {
     const skiff = player.collectorSkiffs[i];
     const home = getCollectorHomePosition(i, player.collectorSkiffs.length);
+
+    if (skiff.runner) {
+      const runner = skiff.runner;
+      const targetPos = runner.returning ? { x: skiff.x, y: skiff.y } : { x: runner.drop.x, y: runner.drop.y };
+      const rdx = targetPos.x - runner.x;
+      const rdy = targetPos.y - runner.y;
+      const rdist = Math.hypot(rdx, rdy) || 1;
+      const rspeed = runner.returning ? 3.7 : 3.25;
+      runner.x += (rdx / rdist) * rspeed * dt * 60;
+      runner.y += (rdy / rdist) * rspeed * dt * 60;
+
+      if (!runner.returning && rdist < 8) {
+        const idx = state.drops.indexOf(runner.drop);
+        if (idx >= 0) {
+          runner.carrying = runner.drop.v;
+          state.drops.splice(idx, 1);
+        }
+        runner.returning = true;
+      }
+
+      if (runner.returning && rdist < 9) {
+        skiff.carrying += runner.carrying;
+        skiff.runner = null;
+      }
+    }
 
     if (skiff.target && !state.drops.includes(skiff.target)) skiff.target = null;
 
@@ -585,10 +622,20 @@ function updateCollectorSkiffs(dt) {
     skiff.x = clamp(skiff.x, 20, state.world.width - 20);
     skiff.y = clamp(skiff.y, 20, state.world.height - 20);
 
-    if (!skiff.carrying && skiff.target && Math.hypot(skiff.target.x - skiff.x, skiff.target.y - skiff.y) < 12) {
-      skiff.carrying = skiff.target.v;
-      const idx = state.drops.indexOf(skiff.target);
-      if (idx >= 0) state.drops.splice(idx, 1);
+    if (!skiff.carrying && skiff.target && !skiff.runner && Math.hypot(skiff.target.x - skiff.x, skiff.target.y - skiff.y) < 12) {
+      if (isPointOnIsland(skiff.target.x, skiff.target.y)) {
+        skiff.runner = {
+          x: skiff.x,
+          y: skiff.y,
+          drop: skiff.target,
+          carrying: 0,
+          returning: false
+        };
+      } else {
+        skiff.carrying = skiff.target.v;
+        const idx = state.drops.indexOf(skiff.target);
+        if (idx >= 0) state.drops.splice(idx, 1);
+      }
       skiff.target = null;
     }
 
@@ -1423,7 +1470,7 @@ function initWorld() {
     const isLong = roll >= 0.22 && roll < 0.5;
     const isLarge = roll > 0.84;
     const r = isSmall ? (28 + Math.random() * 36) : isLarge ? (96 + Math.random() * 82) : (50 + Math.random() * 76);
-    const island = { x, y, r, patches: [], buildings: [], docks: [], defenseLevel: 0 };
+    const island = { x, y, r, patches: [], buildings: [], docks: [], foliage: [], defenseLevel: 0 };
 
     const patchCount = isSmall ? (5 + Math.floor(Math.random() * 4)) : isLarge ? (18 + Math.floor(Math.random() * 12)) : (9 + Math.floor(Math.random() * 10));
     const spineDir = Math.random() * Math.PI * 2;
@@ -1503,6 +1550,20 @@ function initWorld() {
           length,
           width
         });
+      }
+    }
+
+    const foliageCount = Math.max(5, Math.floor(island.r / 10));
+    for (let f = 0; f < foliageCount; f++) {
+      const patch = island.patches[Math.floor(Math.random() * island.patches.length)];
+      const ang = Math.random() * Math.PI * 2;
+      const off = patch.size * (0.1 + Math.random() * 0.7);
+      const fx = patch.x + Math.cos(ang) * off;
+      const fy = patch.y + Math.sin(ang) * off;
+      if (Math.random() < 0.55) {
+        island.foliage.push({ kind: 'tree', x: fx, y: fy, trunk: 4 + Math.random() * 4, crown: 5 + Math.random() * 6 });
+      } else {
+        island.foliage.push({ kind: 'shrub', x: fx, y: fy, width: 6 + Math.random() * 10, height: 4 + Math.random() * 6 });
       }
     }
 
@@ -3073,6 +3134,18 @@ function drawCollectorSkiffs() {
       ctx.fillRect(0.6, -1.5, 2.2, 3);
     }
     ctx.restore();
+
+    if (skiff.runner) {
+      const rp = toScreen(skiff.runner.x, skiff.runner.y);
+      ctx.fillStyle = '#0c1014';
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, 2.8 * state.zoom, 0, Math.PI * 2);
+      ctx.fill();
+      if (skiff.runner.carrying > 0) {
+        ctx.fillStyle = '#ffdd55';
+        ctx.fillRect(rp.x + 2 * state.zoom, rp.y - 1.2 * state.zoom, 2.4 * state.zoom, 2.4 * state.zoom);
+      }
+    }
   }
 }
 
@@ -3150,6 +3223,31 @@ function drawWorld() {
       ctx.restore();
     }
 
+    for (const plant of island.foliage || []) {
+      const fp = toScreen(plant.x, plant.y);
+      if (plant.kind === 'tree') {
+        const trunkW = Math.max(1, 1.6 * z);
+        const trunkH = plant.trunk * z;
+        ctx.fillStyle = '#6b4c33';
+        ctx.fillRect(fp.x - trunkW * 0.5, fp.y - trunkH * 0.2, trunkW, trunkH);
+        ctx.fillStyle = '#5f9147';
+        ctx.beginPath();
+        ctx.arc(fp.x, fp.y - trunkH * 0.55, plant.crown * z, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#6ea553';
+        ctx.beginPath();
+        ctx.arc(fp.x + plant.crown * z * 0.24, fp.y - trunkH * 0.66, plant.crown * z * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#5f8d4a';
+        ctx.fillRect(fp.x - plant.width * z * 0.5, fp.y - plant.height * z * 0.4, plant.width * z, plant.height * z);
+        ctx.fillStyle = '#6ea553';
+        ctx.beginPath();
+        ctx.arc(fp.x - plant.width * z * 0.12, fp.y - plant.height * z * 0.35, plant.height * z * 0.48, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     for (const building of island.buildings) {
       const bp = toScreen(building.x, building.y);
       const bw = building.size * 0.9 * z;
@@ -3163,8 +3261,18 @@ function drawWorld() {
       ctx.fillStyle = building.tower ? '#97a8b8' : '#cf9a70';
       ctx.fillRect(bp.x - bw * 0.45, bp.y - bh * 0.49, bw * 0.9, bh * 0.12);
 
-      ctx.fillStyle = building.tower ? '#4f5d69' : '#8d5f40';
-      ctx.fillRect(bp.x - bw * 0.22, bp.y - bh * 0.9, bw * 0.44, bh * 0.34);
+      if (building.tower) {
+        ctx.fillStyle = '#4f5d69';
+        ctx.fillRect(bp.x - bw * 0.22, bp.y - bh * 0.9, bw * 0.44, bh * 0.34);
+      } else {
+        ctx.fillStyle = '#8d5f40';
+        ctx.beginPath();
+        ctx.moveTo(bp.x - bw * 0.34, bp.y - bh * 0.54);
+        ctx.lineTo(bp.x + bw * 0.34, bp.y - bh * 0.54);
+        ctx.lineTo(bp.x, bp.y - bh * 0.92);
+        ctx.closePath();
+        ctx.fill();
+      }
 
       ctx.fillStyle = building.tower ? '#cfd9e4' : '#f2d2a8';
       ctx.fillRect(bp.x - bw * 0.08, bp.y - bh * 0.14, bw * 0.16, bh * 0.18);
