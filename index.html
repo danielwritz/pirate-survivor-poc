@@ -150,6 +150,7 @@ const player = {
   bulletSpeed: 6,
   rowers: 0,
   gunners: 2,
+  repairCrew: 0,
   cannons: 0,
   cannonCapacityBonus: 0,
   cannonPivot: 0,
@@ -164,6 +165,7 @@ const player = {
   bowSharpness: 1,
   sternTaper: 1,
   impactTimer: 0,
+  repairSuppressed: 0,
   damageSeed: 1337,
   slots: [],
   hullColor: '#5f4630',
@@ -245,10 +247,29 @@ function clampPlayerCrewToDeck() {
   player.crew = clamp(player.crew, 1, getDeckCrewCapacity(player));
 }
 
+function getSpareCrewCapacity(entity = player) {
+  const totalCrew = clamp(entity.crew || 0, 0, getDeckCrewCapacity(entity));
+  const committed = Math.max(0, (entity.rowers || 0) + (entity.gunners || 0) + (entity.repairCrew || 0));
+  return Math.max(0, totalCrew - committed);
+}
+
+function clampPlayerSupportCrewToDeck() {
+  const maxByDeck = getDeckCrewCapacity(player);
+  player.repairCrew = clamp(player.repairCrew || 0, 0, maxByDeck);
+  const maxSupport = Math.max(0, player.crew - (player.rowers + player.gunners));
+  player.repairCrew = Math.min(player.repairCrew, maxSupport);
+}
+
 function clampPlayerArmamentToHull() {
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
   player.cannons = clamp(player.cannons, 0, caps.maxCannonsPerSide);
   player.gunners = clamp(player.gunners, 1, caps.maxGunners);
+}
+
+function damagePlayer(amount) {
+  if (amount <= 0) return;
+  player.hp -= amount;
+  player.repairSuppressed = Math.max(player.repairSuppressed || 0, 2.4);
 }
 
 function getHullUpperEdge(shape) {
@@ -621,6 +642,23 @@ const upgradePool = [
     }
   },
   {
+    name: 'Repair Crew',
+    desc: '+1 repair crew, passive hull regen',
+    apply() {
+      const deckCap = getDeckCrewCapacity(player);
+      let spare = getSpareCrewCapacity(player);
+      if (spare <= 0 && player.crew < deckCap) {
+        player.crew += 1;
+        spare = getSpareCrewCapacity(player);
+      }
+      if (spare > 0) {
+        player.repairCrew += 1;
+        clampPlayerSupportCrewToDeck();
+      }
+      addAbility('RepairCrew');
+    }
+  },
+  {
     name: 'Reinforced Hull',
     desc: '+15 max HP and heal 10',
     apply() {
@@ -946,7 +984,7 @@ function resolveIslandCollisions(entity, dt, playerCollision = false) {
 
         if (playerCollision) {
           const impact = 3.5 + entity.mass * 0.03;
-          player.hp -= impact * dt * 0.5;
+          damagePlayer(impact * dt * 0.5);
         }
       }
     }
@@ -1453,6 +1491,18 @@ function getUpgradeCardInfo(upgrade) {
     desc = `${upgrade.desc} (${current.maxCannonsPerSide}→${next.maxCannonsPerSide} per side)`;
   }
 
+  if (upgrade.name === 'Repair Crew') {
+    const spare = getSpareCrewCapacity(player);
+    if (spare <= 0 && player.crew >= getDeckCrewCapacity(player)) {
+      blocked = true;
+      desc = `No crew slots free. Increase deck/crew capacity first (${player.crew}/${getDeckCrewCapacity(player)}).`;
+    } else {
+      const effective = player.repairCrew + (spare > 0 ? 1 : 1);
+      const approxPerSec = (0.36 + effective * 0.3).toFixed(1);
+      desc = `${upgrade.desc} (Repair crew ${player.repairCrew}→${effective}, ~${approxPerSec} HP/s out of combat)`;
+    }
+  }
+
   return { desc, blocked };
 }
 
@@ -1528,7 +1578,7 @@ function resolveVesselCollision(a, b, dt) {
   if ((a.impactTimer || 0) <= 0) {
     const impactOnA = vesselImpactPower(b, -nx, -ny);
     const dmgA = Math.max(0, impactOnA * 0.00074 - massA * 0.007);
-    if (a === player) player.hp -= dmgA;
+    if (a === player) damagePlayer(dmgA);
     else a.hp -= dmgA;
     a.impactTimer = 0.2;
   }
@@ -1536,7 +1586,7 @@ function resolveVesselCollision(a, b, dt) {
   if ((b.impactTimer || 0) <= 0) {
     const impactOnB = vesselImpactPower(a, nx, ny);
     const dmgB = Math.max(0, impactOnB * 0.00074 - massB * 0.007);
-    if (b === player) player.hp -= dmgB;
+    if (b === player) damagePlayer(dmgB);
     else b.hp -= dmgB;
     b.impactTimer = 0.2;
   }
@@ -1601,10 +1651,12 @@ function update(dt) {
   if (state.gameOver) return;
   if (state.upgradesOffered) return;
   clampPlayerCrewToDeck();
+  clampPlayerSupportCrewToDeck();
   clampPlayerArmamentToHull();
 
   state.time += dt;
   player.impactTimer = Math.max(0, (player.impactTimer || 0) - dt);
+  player.repairSuppressed = Math.max(0, (player.repairSuppressed || 0) - dt);
 
   const cfg = getLevelConfig(state.stageIndex);
   state.stageTimer += dt;
@@ -1946,7 +1998,7 @@ function update(dt) {
     if (b.owner !== 'enemy') continue;
     const d = Math.hypot(player.x - b.x, player.y - b.y);
     if (d < player.size * 0.78 + 4) {
-      player.hp -= b.dmg * (b.heavy ? 0.28 : 0.18);
+      damagePlayer(b.dmg * (b.heavy ? 0.28 : 0.18));
       const n = normalizeOr(b.vx, b.vy, 1, 0);
       spawnImpactDebris(player.x, player.y, n.x, n.y, !!b.heavy, player);
       spawnDeckBurst(player.x, player.y, n.x, n.y, !!b.heavy);
@@ -2002,6 +2054,16 @@ function update(dt) {
     if (cloud.x < -240) cloud.x = state.world.width + 180;
     if (cloud.y > state.world.height + 120) cloud.y = -120;
     if (cloud.y < -120) cloud.y = state.world.height + 120;
+  }
+
+  if (player.hp > 0 && player.hp < player.maxHp && (player.repairCrew || 0) > 0) {
+    const movementPenalty = clamp(player.speed / Math.max(0.1, player.baseSpeed + 1.2), 0, 1);
+    const suppression = clamp((player.repairSuppressed || 0) / 2.4, 0, 1);
+    const regenPerSec = 0.36 + player.repairCrew * 0.3;
+    const regenScale = (1 - suppression) * (1 - movementPenalty * 0.45);
+    if (regenScale > 0) {
+      player.hp = Math.min(player.maxHp, player.hp + regenPerSec * regenScale * dt);
+    }
   }
 
   if (player.hp <= 0) {
@@ -2297,7 +2359,7 @@ function drawHud() {
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText(`${modeLabel} · ${stageLabel} · Lv ${state.level} · Gold ${Math.round(state.gold)} · Boss ${bossIn}s`, panelX + panelW / 2, panelY + 16);
-  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${player.gunners}/${caps.maxGunners} · Cannons ${player.cannons}/${caps.maxCannonsPerSide} per side · Tier ${caps.tier} · Pivot ${player.cannonPivot}° · Crew ${player.crew}/${getDeckCrewCapacity(player)}`, panelX + panelW / 2, panelY + 32);
+  ctx.fillText(`Wind ${windDirectionLabel()} · Speed ${player.speed.toFixed(2)} · Row ${Math.round(state.rowEffort * 100)}% · Guns ${player.gunners}/${caps.maxGunners} · Cannons ${player.cannons}/${caps.maxCannonsPerSide} per side · Repair ${player.repairCrew} · Tier ${caps.tier} · Pivot ${player.cannonPivot}° · Crew ${player.crew}/${getDeckCrewCapacity(player)} (free ${getSpareCrewCapacity(player)})`, panelX + panelW / 2, panelY + 32);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#d8eefc';
