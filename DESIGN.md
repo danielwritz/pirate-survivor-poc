@@ -65,6 +65,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Island generator supports shape diversity (small, long, chunky, large multi-cluster islands)
 - Cannon-only building destruction with fountain-like gold bursts
 - Passive islands in early game, defensive tower cannons in later tiers
+- Tower batteries are range-gated to player-like cannon distance so coastal defenses feel local, not global
 - Translucent cloud pass-over layer
 - Periodic boss ship arrivals that gate major progression spikes
 - Boss defeat increases global difficulty tier

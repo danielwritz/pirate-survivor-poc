@@ -49,6 +49,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Islands are larger and contain destructible village buildings
 - Cannon hits destroy buildings and spawn gold fountains into the water
 - Island defenses (tower cannons) activate as difficulty rises
+- Island defenses now only fire inside player-cannon-like engagement range (no map-wide sniping)
 - Boats cannot pass through islands; island impacts cause collision damage
 - Enemy ships can now collide with each other and with the player, producing contact slowdowns and impact damage
 - Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look

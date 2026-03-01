@@ -1675,7 +1675,12 @@ function update(dt) {
     for (const tower of activeTowers) {
       tower.fireTimer += dt;
       const cadence = Math.max(0.7, 1.6 - island.defenseLevel * 0.12);
+      const batteryRange = getPlayerRanges().cannon;
       if (tower.fireTimer >= cadence) {
+        const dxToPlayer = player.x - tower.x;
+        const dyToPlayer = player.y - tower.y;
+        const distToPlayer = Math.hypot(dxToPlayer, dyToPlayer);
+        if (distToPlayer > batteryRange) continue;
         tower.fireTimer = 0;
         const ang = Math.atan2(player.y - tower.y, player.x - tower.x) + (Math.random() - 0.5) * 0.16;
         state.bullets.push({
