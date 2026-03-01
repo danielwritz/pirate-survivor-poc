@@ -3440,15 +3440,15 @@ function drawShipyardScreen() {
     sternTaper: player.sternTaper
   };
   const previewHull = drawHullBody(previewSize, player.hullColor, player.trimColor, previewProfile, player.ram);
-  const previewEntity = {
-    size: previewSize,
+  const capEntity = {
+    size: player.size,
     hullDesign: design,
     hullLength: player.hullLength,
     hullBeam: player.hullBeam,
     bowSharpness: player.bowSharpness,
     sternTaper: player.sternTaper
   };
-  const previewDeckCap = getDeckCrewCapacity(previewEntity);
+  const previewDeckCap = getDeckCrewCapacity(capEntity);
   const previewCrew = clamp(player.crew, 0, previewDeckCap);
   const committedCrew = Math.min(previewCrew, (player.rowers || 0) + (player.gunners || 0) + (player.repairCrew || 0));
   drawDeckCrewSpots(previewHull, previewCrew, previewDeckCap, committedCrew, 1);
@@ -3558,7 +3558,7 @@ function drawShipyardScreen() {
   ctx.textAlign = 'left';
   ctx.fillStyle = '#c4e1f2';
   ctx.font = '15px system-ui';
-  ctx.fillText(`Crew Total (${SHIPYARD_COST.crew}g hire): ${player.crew}`, crewPanelX, crewPanelY + 17);
+  ctx.fillText(`Crew Total (${SHIPYARD_COST.crew}g hire): ${player.crew}/${previewDeckCap}`, crewPanelX, crewPanelY + 17);
   ctx.fillText(`Rowers: ${player.rowers}`, crewPanelX, crewPanelY + rowH + 17);
   ctx.fillText(`Muskets/Gunners: ${player.gunners}`, crewPanelX, crewPanelY + rowH * 2 + 17);
   ctx.fillText(`Repair Crew: ${player.repairCrew}`, crewPanelX, crewPanelY + rowH * 3 + 17);
