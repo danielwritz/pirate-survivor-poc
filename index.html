@@ -142,6 +142,7 @@ const player = {
   hullBeam: 1,
   bowSharpness: 1,
   sternTaper: 1,
+  impactTimer: 0,
   slots: [],
   hullColor: '#5f4630',
   sailColor: '#f0f7ff',
@@ -989,6 +990,7 @@ function spawnEnemy() {
     hullBeam,
     bowSharpness,
     sternTaper,
+    impactTimer: 0,
     hullColor: style.hullColor,
     sailColor: style.sailColor,
     flagColor: style.flagColor,
@@ -1045,6 +1047,7 @@ function spawnBoss() {
     hullBeam: 1 + Math.random() * 0.2,
     bowSharpness: 1 + Math.random() * 0.3,
     sternTaper: 0.82 + Math.random() * 0.28,
+    impactTimer: 0,
     hullColor: style.hullColor,
     sailColor: style.sailColor,
     flagColor: style.flagColor,
@@ -1254,6 +1257,78 @@ function addGold(amount) {
   }
 }
 
+function vesselForward(entity) {
+  return { x: Math.cos(entity.heading), y: Math.sin(entity.heading) };
+}
+
+function collisionRadius(entity) {
+  return entity.size * 0.72;
+}
+
+function vesselImpactPower(entity, normalX, normalY) {
+  const fwd = vesselForward(entity);
+  const bowDot = Math.max(0, fwd.x * normalX + fwd.y * normalY);
+  const ramBonus = entity.ram ? 1.4 : (entity.kind === 'rammer' ? 1.24 : 1);
+  return entity.speed * entity.mass * (0.78 + bowDot * 0.72) * ramBonus;
+}
+
+function resolveVesselCollision(a, b, dt) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 0.0001;
+  const minDist = collisionRadius(a) + collisionRadius(b);
+  if (d >= minDist) return;
+
+  const nx = dx / d;
+  const ny = dy / d;
+  const overlap = minDist - d;
+
+  const massA = Math.max(1, a.mass);
+  const massB = Math.max(1, b.mass);
+  const totalMass = massA + massB;
+  a.x -= nx * overlap * (massB / totalMass);
+  a.y -= ny * overlap * (massB / totalMass);
+  b.x += nx * overlap * (massA / totalMass);
+  b.y += ny * overlap * (massA / totalMass);
+
+  a.x = clamp(a.x, 24, state.world.width - 24);
+  a.y = clamp(a.y, 24, state.world.height - 24);
+  b.x = clamp(b.x, 24, state.world.width - 24);
+  b.y = clamp(b.y, 24, state.world.height - 24);
+
+  const va = vesselForward(a);
+  const vb = vesselForward(b);
+  const relNormalSpeed = (va.x * a.speed - vb.x * b.speed) * nx + (va.y * a.speed - vb.y * b.speed) * ny;
+  if (relNormalSpeed <= 0) return;
+
+  const restitution = 0.2;
+  const impulse = (1 + restitution) * relNormalSpeed / (1 / massA + 1 / massB);
+  a.speed = Math.max(0, a.speed - (impulse / massA) * 0.46);
+  b.speed = Math.max(0, b.speed - (impulse / massB) * 0.46);
+
+  a.heading += (-ny * 0.012) + (Math.random() - 0.5) * 0.016;
+  b.heading += (ny * 0.012) + (Math.random() - 0.5) * 0.016;
+
+  a.impactTimer = Math.max(0, (a.impactTimer || 0) - dt);
+  b.impactTimer = Math.max(0, (b.impactTimer || 0) - dt);
+
+  if ((a.impactTimer || 0) <= 0) {
+    const impactOnA = vesselImpactPower(b, -nx, -ny);
+    const dmgA = Math.max(0, impactOnA * 0.00074 - massA * 0.007);
+    if (a === player) player.hp -= dmgA;
+    else a.hp -= dmgA;
+    a.impactTimer = 0.2;
+  }
+
+  if ((b.impactTimer || 0) <= 0) {
+    const impactOnB = vesselImpactPower(a, nx, ny);
+    const dmgB = Math.max(0, impactOnB * 0.00074 - massB * 0.007);
+    if (b === player) player.hp -= dmgB;
+    else b.hp -= dmgB;
+    b.impactTimer = 0.2;
+  }
+}
+
 function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
   const shape = getHullShape({
     size,
@@ -1316,6 +1391,7 @@ function update(dt) {
   clampPlayerArmamentToHull();
 
   state.time += dt;
+  player.impactTimer = Math.max(0, (player.impactTimer || 0) - dt);
 
   const cfg = getLevelConfig(state.stageIndex);
   state.stageTimer += dt;
@@ -1487,6 +1563,7 @@ function update(dt) {
   }
 
   for (const enemy of state.enemies) {
+    enemy.impactTimer = Math.max(0, (enemy.impactTimer || 0) - dt);
     const target = getEnemySteerTarget(enemy);
     const desired = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     const turnDelta = angleDiff(desired, enemy.heading);
@@ -1516,6 +1593,16 @@ function update(dt) {
         if (fired.firedGun) enemy.gunTimer = 0;
         if (fired.firedCannon) enemy.cannonTimer = 0;
       }
+    }
+  }
+
+  for (let i = 0; i < state.enemies.length; i++) {
+    resolveVesselCollision(player, state.enemies[i], dt);
+  }
+
+  for (let i = 0; i < state.enemies.length; i++) {
+    for (let j = i + 1; j < state.enemies.length; j++) {
+      resolveVesselCollision(state.enemies[i], state.enemies[j], dt);
     }
   }
 
@@ -1606,18 +1693,17 @@ function update(dt) {
 
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const enemy = state.enemies[i];
-    const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
-    if (d < enemy.size + player.size * 0.7) {
-      if (player.ram && enemy.kind !== 'raider' && enemy.kind !== 'boss') {
-        spawnShipExplosion(enemy.x, enemy.y, enemy.size, false);
-        state.enemies.splice(i, 1);
-        state.drops.push({ x: enemy.x, y: enemy.y, v: 3 + Math.random() * 2 });
+    if (enemy.hp <= 0) {
+      spawnShipExplosion(enemy.x, enemy.y, enemy.size, enemy.kind === 'boss');
+      state.enemies.splice(i, 1);
+      if (enemy.kind === 'boss') {
+        state.difficultyTier += 1;
+        state.bossesDefeated += 1;
+        offerMajorUpgrades();
+        state.drops.push({ x: enemy.x, y: enemy.y, v: 22 + Math.random() * 6 });
       } else {
-        const impact = enemy.kind === 'boss' ? 20 : enemy.kind === 'monster' ? 12 : 7;
-        player.hp -= impact * dt * 4;
-        if (player.ram && enemy.kind === 'boss') {
-          enemy.hp -= player.ramDamage * dt * 1.15;
-        }
+        const bonus = enemy.kind === 'raider' ? 6 : 3;
+        state.drops.push({ x: enemy.x, y: enemy.y, v: bonus + Math.random() * 2.5 });
       }
     }
   }

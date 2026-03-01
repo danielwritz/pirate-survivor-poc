@@ -18,6 +18,8 @@ Canvas now runs fullscreen in the browser viewport.
 
 ## Implemented
 - Momentum-based ship steering (heavier hull = more inertia)
+- Ship-to-ship collisions now use physical separation + momentum transfer instead of simple overlap drain
+- Ramming/impact damage now scales by speed, mass, and bow-on contact angle
 - Wind + sail propulsion with on-screen wind compass
 - Broadside-only firing from ship port/starboard weapon mounts
 - Distinct gun vs cannon visual ports on ship sides
@@ -48,6 +50,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Cannon hits destroy buildings and spawn gold fountains into the water
 - Island defenses (tower cannons) activate as difficulty rises
 - Boats cannot pass through islands; island impacts cause collision damage
+- Enemy ships can now collide with each other and with the player, producing contact slowdowns and impact damage
 - Islands render as pseudo-random hex/triangle patch clusters for a retro geometric look
 - Procedural island generation now produces wider variety (small, long, bulky, and larger composite islands)
 - Visible ship growth and ability slots

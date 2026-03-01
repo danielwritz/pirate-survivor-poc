@@ -17,6 +17,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 
 ## POC Mechanics
 - Heading-based steering (A/D) with momentum
+- Ship contact physics includes vessel-vessel separation, impulse-like speed loss, and heading disturbance on collision
 - Row propulsion on demand (W)
 - Sail toggle state (Space) and braking/anchor drag (S)
 - Auto-shoot combat
@@ -50,6 +51,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Hull profile variation includes cosmetic randomness plus stat-influenced changes from upgrades
 - Heavier ship tiers increase inertia and handling weight
 - Cannon Installments upgrade increases cannon capacity but adds size/mass and handling penalties (slower start, reduced turn authority)
+- Ramming damage derives from impact power (speed × mass × bow alignment), making bow-first hits meaningfully stronger
 - Upgrade UI surfaces cap-aware messaging so cannon upgrades clearly indicate when hull capacity is maxed
 - Dynamic zoom-out as ship size increases
 - Ability/upgrade choices with up to 4 active slots
