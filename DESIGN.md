@@ -23,6 +23,7 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Enemy steering behaviors include both direct pursuit and ally-follow formation tendencies for certain ship classes
 - Allied enemy subgroups can share flocking-like movement (cohesion/alignment/separation) for light formation travel
 - Spawned enemy ships use varied randomized combat configurations (reload, spread, speed, battery mix) that still scale with difficulty
+- Enemy visual identity includes sail/flag coding: shared squad palettes for allies and stripe-based flag threat markers
 - Enemy archetypes:
   - Pirate skiffs (baseline)
   - Ram boats (fast impact threats)

@@ -435,6 +435,57 @@ function spawnShipExplosion(x, y, size, boss = false) {
   }
 }
 
+function enemyThreatTier(kind, stageIndex, difficultyTier) {
+  if (kind === 'boss') return 5;
+  const raw = 1 + Math.floor((stageIndex * 0.65 + difficultyTier) * 0.5);
+  return clamp(raw + (kind === 'raider' ? 1 : 0), 1, 4);
+}
+
+function getEnemyVisualStyle(enemyId, kind, squadId, stageIndex, difficultyTier) {
+  const threat = enemyThreatTier(kind, stageIndex, difficultyTier);
+
+  if (kind === 'boss') {
+    return {
+      hullColor: '#7b2e3d',
+      sailColor: '#f1d1d8',
+      flagColor: '#a62c44',
+      flagAccent: '#ffe0ea',
+      flagStripes: 5,
+      teamHue: 342
+    };
+  }
+
+  const paletteByThreat = [
+    { sail: '#d6e8f5', hull: '#3a5263', flag: '#4f89c2', accent: '#b7d6f1', hue: 205 },
+    { sail: '#e8ddd0', hull: '#5a4a3d', flag: '#d08a39', accent: '#f4d5a8', hue: 32 },
+    { sail: '#e7d6dd', hull: '#5d3f4f', flag: '#b44d74', accent: '#f3bfd1', hue: 332 },
+    { sail: '#d7e8d6', hull: '#425940', flag: '#4c9d5b', accent: '#b7e6be', hue: 130 }
+  ];
+
+  if (squadId != null) {
+    const hue = ((squadId * 53) % 360 + 360) % 360;
+    const light = 74 - threat * 2;
+    return {
+      hullColor: `hsl(${hue} 26% 30%)`,
+      sailColor: `hsl(${hue} 62% ${light}%)`,
+      flagColor: `hsl(${hue} 72% 48%)`,
+      flagAccent: `hsl(${hue} 76% 82%)`,
+      flagStripes: threat,
+      teamHue: hue
+    };
+  }
+
+  const pick = paletteByThreat[(enemyId + threat) % paletteByThreat.length];
+  return {
+    hullColor: pick.hull,
+    sailColor: pick.sail,
+    flagColor: pick.flag,
+    flagAccent: pick.accent,
+    flagStripes: threat,
+    teamHue: pick.hue
+  };
+}
+
 function getBroadsideFirePlan(enemy, target) {
   const dx = target.x - enemy.x;
   const dy = target.y - enemy.y;
@@ -901,9 +952,11 @@ function spawnEnemy() {
   const rowers = 1 + Math.floor(state.stageIndex / 2) + (kind === 'rammer' ? 2 : 0);
   const cannonPivot = clamp((Math.floor(state.difficultyTier / 3) * 5) + (Math.random() < 0.32 ? 5 : 0) + Math.floor(Math.random() * 6), 0, 26);
   const squadId = (kind === 'pirate' || kind === 'raider') ? squadAnchor() : null;
+  const enemyId = enemyIdSeed++;
+  const style = getEnemyVisualStyle(enemyId, kind, squadId, state.stageIndex, state.difficultyTier);
 
   state.enemies.push({
-    id: enemyIdSeed++,
+    id: enemyId,
     x,
     y,
     hp,
@@ -936,8 +989,12 @@ function spawnEnemy() {
     hullBeam,
     bowSharpness,
     sternTaper,
-    hullColor: kind === 'raider' ? '#5c3f35' : kind === 'rammer' ? '#6a3d2f' : '#394f60',
-    sailColor: kind === 'raider' ? '#d7d2c1' : '#d4e6f5'
+    hullColor: style.hullColor,
+    sailColor: style.sailColor,
+    flagColor: style.flagColor,
+    flagAccent: style.flagAccent,
+    flagStripes: style.flagStripes,
+    teamHue: style.teamHue
   });
 }
 
@@ -955,9 +1012,11 @@ function spawnBoss() {
 
   const hp = 260 + state.level * 18 + state.difficultyTier * 45;
   const size = 30 + state.difficultyTier * 1.2 + state.difficultyFromSize * 0.6;
+  const bossId = enemyIdSeed++;
+  const style = getEnemyVisualStyle(bossId, 'boss', null, state.stageIndex, state.difficultyTier);
 
   state.enemies.push({
-    id: enemyIdSeed++,
+    id: bossId,
     x,
     y,
     hp,
@@ -986,8 +1045,12 @@ function spawnBoss() {
     hullBeam: 1 + Math.random() * 0.2,
     bowSharpness: 1 + Math.random() * 0.3,
     sternTaper: 0.82 + Math.random() * 0.28,
-    hullColor: '#7b2e3d',
-    sailColor: '#f1d1d8'
+    hullColor: style.hullColor,
+    sailColor: style.sailColor,
+    flagColor: style.flagColor,
+    flagAccent: style.flagAccent,
+    flagStripes: style.flagStripes,
+    teamHue: style.teamHue
   });
 }
 
@@ -1721,6 +1784,37 @@ function drawEnemyShip(enemy) {
     ctx.lineTo(s * 0.95, -s * 0.76);
     ctx.lineTo(2, -s * 0.45);
     ctx.closePath();
+    ctx.fill();
+  }
+
+  const flagBaseX = 2;
+  const flagTop = -s * 1.08;
+  const flagLen = Math.max(7, s * 0.55);
+  const flagH = Math.max(5, s * 0.28);
+  ctx.fillStyle = enemy.flagColor || '#a65a43';
+  ctx.beginPath();
+  ctx.moveTo(flagBaseX, flagTop);
+  ctx.lineTo(flagBaseX + flagLen, flagTop + flagH * 0.48);
+  ctx.lineTo(flagBaseX, flagTop + flagH);
+  ctx.closePath();
+  ctx.fill();
+
+  const stripes = clamp(enemy.flagStripes || 1, 1, 5);
+  ctx.fillStyle = enemy.flagAccent || '#f4d7b0';
+  for (let i = 0; i < stripes; i++) {
+    const t = (i + 1) / (stripes + 1);
+    const x = flagBaseX + t * (flagLen * 0.74);
+    const y1 = flagTop + t * 0.35;
+    const y2 = flagTop + flagH - t * 0.35;
+    ctx.fillRect(x, y1, Math.max(1.1, s * 0.05), Math.max(1.6, y2 - y1));
+  }
+
+  if (enemy.squadId != null) {
+    ctx.fillStyle = '#f9fff6';
+    const dotX = flagBaseX + flagLen * 0.32;
+    const dotY = flagTop + flagH * 0.5;
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, Math.max(1.1, s * 0.05), 0, Math.PI * 2);
     ctx.fill();
   }
 

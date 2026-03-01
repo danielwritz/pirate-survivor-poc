@@ -26,6 +26,9 @@ Canvas now runs fullscreen in the browser viewport.
 - Armament is hull-limited: guns and cannons are capped by ship deck size/tier
 - Base hull tier supports up to 2 cannons per side; larger hull tiers and upgrades unlock higher capacity
 - Generated enemy ships also obey hull-size armament caps to keep loadouts believable
+- Enemy sail/flag palettes are more varied for stronger visual variety
+- Same-squad enemies share sail/flag palette colors to show allied grouping
+- Flag stripe count indicates enemy threat tier at a glance
 - New upgrade option: Cannon Installments (raises cannon capacity per side, adds hull weight/inertia)
 - Heavier ships now have stronger momentum penalties (slower start and weaker turning authority)
 - HUD shows armament as current/max (`Guns a/b`, `Cannons c/d per side`) plus ship tier
