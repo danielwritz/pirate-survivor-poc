@@ -1828,27 +1828,26 @@ function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
   });
   const { len, beam, bowX, shoulderX, sternShoulderX, sternX } = shape;
 
+  const pathHull = () => {
+    ctx.beginPath();
+    ctx.moveTo(bowX, 0);
+    ctx.lineTo(shoulderX, -beam * 0.62);
+    ctx.lineTo(sternShoulderX, -beam * 0.46);
+    ctx.lineTo(sternX, 0);
+    ctx.lineTo(sternShoulderX, beam * 0.46);
+    ctx.lineTo(shoulderX, beam * 0.62);
+    ctx.closePath();
+  };
+
   ctx.fillStyle = hullColor;
-  ctx.beginPath();
-  ctx.moveTo(bowX, 0);
-  ctx.lineTo(shoulderX, -beam * 0.62);
-  ctx.lineTo(sternShoulderX, -beam * 0.46);
-  ctx.lineTo(sternX, 0);
-  ctx.lineTo(sternShoulderX, beam * 0.46);
-  ctx.lineTo(shoulderX, beam * 0.62);
-  ctx.closePath();
+  pathHull();
   ctx.fill();
 
-  ctx.fillStyle = trimColor;
-  ctx.beginPath();
-  ctx.moveTo(bowX * 0.82, 0);
-  ctx.lineTo(shoulderX * 0.78, -beam * 0.44);
-  ctx.lineTo(sternShoulderX * 0.72, -beam * 0.3);
-  ctx.lineTo(sternX * 0.74, 0);
-  ctx.lineTo(sternShoulderX * 0.72, beam * 0.3);
-  ctx.lineTo(shoulderX * 0.78, beam * 0.44);
-  ctx.closePath();
-  ctx.fill();
+  ctx.strokeStyle = trimColor;
+  ctx.lineWidth = 2.2;
+  ctx.lineJoin = 'round';
+  pathHull();
+  ctx.stroke();
 
   if (ramEnabled) {
     ctx.fillStyle = '#bdb7b0';
