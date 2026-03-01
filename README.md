@@ -12,6 +12,7 @@ Canvas now runs fullscreen in the browser viewport.
 - Row forward: `W`
 - Brake / drag anchor: `S`
 - Toggle sail open/closed: `Space`
+- Toggle sound effects: `SFX: ON/OFF` HUD button
 - Zoom: mouse wheel
 - Combat: auto-fire
 - Level-up choices: `1`, `2`, `3`
@@ -39,10 +40,19 @@ Canvas now runs fullscreen in the browser viewport.
 - Bosses now hold fire until a broadside solution is likely to connect; they prioritize the player but can opportunistically blast other ships in their arc
 - Dashed range rings around player ship show gun range (thin dashes) and cannon range (thicker dashes)
 - Slower, separate reload cadence for guns vs cannons (guns faster, cannons slower)
+- Procedural retro weapon SFX engine (no external audio files) with randomized shot variation
+- Directional 2D weapon audio uses source position + firing direction for stereo/front-back feel
+- Gun voleys are short, lower-pitched, and less bass-heavy; cannon volleys are deeper and heavier
+- Cannon volleys include a subtle distance-shaped echo tail for extra weight at range
+- Sound profile scales with ship size so larger hulls sound bassier
+- HUD includes a live SFX mute/unmute toggle; audio unlock handled on user interaction
+- Audio runtime crash from enemy SFX path was fixed by correcting the cannon echo/voice-chain wiring
 - Global gun reload cadence tuned slower to reduce early bullet noise
 - Gold inside player gun-range radius now magnet-pulls toward the player for faster collection flow
 - Gold drops render as spinning pixel-style coins
 - Ship deaths now spawn geometric yellow/orange/red fiery explosion shards
+- Weapon fire now emits generated polygon muzzle smoke and warm blast flecks (smaller for guns, larger for cannons)
+- Hits now spawn directional impact debris polygons with ship/deck-like color mixes plus quick deck-hit burst accents
 - Gold pickup is the level progression resource (gold effectively acts as XP)
 - World-space traversal on a larger sea map (camera follows ship)
 - Land/island tiles plus translucent moving cloud layer

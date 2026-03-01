@@ -9,6 +9,19 @@
     .wrap { position: fixed; inset: 0; }
     canvas { display: block; width: 100vw; height: 100vh; border: 0; background: radial-gradient(circle at 30% 30%, #0a2a3f, #071521 70%); }
     .hud { position: absolute; top: 10px; left: 14px; right: 14px; z-index: 5; display: flex; justify-content: space-between; font-size: 14px; pointer-events: none; }
+    .hud-right { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+    .audio-btn {
+      border: 1px solid #4f7896;
+      background: #123149;
+      color: #e8f5ff;
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .audio-btn.is-muted { background: #3a2023; border-color: #88545b; color: #ffd4d8; }
     .hint { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 5; color: #9fc2d9; font-size: 13px; text-align: center; pointer-events: none; }
   </style>
 </head>
@@ -16,7 +29,10 @@
   <div class="wrap">
     <div class="hud">
       <div id="stats"></div>
-      <div id="wind"></div>
+      <div class="hud-right">
+        <div id="wind"></div>
+        <button id="audioToggle" class="audio-btn" type="button" aria-label="Toggle sound effects">SFX: ON</button>
+      </div>
     </div>
     <canvas id="game" width="1280" height="720"></canvas>
     <div class="hint">Steer: A/D · Row forward: W · Brake/anchor drag: S · Toggle sail: Space · Mouse wheel zoom · Level-up: 1/2/3</div>
@@ -28,6 +44,106 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const statsEl = document.getElementById('stats');
 const windEl = document.getElementById('wind');
+const audioToggleBtn = document.getElementById('audioToggle');
+
+const audio = {
+  ctx: null,
+  master: null,
+  crusherCurve: null,
+  targetVolume: 0.4,
+  muted: false,
+  ready: false,
+  lastGunAt: -10,
+  lastCannonAt: -10,
+  lastGunImpactAt: -10,
+  lastCannonImpactAt: -10
+};
+
+function createCrusherCurve(steps = 30) {
+  const n = 4096;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.round(x * steps) / steps;
+  }
+  return curve;
+}
+
+function ensureAudioReady() {
+  if (audio.ready) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+
+  const ctx = new Ctx();
+  const master = ctx.createGain();
+  master.gain.value = audio.muted ? 0.0001 : audio.targetVolume;
+
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18;
+  comp.knee.value = 16;
+  comp.ratio.value = 4.2;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.18;
+
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 5600;
+  lp.Q.value = 0.4;
+
+  master.connect(comp);
+  comp.connect(lp);
+  lp.connect(ctx.destination);
+
+  audio.ctx = ctx;
+  audio.master = master;
+  audio.crusherCurve = createCrusherCurve(28);
+  audio.ready = true;
+}
+
+function unlockAudio() {
+  ensureAudioReady();
+  if (!audio.ready) return;
+  if (audio.ctx.state === 'suspended') audio.ctx.resume();
+}
+
+function setSfxMuted(muted) {
+  audio.muted = !!muted;
+  audioToggleBtn.textContent = audio.muted ? 'SFX: OFF' : 'SFX: ON';
+  audioToggleBtn.classList.toggle('is-muted', audio.muted);
+  if (audio.ready) {
+    const now = audio.ctx.currentTime;
+    audio.master.gain.cancelScheduledValues(now);
+    audio.master.gain.setTargetAtTime(audio.muted ? 0.0001 : audio.targetVolume, now, 0.02);
+  }
+}
+
+function playUiChirp() {
+  if (!audio.ready || audio.muted) return;
+  const now = audio.ctx.currentTime;
+  const osc = audio.ctx.createOscillator();
+  const gain = audio.ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(780, now);
+  osc.frequency.exponentialRampToValueAtTime(1080, now + 0.06);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.08, now + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+  osc.connect(gain);
+  gain.connect(audio.master);
+  osc.start(now);
+  osc.stop(now + 0.07);
+}
+
+window.addEventListener('pointerdown', unlockAudio, { passive: true });
+window.addEventListener('keydown', unlockAudio, { passive: true });
+
+audioToggleBtn.addEventListener('click', () => {
+  unlockAudio();
+  setSfxMuted(!audio.muted);
+  if (!audio.muted) playUiChirp();
+});
+
+setSfxMuted(false);
 
 function resizeCanvas() {
   const w = Math.max(900, window.innerWidth);
@@ -433,6 +549,128 @@ function spawnShipExplosion(x, y, size, boss = false) {
       color,
       sides,
       drift: 0.14 + Math.random() * 0.22
+    });
+  }
+}
+
+function spawnMuzzleBlast(x, y, dirX, dirY, cannon = false) {
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const smokeCount = cannon ? 14 : 7;
+  const emberCount = cannon ? 5 : 2;
+  const smokeColors = ['#4b4f55', '#707780', '#8c939d', '#555b63'];
+  const emberColors = ['#f3c46a', '#f08b42', '#de543c'];
+
+  for (let i = 0; i < smokeCount; i++) {
+    const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.75 : 0.95);
+    const speed = (cannon ? 1.15 : 0.75) + Math.random() * (cannon ? 1.15 : 0.85);
+    const life = (cannon ? 0.28 : 0.18) + Math.random() * (cannon ? 0.26 : 0.16);
+    const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
+    state.particles.push({
+      x: x + dir.x * (cannon ? 4 : 2) + (Math.random() - 0.5) * 2,
+      y: y + dir.y * (cannon ? 4 : 2) + (Math.random() - 0.5) * 2,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: (cannon ? 2.8 : 1.7) + Math.random() * (cannon ? 2.6 : 1.6),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * (cannon ? 0.35 : 0.25),
+      life,
+      maxLife: life,
+      color,
+      sides: Math.random() < 0.5 ? 4 : 5,
+      drift: (cannon ? 0.08 : 0.06) + Math.random() * 0.12
+    });
+  }
+
+  for (let i = 0; i < emberCount; i++) {
+    const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.42 : 0.56);
+    const speed = (cannon ? 1.8 : 1.1) + Math.random() * (cannon ? 1.6 : 1.0);
+    const life = (cannon ? 0.12 : 0.08) + Math.random() * 0.1;
+    const color = emberColors[Math.floor(Math.random() * emberColors.length)];
+    state.particles.push({
+      x: x + dir.x * (cannon ? 4.6 : 2.4),
+      y: y + dir.y * (cannon ? 4.6 : 2.4),
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: (cannon ? 1.7 : 1.0) + Math.random() * (cannon ? 1.4 : 0.9),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.6,
+      life,
+      maxLife: life,
+      color,
+      sides: Math.random() < 0.5 ? 3 : 4,
+      drift: 0.04 + Math.random() * 0.08
+    });
+  }
+}
+
+function getDamageDebrisPalette(target, fallbackHeavy = false) {
+  if (!target) {
+    return fallbackHeavy
+      ? ['#7a5b45', '#8e6b4f', '#5b4535', '#bf7b54']
+      : ['#8b745d', '#6f5c4c', '#5a493b', '#a37e61'];
+  }
+
+  const hull = target.hullColor || '#6a5748';
+  const trim = target.trimColor || '#b8997a';
+  const deckBrown1 = '#8a6a4f';
+  const deckBrown2 = '#6e5340';
+  const darkChip = '#43372e';
+  return [hull, trim, deckBrown1, deckBrown2, darkChip];
+}
+
+function spawnImpactDebris(x, y, dirX, dirY, heavy = false, target = null) {
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const normal = { x: -dir.x, y: -dir.y };
+  const count = heavy ? 22 : 12;
+  const palette = getDamageDebrisPalette(target, heavy);
+
+  for (let i = 0; i < count; i++) {
+    const ang = Math.atan2(normal.y, normal.x) + (Math.random() - 0.5) * (heavy ? 0.56 : 0.82);
+    const speed = (heavy ? 2.0 : 1.2) + Math.random() * (heavy ? 2.6 : 1.6);
+    const life = (heavy ? 0.22 : 0.15) + Math.random() * (heavy ? 0.25 : 0.18);
+    const color = palette[Math.floor(Math.random() * palette.length)];
+    state.particles.push({
+      x: x + normal.x * (heavy ? 2.8 : 1.8),
+      y: y + normal.y * (heavy ? 2.8 : 1.8),
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: (heavy ? 2.1 : 1.2) + Math.random() * (heavy ? 2.8 : 1.7),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * (heavy ? 0.58 : 0.42),
+      life,
+      maxLife: life,
+      color,
+      sides: Math.random() < 0.45 ? 3 : (Math.random() < 0.6 ? 4 : 5),
+      drift: 0.02 + Math.random() * 0.08
+    });
+  }
+}
+
+function spawnDeckBurst(x, y, dirX, dirY, heavy = false) {
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const normal = { x: -dir.x, y: -dir.y };
+  const count = heavy ? 7 : 4;
+  const colors = heavy
+    ? ['#ffcf7a', '#f5944b', '#d6523e', '#9a3b2f']
+    : ['#ffcd77', '#ee8e46', '#c84c38'];
+
+  for (let i = 0; i < count; i++) {
+    const ang = Math.atan2(normal.y, normal.x) + (Math.random() - 0.5) * (heavy ? 0.7 : 0.9);
+    const speed = (heavy ? 1.15 : 0.8) + Math.random() * (heavy ? 1.0 : 0.7);
+    const life = (heavy ? 0.1 : 0.08) + Math.random() * 0.08;
+    state.particles.push({
+      x: x + normal.x * (heavy ? 2.2 : 1.4),
+      y: y + normal.y * (heavy ? 2.2 : 1.4),
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: (heavy ? 1.5 : 1.0) + Math.random() * (heavy ? 1.2 : 0.8),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.8,
+      life,
+      maxLife: life,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      sides: Math.random() < 0.5 ? 3 : 4,
+      drift: 0.03 + Math.random() * 0.06
     });
   }
 }
@@ -1140,6 +1378,341 @@ function getRightVector() {
   return { x: -f.y, y: f.x };
 }
 
+function createVoiceChain(spatial) {
+  const voiceGain = audio.ctx.createGain();
+  const tone = audio.ctx.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.frequency.value = spatial.front < 0 ? 1300 : 3400;
+  tone.Q.value = spatial.front < 0 ? 0.6 : 0.25;
+
+  const crusher = audio.ctx.createWaveShaper();
+  crusher.curve = audio.crusherCurve;
+  crusher.oversample = 'none';
+
+  let panNode = null;
+  if (typeof audio.ctx.createStereoPanner === 'function') {
+    panNode = audio.ctx.createStereoPanner();
+    panNode.pan.value = spatial.pan;
+  } else {
+    panNode = audio.ctx.createGain();
+  }
+
+  voiceGain.connect(tone);
+  tone.connect(crusher);
+  crusher.connect(panNode);
+  panNode.connect(audio.master);
+  return voiceGain;
+}
+
+function getSpatialMix(originX, originY, dirX, dirY) {
+  const toSourceX = originX - player.x;
+  const toSourceY = originY - player.y;
+  const sourceDist = Math.hypot(toSourceX, toSourceY);
+  const sourceNormX = toSourceX / Math.max(1, sourceDist);
+  const sourceNormY = toSourceY / Math.max(1, sourceDist);
+
+  const fwd = getForwardVector();
+  const right = getRightVector();
+
+  const sourcePan = sourceNormX * right.x + sourceNormY * right.y;
+  const sourceFront = sourceNormX * fwd.x + sourceNormY * fwd.y;
+  const dirPan = dirX * right.x + dirY * right.y;
+  const dirFront = dirX * fwd.x + dirY * fwd.y;
+
+  const pan = clamp(sourcePan * 0.55 + dirPan * 0.45, -1, 1);
+  const front = clamp(sourceFront * 0.45 + dirFront * 0.55, -1, 1);
+  const distanceAtten = 1 / (1 + (sourceDist / 520) ** 1.6);
+  const gain = clamp(0.18 + distanceAtten * 1.25, 0.06, 1.25);
+  return {
+    pan,
+    front,
+    gain,
+    sourceDist,
+    distanceAtten,
+    distanceNorm: clamp(sourceDist / 900, 0, 1)
+  };
+}
+
+function normalizeOr(x, y, fallbackX = 1, fallbackY = 0) {
+  const len = Math.hypot(x, y);
+  if (!Number.isFinite(len) || len <= 0.00001) return { x: fallbackX, y: fallbackY };
+  return { x: x / len, y: y / len };
+}
+
+function bassFromSourceSize(sourceSize = 16) {
+  return clamp((sourceSize - 12) / 28, 0, 1);
+}
+
+function playGunVolleySfx(originX, originY, dirX, dirY, count = 1, sourceSize = 16) {
+  if (!audio.ready || audio.muted) return;
+  if (audio.ctx.currentTime - audio.lastGunAt < 0.03) return;
+  audio.lastGunAt = audio.ctx.currentTime;
+
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const bass = bassFromSourceSize(sourceSize);
+
+  const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+  const now = audio.ctx.currentTime;
+  const pops = clamp(1 + Math.floor(count * 0.33), 1, 4);
+
+  for (let i = 0; i < pops; i++) {
+    const start = now + i * (0.016 + Math.random() * 0.01);
+    const dur = 0.03 + Math.random() * 0.024;
+    const out = createVoiceChain(spatial);
+
+    out.gain.setValueAtTime(0.0001, start);
+    out.gain.linearRampToValueAtTime((0.18 + count * 0.011 + bass * 0.035) * spatial.gain, start + 0.002);
+    out.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+    const osc = audio.ctx.createOscillator();
+    osc.type = Math.random() < 0.65 ? 'square' : 'triangle';
+    const pitchMul = 1 - bass * 0.32;
+    const f0 = (700 + Math.random() * 300) * pitchMul;
+    const f1 = f0 * (0.44 + Math.random() * 0.12);
+    osc.frequency.setValueAtTime(f0, start);
+    osc.frequency.exponentialRampToValueAtTime(f1, start + dur);
+
+    const hp = audio.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 360 + Math.random() * 140;
+    hp.Q.value = 0.65;
+    osc.connect(hp);
+    hp.connect(out);
+
+    const noise = audio.ctx.createBufferSource();
+    const noiseBuffer = audio.ctx.createBuffer(1, Math.floor(audio.ctx.sampleRate * 0.04), audio.ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let n = 0; n < data.length; n++) data[n] = (Math.random() * 2 - 1) * 0.7;
+    noise.buffer = noiseBuffer;
+
+    const bp = audio.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = (820 + Math.random() * 560) * (1 - bass * 0.2);
+    bp.Q.value = 0.9;
+    const ng = audio.ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, start);
+    ng.gain.linearRampToValueAtTime(0.09 * spatial.gain, start + 0.0015);
+    ng.gain.exponentialRampToValueAtTime(0.0001, start + dur * 0.65);
+    noise.connect(bp);
+    bp.connect(ng);
+    ng.connect(out);
+
+    osc.start(start);
+    osc.stop(start + dur + 0.01);
+    noise.start(start);
+    noise.stop(start + dur);
+  }
+}
+
+function playCannonVolleySfx(originX, originY, dirX, dirY, count = 1, sourceSize = 16) {
+  if (!audio.ready || audio.muted || count <= 0) return;
+  if (audio.ctx.currentTime - audio.lastCannonAt < 0.09) return;
+  audio.lastCannonAt = audio.ctx.currentTime;
+
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const bass = bassFromSourceSize(sourceSize);
+
+  const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+  const now = audio.ctx.currentTime;
+  const out = createVoiceChain(spatial);
+  const weight = clamp(0.8 + count * 0.12 + bass * 0.25, 0.85, 2.05);
+  const dur = 0.24 + Math.random() * 0.15;
+
+  out.gain.setValueAtTime(0.0001, now);
+  out.gain.linearRampToValueAtTime(0.3 * weight * spatial.gain, now + 0.007);
+  out.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+  const low = audio.ctx.createOscillator();
+  low.type = 'triangle';
+  const lowStart = (74 + Math.random() * 20) * (1 - bass * 0.22);
+  const lowEnd = (32 + Math.random() * 12) * (1 - bass * 0.18);
+  low.frequency.setValueAtTime(lowStart, now);
+  low.frequency.exponentialRampToValueAtTime(lowEnd, now + dur * 0.92);
+
+  const sub = audio.ctx.createOscillator();
+  sub.type = 'sine';
+  const subStart = (40 + Math.random() * 12) * (1 - bass * 0.16);
+  const subEnd = (24 + Math.random() * 8) * (1 - bass * 0.14);
+  sub.frequency.setValueAtTime(subStart, now);
+  sub.frequency.exponentialRampToValueAtTime(subEnd, now + dur);
+
+  const bodyLp = audio.ctx.createBiquadFilter();
+  bodyLp.type = 'lowpass';
+  bodyLp.frequency.value = spatial.front < 0 ? 760 : 1200;
+  bodyLp.Q.value = 0.55;
+
+  low.connect(bodyLp);
+  sub.connect(bodyLp);
+  bodyLp.connect(out);
+
+  const blast = audio.ctx.createBufferSource();
+  const blastBuffer = audio.ctx.createBuffer(1, Math.floor(audio.ctx.sampleRate * 0.2), audio.ctx.sampleRate);
+  const blastData = blastBuffer.getChannelData(0);
+  for (let n = 0; n < blastData.length; n++) {
+    const decay = 1 - n / blastData.length;
+    blastData[n] = (Math.random() * 2 - 1) * decay * (0.55 + Math.random() * 0.28);
+  }
+  blast.buffer = blastBuffer;
+  const blastLp = audio.ctx.createBiquadFilter();
+  blastLp.type = 'lowpass';
+  blastLp.frequency.value = 620 + Math.random() * 260;
+  blastLp.Q.value = 0.65;
+  const blastGain = audio.ctx.createGain();
+  blastGain.gain.setValueAtTime(0.0001, now);
+  blastGain.gain.linearRampToValueAtTime(0.2 * weight * spatial.gain, now + 0.008);
+  blastGain.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.88);
+  blast.connect(blastLp);
+  blastLp.connect(blastGain);
+  blastGain.connect(out);
+
+  const echoDelay = 0.075 + spatial.distanceNorm * 0.11;
+  const echoOut = createVoiceChain({
+    pan: spatial.pan * 0.65,
+    front: spatial.front,
+    gain: spatial.gain * (0.34 + spatial.distanceNorm * 0.42)
+  });
+  const echoDur = dur * 0.72;
+  echoOut.gain.setValueAtTime(0.0001, now + echoDelay);
+  echoOut.gain.linearRampToValueAtTime((0.11 + 0.05 * spatial.distanceNorm) * weight, now + echoDelay + 0.012);
+  echoOut.gain.exponentialRampToValueAtTime(0.0001, now + echoDelay + echoDur);
+
+  const echoOsc = audio.ctx.createOscillator();
+  echoOsc.type = 'triangle';
+  echoOsc.frequency.setValueAtTime(lowStart * 0.72, now + echoDelay);
+  echoOsc.frequency.exponentialRampToValueAtTime(lowEnd * 0.7, now + echoDelay + echoDur);
+  const echoLP = audio.ctx.createBiquadFilter();
+  echoLP.type = 'lowpass';
+  echoLP.frequency.value = 480 + Math.random() * 180;
+  echoLP.Q.value = 0.45;
+  echoOsc.connect(echoLP);
+  echoLP.connect(echoOut);
+
+  low.start(now);
+  sub.start(now);
+  low.stop(now + dur + 0.02);
+  sub.stop(now + dur + 0.02);
+  blast.start(now);
+  blast.stop(now + dur);
+  echoOsc.start(now + echoDelay);
+  echoOsc.stop(now + echoDelay + echoDur + 0.02);
+}
+
+function playGunImpactSfx(originX, originY, dirX, dirY, sourceSize = 16) {
+  if (!audio.ready || audio.muted) return;
+  if (audio.ctx.currentTime - audio.lastGunImpactAt < 0.02) return;
+  audio.lastGunImpactAt = audio.ctx.currentTime;
+
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const bass = bassFromSourceSize(sourceSize);
+  const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+  const now = audio.ctx.currentTime;
+  const out = createVoiceChain(spatial);
+  const dur = 0.038 + Math.random() * 0.03;
+
+  out.gain.setValueAtTime(0.0001, now);
+  out.gain.linearRampToValueAtTime((0.16 + bass * 0.04) * spatial.gain, now + 0.002);
+  out.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+  const osc = audio.ctx.createOscillator();
+  osc.type = Math.random() < 0.55 ? 'square' : 'triangle';
+  const f0 = (540 + Math.random() * 240) * (1 - bass * 0.28);
+  const f1 = f0 * (0.42 + Math.random() * 0.16);
+  osc.frequency.setValueAtTime(f0, now);
+  osc.frequency.exponentialRampToValueAtTime(f1, now + dur);
+  const hp = audio.ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 280 + Math.random() * 110;
+  hp.Q.value = 0.75;
+  osc.connect(hp);
+  hp.connect(out);
+
+  const noise = audio.ctx.createBufferSource();
+  const noiseBuffer = audio.ctx.createBuffer(1, Math.floor(audio.ctx.sampleRate * 0.05), audio.ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (0.8 - i / data.length * 0.35);
+  noise.buffer = noiseBuffer;
+  const bp = audio.ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 760 + Math.random() * 520;
+  bp.Q.value = 1.05;
+  const ng = audio.ctx.createGain();
+  ng.gain.setValueAtTime(0.0001, now);
+  ng.gain.linearRampToValueAtTime((0.11 + bass * 0.02) * spatial.gain, now + 0.0015);
+  ng.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.72);
+  noise.connect(bp);
+  bp.connect(ng);
+  ng.connect(out);
+
+  osc.start(now);
+  osc.stop(now + dur + 0.01);
+  noise.start(now);
+  noise.stop(now + dur);
+}
+
+function playCannonImpactSfx(originX, originY, dirX, dirY, sourceSize = 16) {
+  if (!audio.ready || audio.muted) return;
+  if (audio.ctx.currentTime - audio.lastCannonImpactAt < 0.05) return;
+  audio.lastCannonImpactAt = audio.ctx.currentTime;
+
+  const dir = normalizeOr(dirX, dirY, 1, 0);
+  const bass = bassFromSourceSize(sourceSize);
+  const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+  const now = audio.ctx.currentTime;
+  const out = createVoiceChain(spatial);
+  const dur = 0.18 + Math.random() * 0.11;
+
+  out.gain.setValueAtTime(0.0001, now);
+  out.gain.linearRampToValueAtTime((0.2 + bass * 0.09) * spatial.gain, now + 0.006);
+  out.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+  const low = audio.ctx.createOscillator();
+  low.type = 'triangle';
+  const lowStart = (62 + Math.random() * 18) * (1 - bass * 0.24);
+  const lowEnd = (28 + Math.random() * 10) * (1 - bass * 0.18);
+  low.frequency.setValueAtTime(lowStart, now);
+  low.frequency.exponentialRampToValueAtTime(lowEnd, now + dur * 0.95);
+
+  const sub = audio.ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime((34 + Math.random() * 11) * (1 - bass * 0.14), now);
+  sub.frequency.exponentialRampToValueAtTime((22 + Math.random() * 7) * (1 - bass * 0.12), now + dur);
+
+  const lp = audio.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = spatial.front < 0 ? 700 : 980;
+  lp.Q.value = 0.5;
+  low.connect(lp);
+  sub.connect(lp);
+  lp.connect(out);
+
+  const air = audio.ctx.createBufferSource();
+  const airBuffer = audio.ctx.createBuffer(1, Math.floor(audio.ctx.sampleRate * 0.16), audio.ctx.sampleRate);
+  const airData = airBuffer.getChannelData(0);
+  for (let i = 0; i < airData.length; i++) {
+    const decay = 1 - i / airData.length;
+    airData[i] = (Math.random() * 2 - 1) * decay * 0.55;
+  }
+  air.buffer = airBuffer;
+  const airLp = audio.ctx.createBiquadFilter();
+  airLp.type = 'lowpass';
+  airLp.frequency.value = 520 + Math.random() * 220;
+  airLp.Q.value = 0.6;
+  const airGain = audio.ctx.createGain();
+  airGain.gain.setValueAtTime(0.0001, now);
+  airGain.gain.linearRampToValueAtTime((0.12 + bass * 0.04) * spatial.gain, now + 0.01);
+  airGain.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.85);
+  air.connect(airLp);
+  airLp.connect(airGain);
+  airGain.connect(out);
+
+  low.start(now);
+  sub.start(now);
+  low.stop(now + dur + 0.02);
+  sub.stop(now + dur + 0.02);
+  air.start(now);
+  air.stop(now + dur);
+}
+
 function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCannonFire) {
   const right = getRightVector();
   const forward = getForwardVector();
@@ -1159,6 +1732,12 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   const pivotRad = player.cannonPivot * (Math.PI / 180);
   let firedGun = false;
   let firedCannon = false;
+  let gunCount = 0;
+  let cannonCount = 0;
+  let gunDirX = 0;
+  let gunDirY = 0;
+  let cannonDirX = 0;
+  let cannonDirY = 0;
 
   for (let i = 0; i < guns; i++) {
     const cannonPort = isCannon(i);
@@ -1188,10 +1767,30 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
       vy: Math.sin(dir) * speed,
       dmg,
       heavy: cannonPort,
-      owner: 'player'
+      owner: 'player',
+      sourceSize: player.size
     });
-    if (cannonPort) firedCannon = true;
-    else firedGun = true;
+    spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), cannonPort);
+    if (cannonPort) {
+      firedCannon = true;
+      cannonCount += 1;
+      cannonDirX += Math.cos(dir);
+      cannonDirY += Math.sin(dir);
+    } else {
+      firedGun = true;
+      gunCount += 1;
+      gunDirX += Math.cos(dir);
+      gunDirY += Math.sin(dir);
+    }
+  }
+
+  if (firedGun && gunCount > 0) {
+    const len = Math.hypot(gunDirX, gunDirY) || 1;
+    playGunVolleySfx(player.x, player.y, gunDirX / len, gunDirY / len, gunCount, player.size);
+  }
+  if (firedCannon && cannonCount > 0) {
+    const len = Math.hypot(cannonDirX, cannonDirY) || 1;
+    playCannonVolleySfx(player.x, player.y, cannonDirX / len, cannonDirY / len, cannonCount, player.size);
   }
 
   return { firedGun, firedCannon };
@@ -1206,12 +1805,18 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
   const allowCannon = distanceToTarget <= enemy.cannonRange && allowCannonFire;
   let firedGun = false;
   let firedCannon = false;
+  let gunCount = 0;
+  let cannonCount = 0;
+  let gunDirX = 0;
+  let gunDirY = 0;
+  let cannonDirX = 0;
+  let cannonDirY = 0;
   const baseDir = enemy.heading + sideSign * Math.PI / 2;
 
   if (allowGun) {
-    const gunCount = Math.max(1, enemy.gunners);
-    for (let i = 0; i < gunCount; i++) {
-      const mount = getHullSideMount(shape, i, gunCount, sideSign, 0.12, 0.88);
+    const gunPorts = Math.max(1, enemy.gunners);
+    for (let i = 0; i < gunPorts; i++) {
+      const mount = getHullSideMount(shape, i, gunPorts, sideSign, 0.12, 0.88);
       const mountLen = Math.max(4, enemy.size * 0.28);
       const localX = mount.x + mount.nx * (mountLen + 0.3);
       const localY = mount.y + mount.ny * (mountLen + 0.3);
@@ -1228,17 +1833,22 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
         heavy: false,
         owner: 'enemy',
         shooterId: enemy.id,
-        sourceKind: enemy.kind
+        sourceKind: enemy.kind,
+        sourceSize: enemy.size
       });
+      spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), false);
       firedGun = true;
+      gunCount += 1;
+      gunDirX += Math.cos(dir);
+      gunDirY += Math.sin(dir);
     }
   }
 
   if (allowCannon) {
-    const cannonCount = Math.max(0, enemy.cannons);
+    const cannonPorts = Math.max(0, enemy.cannons);
     const clamped = clamp(angleDiff(targetAngle, baseDir), -enemy.cannonPivot * (Math.PI / 180), enemy.cannonPivot * (Math.PI / 180));
-    for (let i = 0; i < cannonCount; i++) {
-      const mount = getHullSideMount(shape, i, cannonCount, sideSign, 0.16, 0.84);
+    for (let i = 0; i < cannonPorts; i++) {
+      const mount = getHullSideMount(shape, i, cannonPorts, sideSign, 0.16, 0.84);
       const mountLen = Math.max(7, enemy.size * 0.42);
       const localX = mount.x + mount.nx * (mountLen + 0.45);
       const localY = mount.y + mount.ny * (mountLen + 0.45);
@@ -1254,10 +1864,24 @@ function enemyVolley(enemy, target, sideSign, distanceToTarget, allowGunFire, al
         heavy: true,
         owner: 'enemy',
         shooterId: enemy.id,
-        sourceKind: enemy.kind
+        sourceKind: enemy.kind,
+        sourceSize: enemy.size
       });
+      spawnMuzzleBlast(spawnX, spawnY, Math.cos(dir), Math.sin(dir), true);
       firedCannon = true;
+      cannonCount += 1;
+      cannonDirX += Math.cos(dir);
+      cannonDirY += Math.sin(dir);
     }
+  }
+
+  if (firedGun && gunCount > 0) {
+    const len = Math.hypot(gunDirX, gunDirY) || 1;
+    playGunVolleySfx(enemy.x, enemy.y, gunDirX / len, gunDirY / len, gunCount, enemy.size);
+  }
+  if (firedCannon && cannonCount > 0) {
+    const len = Math.hypot(cannonDirX, cannonDirY) || 1;
+    playCannonVolleySfx(enemy.x, enemy.y, cannonDirX / len, cannonDirY / len, cannonCount, enemy.size);
   }
 
   return { firedGun, firedCannon };
@@ -1700,6 +2324,11 @@ function update(dt) {
       if (d < enemy.size + 4) {
         const dmgScale = b.owner === 'enemy' ? 0.64 : 1;
         enemy.hp -= b.dmg * dmgScale;
+        const n = normalizeOr(b.vx, b.vy, 1, 0);
+        spawnImpactDebris(enemy.x, enemy.y, n.x, n.y, !!b.heavy, enemy);
+        spawnDeckBurst(enemy.x, enemy.y, n.x, n.y, !!b.heavy);
+        if (b.heavy) playCannonImpactSfx(enemy.x, enemy.y, n.x, n.y, b.sourceSize || 16);
+        else playGunImpactSfx(enemy.x, enemy.y, n.x, n.y, b.sourceSize || 16);
         state.bullets.splice(j, 1);
         if (enemy.hp <= 0) {
           spawnShipExplosion(enemy.x, enemy.y, enemy.size, enemy.kind === 'boss');
@@ -1729,6 +2358,10 @@ function update(dt) {
         if (d < building.size * 0.65 + 4) {
           const dmgScale = b.heavy ? 1.05 : 0.58;
           building.hp -= b.dmg * dmgScale;
+          const n = normalizeOr(b.vx, b.vy, 1, 0);
+          spawnImpactDebris(building.x, building.y, n.x, n.y, !!b.heavy, { hullColor: '#a77556', trimColor: '#7d593f' });
+          if (b.heavy) playCannonImpactSfx(building.x, building.y, n.x, n.y, b.sourceSize || 16);
+          else playGunImpactSfx(building.x, building.y, n.x, n.y, b.sourceSize || 16);
           state.bullets.splice(j, 1);
           if (building.hp <= 0) {
             const goldCount = Math.max(2, Math.floor(building.size / 4));
@@ -1771,7 +2404,8 @@ function update(dt) {
           vy: Math.sin(ang) * 4.2,
           dmg: 5 + island.defenseLevel * 1.5,
           heavy: true,
-          owner: 'enemy'
+          owner: 'enemy',
+          sourceSize: Math.max(14, tower.size * 0.9)
         });
       }
     }
@@ -1800,6 +2434,11 @@ function update(dt) {
     const d = Math.hypot(player.x - b.x, player.y - b.y);
     if (d < player.size * 0.78 + 4) {
       player.hp -= b.dmg * (b.heavy ? 0.28 : 0.18);
+      const n = normalizeOr(b.vx, b.vy, 1, 0);
+      spawnImpactDebris(player.x, player.y, n.x, n.y, !!b.heavy, player);
+      spawnDeckBurst(player.x, player.y, n.x, n.y, !!b.heavy);
+      if (b.heavy) playCannonImpactSfx(player.x, player.y, n.x, n.y, b.sourceSize || 16);
+      else playGunImpactSfx(player.x, player.y, n.x, n.y, b.sourceSize || 16);
       state.bullets.splice(i, 1);
     }
   }

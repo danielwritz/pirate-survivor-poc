@@ -25,6 +25,12 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Enemy steering behaviors include both direct pursuit and ally-follow formation tendencies for certain ship classes
 - Allied enemy subgroups can share flocking-like movement (cohesion/alignment/separation) for light formation travel
 - Spawned enemy ships use varied randomized combat configurations (reload, spread, speed, battery mix) that still scale with difficulty
+- Procedural weapon audio is synthesized at runtime (no file assets), with shot-to-shot variation for less repetition
+- Audio spatialization blends source location and firing direction into stereo pan + front/back tone damping
+- Weapon timbre scales with hull size so larger ships produce bassier fire and impact signatures
+- Cannon volleys layer a subtle delayed tail/echo whose timing/intensity responds to listener distance
+- SFX can be toggled in-HUD via `SFX: ON/OFF`, with user-gesture audio unlock handling for browser policies
+- Recent intermittent audio crash was resolved by restoring a clean voice-chain helper and relocating cannon-tail logic to the cannon volley path
 - Enemy visual identity includes sail/flag coding: shared squad palettes for allies and stripe-based flag threat markers
 - Enemy archetypes:
   - Pirate skiffs (baseline)
@@ -59,6 +65,9 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Visible ship growth over time (hull/sail transformations)
 - Crew occupancy is center-deck distributed with a deck-area-based capacity ceiling that scales with ship growth
 - Deck damage readability: black geometric scorch marks scale with damage for both player and enemy ships
+- Weapon muzzle VFX now emit procedural polygon smoke + ember flecks (gun-small, cannon-large)
+- Hit VFX now emit directional debris shards biased opposite incoming projectile direction, with larger heavy-hit spread
+- Ship hits add a quick deck-burst flash/debris accent to improve impact readability
 - Floating gold drops remain in-world until collected
 - Gold drops render with spinning coin effect
 - Large traversable sea map with camera follow
