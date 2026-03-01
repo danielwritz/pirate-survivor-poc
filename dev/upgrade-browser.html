@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upgrade Browser - Pirate Survivor Dev Museum</title>
+  <style>
+    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1260px; margin: 0 auto; padding: 20px; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    a { color: #9fc2d9; text-decoration: none; }
+    a:hover { color: #d6ecff; }
+    .layout { display: grid; grid-template-columns: 390px 1fr; gap: 16px; }
+    .panel { border: 1px solid #30516b; border-radius: 8px; background: #10293c; padding: 12px; }
+    .list { max-height: 620px; overflow: auto; display: grid; gap: 8px; }
+    .row {
+      border: 1px solid #33546e;
+      background: #123149;
+      color: #e8f5ff;
+      border-radius: 7px;
+      padding: 8px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .row.active { border-color: #89b3cf; background: #1c4766; }
+    .row .name { font-weight: 700; font-size: 13px; }
+    .row .desc { margin-top: 2px; color: #c9e0f0; font-size: 12px; }
+    .group { margin: 8px 0 4px; color: #9fc2d9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .utility { margin-top: 10px; display: flex; gap: 8px; }
+    button { border: 1px solid #4f7896; background: #123149; color: #e8f5ff; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+    button:hover { background: #17405e; }
+    .stats { margin-top: 10px; border-top: 1px solid #30516b; padding-top: 8px; display: grid; gap: 4px; font-size: 12px; color: #cfe3f3; }
+    .right { display: grid; grid-template-rows: auto 290px; gap: 12px; }
+    .inspectors { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .inspect {
+      border: 1px solid #33546e;
+      border-radius: 7px;
+      background: #0f2b41;
+      padding: 8px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 6px;
+      min-height: 270px;
+    }
+    .inspect h3 { margin: 0; font-size: 12px; color: #9fc2d9; text-transform: uppercase; letter-spacing: 0.4px; }
+    .inspect pre {
+      margin: 0;
+      font-size: 11px;
+      color: #d9ecfb;
+      white-space: pre-wrap;
+      overflow: auto;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1>Upgrade Browser</h1>
+      <a href="/dev/index.html">← Back to Museum</a>
+    </div>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="list" id="upgradeList"></div>
+        <div class="utility">
+          <button id="clearBtn" type="button">Clear Selection</button>
+        </div>
+        <div class="stats" id="stats"></div>
+      </section>
+
+      <section class="right">
+        <section class="panel" id="stage"></section>
+        <section class="inspectors">
+          <article class="inspect">
+            <h3>Selected Upgrade JSON</h3>
+            <pre id="selectedJson">{}</pre>
+          </article>
+          <article class="inspect">
+            <h3>Evaluated Ship JSON</h3>
+            <pre id="evaluatedJson">{}</pre>
+          </article>
+          <article class="inspect">
+            <h3>Applied Rule Trace</h3>
+            <pre id="traceJson">[]</pre>
+          </article>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createDevCanvas } from './shared/devCanvas.js';
+    import { createUpgradeBrowserManager } from './shared/upgradeBrowserManager.js';
+
+    const descriptor = await fetch('./data/upgrades.json').then((r) => r.json());
+    const manager = createUpgradeBrowserManager(descriptor);
+
+    const listEl = document.getElementById('upgradeList');
+    const statsEl = document.getElementById('stats');
+    const selectedJsonEl = document.getElementById('selectedJson');
+    const evaluatedJsonEl = document.getElementById('evaluatedJson');
+    const traceJsonEl = document.getElementById('traceJson');
+    const stageEl = document.getElementById('stage');
+    const { canvas, ctx } = createDevCanvas(stageEl, { width: 820, height: 620 });
+
+    function renderList() {
+      listEl.innerHTML = '';
+
+      function renderGroup(label, upgrades) {
+        const group = document.createElement('div');
+        group.className = 'group';
+        group.textContent = label;
+        listEl.appendChild(group);
+
+        for (const upgrade of upgrades) {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'row';
+          if (manager.state.selectedIds.has(upgrade.id)) row.classList.add('active');
+          row.innerHTML = `<div class="name">${upgrade.name}</div><div class="desc">${upgrade.desc}</div>`;
+          row.addEventListener('click', () => {
+            manager.toggle(upgrade.id);
+            renderList();
+          });
+          row.addEventListener('mouseenter', () => {
+            manager.selectUpgrade(upgrade.id);
+          });
+          listEl.appendChild(row);
+        }
+      }
+
+      renderGroup('Standard Upgrades', descriptor.standard || []);
+      renderGroup('Major Upgrades', descriptor.major || []);
+    }
+
+    function renderStats() {
+      const inspection = manager.getInspection();
+      const before = manager.state.baselineRoot.player;
+      const after = manager.state.resultRoot.player;
+      const selected = Array.from(manager.state.selectedIds);
+      const capsBefore = inspection.derived.before.caps;
+      const capsAfter = inspection.derived.after.caps;
+      const countsBefore = inspection.derived.before.counts;
+      const countsAfter = inspection.derived.after.counts;
+
+      statsEl.innerHTML = `
+        <div><strong>Selected:</strong> ${selected.length ? selected.join(', ') : 'none'}</div>
+        <div><strong>Size:</strong> ${before.size.toFixed(2)} → ${after.size.toFixed(2)}</div>
+        <div><strong>Mass:</strong> ${before.mass.toFixed(2)} → ${after.mass.toFixed(2)}</div>
+        <div><strong>Max HP:</strong> ${before.maxHp.toFixed(2)} → ${after.maxHp.toFixed(2)}</div>
+        <div><strong>Base Speed:</strong> ${before.baseSpeed.toFixed(2)} → ${after.baseSpeed.toFixed(2)}</div>
+        <div><strong>Gun Reload:</strong> ${before.gunReload.toFixed(2)} → ${after.gunReload.toFixed(2)}</div>
+        <div><strong>Cannon Reload:</strong> ${before.cannonReload.toFixed(2)} → ${after.cannonReload.toFixed(2)}</div>
+        <div><strong>Hull L/B:</strong> ${before.hullLength.toFixed(2)}/${before.hullBeam.toFixed(2)} → ${after.hullLength.toFixed(2)}/${after.hullBeam.toFixed(2)}</div>
+        <div><strong>Cannons/Side Cap:</strong> ${countsBefore.cannonPerSide}/${capsBefore.maxCannonsPerSide} → ${countsAfter.cannonPerSide}/${capsAfter.maxCannonsPerSide}</div>
+        <div><strong>Gunner Cap:</strong> ${capsBefore.maxGunners} → ${capsAfter.maxGunners}</div>
+      `;
+
+      selectedJsonEl.textContent = JSON.stringify(inspection.selectedUpgrade || {}, null, 2);
+      evaluatedJsonEl.textContent = JSON.stringify(inspection.evaluated, null, 2);
+      traceJsonEl.textContent = JSON.stringify(inspection.selectedTrace, null, 2);
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      manager.clear();
+      renderList();
+    });
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      manager.drawPreview(ctx, canvas.width, canvas.height, dt);
+      renderStats();
+      requestAnimationFrame(frame);
+    }
+
+    renderList();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

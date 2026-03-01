@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weapon & VFX Showcase - Pirate Survivor Dev Museum</title>
+  <style>
+    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1240px; margin: 0 auto; padding: 20px; }
+    .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    a { color: #9fc2d9; text-decoration: none; }
+    a:hover { color: #d6ecff; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+    .panel { border: 1px solid #30516b; border-radius: 8px; background: #10293c; padding: 12px; }
+    .controls { display: grid; gap: 10px; align-content: start; }
+    .desc { color: #b8d5e9; font-size: 13px; line-height: 1.35; }
+    .buttonGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button {
+      border: 1px solid #4f7896;
+      background: #123149;
+      color: #e8f5ff;
+      border-radius: 6px;
+      padding: 7px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    button:hover { background: #17405e; }
+    .utility { display: flex; gap: 8px; }
+    .utility button { flex: 1; text-align: center; }
+    .field { display: grid; gap: 4px; font-size: 12px; color: #b8d5e9; }
+    .field input[type="range"] { width: 100%; }
+    .stats { margin-top: 10px; border-top: 1px solid #30516b; padding-top: 8px; display: grid; gap: 4px; font-size: 12px; color: #cfe3f3; }
+    .right { display: grid; grid-template-rows: auto 260px; gap: 12px; }
+    .inspectors { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .inspect {
+      border: 1px solid #33546e;
+      border-radius: 7px;
+      background: #0f2b41;
+      padding: 8px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 6px;
+      min-height: 240px;
+    }
+    .inspect h3 { margin: 0; font-size: 12px; color: #9fc2d9; text-transform: uppercase; letter-spacing: 0.4px; }
+    .inspect pre { margin: 0; font-size: 11px; color: #d9ecfb; white-space: pre-wrap; overflow: auto; line-height: 1.3; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1>Weapon & VFX Showcase</h1>
+      <a href="/dev/index.html">← Back to Museum</a>
+    </div>
+
+    <div class="layout">
+      <section class="panel controls">
+        <div class="desc" id="pageDescription">Loading presets...</div>
+        <div class="buttonGrid" id="presetButtons"></div>
+
+        <div class="utility">
+          <button id="burstBtn" type="button">Random Burst</button>
+          <button id="clearBtn" type="button">Clear</button>
+        </div>
+
+        <label class="field">
+          Time Scale
+          <input id="timeScale" type="range" min="0.1" max="2" step="0.05" value="1" />
+          <span id="timeScaleValue">1.00</span>
+        </label>
+
+        <div class="stats" id="stats"></div>
+      </section>
+
+      <section class="right">
+        <section class="panel" id="stage"></section>
+        <section class="inspectors">
+          <article class="inspect">
+            <h3>Selected Preset JSON</h3>
+            <pre id="selectedPresetJson">{}</pre>
+          </article>
+          <article class="inspect">
+            <h3>Source Descriptor JSON</h3>
+            <pre id="descriptorJson">{}</pre>
+          </article>
+          <article class="inspect">
+            <h3>Evaluated Runtime Snapshot</h3>
+            <pre id="runtimeJson">{}</pre>
+          </article>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createDevCanvas } from './shared/devCanvas.js';
+    import { createVfxShowcaseManager } from './shared/vfxShowcaseManager.js';
+
+    const stageEl = document.getElementById('stage');
+    const { canvas, ctx } = createDevCanvas(stageEl, { width: 900, height: 620 });
+
+    const manager = createVfxShowcaseManager();
+    manager.setOrigin(canvas.width * 0.5, canvas.height * 0.52);
+
+    const presetButtonsEl = document.getElementById('presetButtons');
+    const pageDescriptionEl = document.getElementById('pageDescription');
+    const statsEl = document.getElementById('stats');
+    const selectedPresetJsonEl = document.getElementById('selectedPresetJson');
+    const descriptorJsonEl = document.getElementById('descriptorJson');
+    const runtimeJsonEl = document.getElementById('runtimeJson');
+    const timeScaleEl = document.getElementById('timeScale');
+    const timeScaleValueEl = document.getElementById('timeScaleValue');
+
+    const descriptor = await fetch('./data/vfx-presets.json').then((r) => r.json());
+    pageDescriptionEl.textContent = descriptor.description || 'JSON-driven effect presets';
+    descriptorJsonEl.textContent = JSON.stringify(descriptor, null, 2);
+    let selectedPreset = null;
+
+    function spawnFromPreset(preset, x = manager.state.origin.x, y = manager.state.origin.y) {
+      selectedPreset = preset;
+      const jitterX = (Math.random() - 0.5) * 20;
+      const jitterY = (Math.random() - 0.5) * 12;
+      manager.spawn(preset.effect, {
+        ...(preset.params || {}),
+        x: x + jitterX,
+        y: y + jitterY,
+        dirX: 1,
+        dirY: -0.22 + (Math.random() - 0.5) * 0.2
+      });
+    }
+
+    for (const preset of descriptor.presets || []) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = preset.label || preset.id;
+      button.addEventListener('click', () => spawnFromPreset(preset));
+      presetButtonsEl.appendChild(button);
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => manager.clear());
+    document.getElementById('burstBtn').addEventListener('click', () => {
+      const presets = descriptor.presets || [];
+      const run = Math.min(6, presets.length);
+      for (let i = 0; i < run; i++) {
+        const preset = presets[Math.floor(Math.random() * presets.length)];
+        spawnFromPreset(preset, manager.state.origin.x + (Math.random() - 0.5) * 120, manager.state.origin.y + (Math.random() - 0.5) * 80);
+      }
+    });
+
+    timeScaleEl.addEventListener('input', () => {
+      const value = Number(timeScaleEl.value);
+      manager.setTimeScale(value);
+      timeScaleValueEl.textContent = value.toFixed(2);
+    });
+    timeScaleValueEl.textContent = Number(timeScaleEl.value).toFixed(2);
+
+    canvas.addEventListener('pointerdown', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+      const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+      manager.setOrigin(x, y);
+    });
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      manager.update(dt);
+      manager.draw(ctx, canvas.width, canvas.height);
+
+      selectedPresetJsonEl.textContent = JSON.stringify(selectedPreset || {}, null, 2);
+      runtimeJsonEl.textContent = JSON.stringify({
+        origin: manager.state.origin,
+        timeScale: manager.state.timeScale,
+        particles: manager.state.particles.length,
+        projectiles: manager.state.projectiles.length,
+        sampleParticles: manager.state.particles.slice(0, 6),
+        sampleProjectiles: manager.state.projectiles.slice(0, 6)
+      }, null, 2);
+
+      statsEl.innerHTML = `
+        <div><strong>Particles:</strong> ${manager.state.particles.length}</div>
+        <div><strong>Projectiles:</strong> ${manager.state.projectiles.length}</div>
+        <div><strong>Origin:</strong> ${manager.state.origin.x.toFixed(0)}, ${manager.state.origin.y.toFixed(0)}</div>
+        <div><strong>Preset source:</strong> dev/data/vfx-presets.json</div>
+      `;
+
+      requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

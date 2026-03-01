@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ship Gallery - Pirate Survivor Dev Museum</title>
+  <style>
+    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    a { color: #9fc2d9; text-decoration: none; }
+    a:hover { color: #d6ecff; }
+    .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+    .panel {
+      border: 1px solid #30516b;
+      border-radius: 8px;
+      padding: 12px;
+      background: #10293c;
+    }
+    .controls { display: grid; gap: 10px; align-content: start; }
+    .field { display: grid; gap: 4px; font-size: 13px; color: #b8d5e9; }
+    .field input[type="range"] { width: 100%; }
+    .value { color: #e8f5ff; font-size: 12px; }
+    .stats { margin-top: 12px; border-top: 1px solid #30516b; padding-top: 10px; font-size: 13px; color: #cfe3f3; display: grid; gap: 3px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1>Ship Gallery</h1>
+      <a href="/dev/index.html">← Back to Museum</a>
+    </div>
+
+    <div class="layout">
+      <section class="panel controls" id="controls"></section>
+      <section class="panel" id="stage"></section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createDevCanvas, drawGrid } from './shared/devCanvas.js';
+    import { clamp } from '../src/core/math.js';
+    import { DEFAULT_HULL_DESIGN } from '../src/core/player.js';
+
+    const controlsEl = document.getElementById('controls');
+    const stageEl = document.getElementById('stage');
+    const { canvas, ctx } = createDevCanvas(stageEl, { width: 900, height: 620 });
+
+    const model = {
+      size: 52,
+      hullLength: 1,
+      hullBeam: 1,
+      bowSharpness: 1,
+      sternTaper: 1,
+      bodyHalfLenMul: DEFAULT_HULL_DESIGN.bodyHalfLenMul,
+      bodyHalfBeamMul: DEFAULT_HULL_DESIGN.bodyHalfBeamMul,
+      sternBeamMul: DEFAULT_HULL_DESIGN.sternBeamMul,
+      bowTipMul: DEFAULT_HULL_DESIGN.bowTipMul,
+      sternTipMul: DEFAULT_HULL_DESIGN.sternTipMul
+    };
+
+    function makeRange(label, key, min, max, step = 0.01) {
+      const field = document.createElement('label');
+      field.className = 'field';
+      const title = document.createElement('span');
+      title.textContent = label;
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(model[key]);
+      const valueEl = document.createElement('span');
+      valueEl.className = 'value';
+
+      const sync = () => {
+        model[key] = Number(input.value);
+        valueEl.textContent = model[key].toFixed(2);
+        draw();
+      };
+
+      input.addEventListener('input', sync);
+      field.append(title, input, valueEl);
+      controlsEl.appendChild(field);
+      sync();
+    }
+
+    function getHullShape(entity) {
+      const size = entity.size;
+      const len = size * clamp(entity.hullLength ?? 1, 0.78, 1.55);
+      const beam = size * clamp(entity.hullBeam ?? 1, 0.7, 1.45);
+      const design = entity;
+      const bodyHalfLen = len * clamp(design.bodyHalfLenMul ?? 0.58, 0.35, 0.95);
+      const bodyHalfBeam = beam * clamp(design.bodyHalfBeamMul ?? 0.72, 0.34, 1.12);
+      const sternHalfBeam = bodyHalfBeam * clamp(design.sternBeamMul ?? 1, 0.34, 1.08);
+      const bowTip = len * clamp(design.bowTipMul ?? 0.55, 0.18, 1.35) * clamp(entity.bowSharpness ?? 1, 0.72, 1.7);
+      const sternTip = len * clamp(design.sternTipMul ?? 0.4, 0.08, 1.2) / clamp(entity.sternTaper ?? 1, 0.6, 1.5);
+      const shoulderX = bodyHalfLen;
+      const sternShoulderX = -bodyHalfLen;
+      const bowX = shoulderX + bowTip;
+      const sternX = sternShoulderX - sternTip;
+      return {
+        len,
+        beam,
+        bodyHalfLen,
+        bodyHalfBeam,
+        sternHalfBeam,
+        bowTip,
+        sternTip,
+        shoulderX,
+        sternShoulderX,
+        bowX,
+        sternX
+      };
+    }
+
+    function drawHull(shape, x, y, color, trim) {
+      ctx.save();
+      ctx.translate(x, y);
+
+      ctx.beginPath();
+      ctx.moveTo(shape.bowX, 0);
+      ctx.lineTo(shape.shoulderX, -shape.bodyHalfBeam);
+      ctx.lineTo(shape.sternShoulderX, -shape.sternHalfBeam);
+      ctx.lineTo(shape.sternX, 0);
+      ctx.lineTo(shape.sternShoulderX, shape.sternHalfBeam);
+      ctx.lineTo(shape.shoulderX, shape.bodyHalfBeam);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid(ctx, canvas.width, canvas.height, 32);
+
+      const hull = getHullShape(model);
+      const centers = [
+        { x: canvas.width * 0.25, y: canvas.height * 0.30, scale: 0.85, label: 'Skiff-ish' },
+        { x: canvas.width * 0.5, y: canvas.height * 0.30, scale: 1.0, label: 'Current' },
+        { x: canvas.width * 0.75, y: canvas.height * 0.30, scale: 1.2, label: 'Heavy' }
+      ];
+
+      for (const c of centers) {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(c.scale, c.scale);
+        drawHull(hull, 0, 0, '#5f4630', '#d9b78d');
+        ctx.restore();
+
+        ctx.fillStyle = '#b8d5e9';
+        ctx.font = '13px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.label, c.x, c.y + 84);
+      }
+
+      ctx.fillStyle = '#e8f5ff';
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'left';
+      ctx.fillText('Live hull geometry preview from editable triangle-body-triangle parameters', 16, canvas.height - 16);
+
+      statsEl.innerHTML = `
+        <div><strong>Length:</strong> ${hull.len.toFixed(1)}</div>
+        <div><strong>Beam:</strong> ${hull.beam.toFixed(1)}</div>
+        <div><strong>Body Half Len:</strong> ${hull.bodyHalfLen.toFixed(1)}</div>
+        <div><strong>Body Half Beam:</strong> ${hull.bodyHalfBeam.toFixed(1)}</div>
+        <div><strong>Stern Half Beam:</strong> ${hull.sternHalfBeam.toFixed(1)}</div>
+      `;
+    }
+
+    const statsEl = document.createElement('div');
+    statsEl.className = 'stats';
+    controlsEl.appendChild(statsEl);
+
+    makeRange('Base Size', 'size', 18, 90, 1);
+    makeRange('Hull Length', 'hullLength', 0.78, 1.55, 0.01);
+    makeRange('Hull Beam', 'hullBeam', 0.70, 1.45, 0.01);
+    makeRange('Bow Sharpness', 'bowSharpness', 0.72, 1.70, 0.01);
+    makeRange('Stern Taper', 'sternTaper', 0.60, 1.50, 0.01);
+    makeRange('Body Half Len Mul', 'bodyHalfLenMul', 0.35, 0.95, 0.01);
+    makeRange('Body Half Beam Mul', 'bodyHalfBeamMul', 0.34, 1.12, 0.01);
+    makeRange('Stern Beam Mul', 'sternBeamMul', 0.34, 1.08, 0.01);
+    makeRange('Bow Tip Mul', 'bowTipMul', 0.18, 1.35, 0.01);
+    makeRange('Stern Tip Mul', 'sternTipMul', 0.08, 1.20, 0.01);
+
+    draw();
+  </script>
+</body>
+</html>

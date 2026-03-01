@@ -1,0 +1,249 @@
+{
+  "title": "Upgrade Browser",
+  "schemaVersion": 2,
+  "baseline": {
+    "player": {
+      "size": 16,
+      "mass": 28,
+      "maxHp": 100,
+      "hp": 100,
+      "baseSpeed": 2.6,
+      "gunReload": 1.35,
+      "cannonReload": 2.2,
+      "rowers": 0,
+      "gunners": 2,
+      "repairCrew": 0,
+      "crew": 2,
+      "cannonCapacityBonus": 0,
+      "cannonPivot": 0,
+      "rudder": 0,
+      "hullLength": 1,
+      "hullBeam": 1,
+      "bowSharpness": 1,
+      "sternTaper": 1,
+      "salvageSkiffCount": 0,
+      "bulletDamage": 9,
+      "ram": false,
+      "ramDamage": 46,
+      "hullColor": "#5f4630",
+      "trimColor": "#d9b78d",
+      "sailColor": "#f0f7ff",
+      "mastScale": 1,
+      "sailOpen": true,
+      "heading": -1.5707963267948966,
+      "slots": [],
+      "weaponLayout": {
+        "port": [],
+        "starboard": []
+      }
+    },
+    "state": {
+      "goldMagnetBonus": 0
+    }
+  },
+  "standard": [
+    {
+      "id": "crew-musketeers",
+      "name": "Crew Musketeers",
+      "desc": "+1 crew, faster fire",
+      "rules": [
+        { "op": "add", "path": "player.crew", "value": 1 },
+        { "op": "add", "path": "player.gunners", "value": 1 },
+        { "op": "add", "path": "player.gunReload", "value": -0.05 },
+        { "op": "clamp", "path": "player.gunReload", "min": 0.75, "max": 999 },
+        { "op": "add", "path": "player.hullLength", "value": 0.03 },
+        { "op": "add", "path": "player.bowSharpness", "value": 0.04 },
+        { "op": "addAbility", "value": "Musketeers" },
+        { "op": "call", "fn": "clampArmament" }
+      ]
+    },
+    {
+      "id": "cannons",
+      "name": "Cannons",
+      "desc": "+1 cannon, +damage",
+      "rules": [
+        { "op": "autoInstallCannons", "perSide": 1 },
+        { "op": "add", "path": "player.bulletDamage", "value": 3 },
+        { "op": "add", "path": "player.cannonReload", "value": -0.1 },
+        { "op": "clamp", "path": "player.cannonReload", "min": 1, "max": 999 },
+        { "op": "add", "path": "player.hullBeam", "value": 0.03 },
+        { "op": "addAbility", "value": "Cannons" },
+        { "op": "call", "fn": "clampArmament" }
+      ]
+    },
+    {
+      "id": "cannon-installments",
+      "name": "Cannon Installments",
+      "desc": "+1 cannon capacity/side, heavier hull",
+      "rules": [
+        { "op": "add", "path": "player.cannonCapacityBonus", "value": 1 },
+        { "op": "add", "path": "player.size", "value": 1.4 },
+        { "op": "add", "path": "player.mass", "value": 4 },
+        { "op": "add", "path": "player.hullBeam", "value": 0.06 },
+        { "op": "add", "path": "player.hullLength", "value": 0.04 },
+        { "op": "add", "path": "player.baseSpeed", "value": -0.08 },
+        { "op": "clamp", "path": "player.baseSpeed", "min": 1.6, "max": 999 },
+        { "op": "add", "path": "player.maneuverPenalty", "value": 0.04 },
+        { "op": "clamp", "path": "player.maneuverPenalty", "min": 0, "max": 0.42 },
+        { "op": "addAbility", "value": "Installments" },
+        { "op": "call", "fn": "clampArmament" }
+      ]
+    },
+    {
+      "id": "rowers",
+      "name": "Rowers",
+      "desc": "+1 rower, wind mitigation",
+      "rules": [
+        { "op": "add", "path": "player.rowers", "value": 1 },
+        { "op": "add", "path": "player.baseSpeed", "value": 0.16 },
+        { "op": "add", "path": "player.hullLength", "value": 0.02 },
+        { "op": "addAbility", "value": "Rowers" }
+      ]
+    },
+    {
+      "id": "repair-crew",
+      "name": "Repair Crew",
+      "desc": "+1 repair crew, passive hull regen",
+      "rules": [
+        { "op": "ensureRepairCrew" },
+        { "op": "addAbility", "value": "RepairCrew" }
+      ]
+    },
+    {
+      "id": "salvage-skiffs",
+      "name": "Salvage Skiffs",
+      "desc": "+gold magnet range, +1 auto collector boat",
+      "rules": [
+        { "op": "add", "path": "state.goldMagnetBonus", "value": 0.22 },
+        { "op": "clamp", "path": "state.goldMagnetBonus", "min": -2, "max": 1.25 },
+        { "op": "add", "path": "player.salvageSkiffCount", "value": 1 },
+        { "op": "clamp", "path": "player.salvageSkiffCount", "min": 0, "max": 4 },
+        { "op": "addAbility", "value": "SalvageSkiffs" },
+        { "op": "call", "fn": "ensureCollectorSkiffs" }
+      ]
+    },
+    {
+      "id": "reinforced-hull",
+      "name": "Reinforced Hull",
+      "desc": "+15 max HP and heal 10",
+      "rules": [
+        { "op": "add", "path": "player.maxHp", "value": 15 },
+        { "op": "add", "path": "player.hp", "value": 10 },
+        { "op": "max", "path": "player.hp", "value": 0 },
+        { "op": "call", "fn": "clampHpToMax" },
+        { "op": "add", "path": "player.hullBeam", "value": 0.05 },
+        { "op": "add", "path": "player.sternTaper", "value": -0.03 },
+        { "op": "addAbility", "value": "Hull" }
+      ]
+    },
+    {
+      "id": "ram-bow",
+      "name": "Ram Bow",
+      "desc": "Ramming enabled, +size",
+      "rules": [
+        { "op": "set", "path": "player.ram", "value": true },
+        { "op": "add", "path": "player.size", "value": 2 },
+        { "op": "add", "path": "player.bowSharpness", "value": 0.14 },
+        { "op": "addAbility", "value": "Ram" }
+      ]
+    },
+    {
+      "id": "sail-mastery",
+      "name": "Sail Mastery",
+      "desc": "+speed, bigger ship",
+      "rules": [
+        { "op": "add", "path": "player.baseSpeed", "value": 0.25 },
+        { "op": "add", "path": "player.size", "value": 1 },
+        { "op": "add", "path": "player.mass", "value": 2 },
+        { "op": "add", "path": "player.hullLength", "value": 0.05 },
+        { "op": "add", "path": "player.hullBeam", "value": -0.03 },
+        { "op": "addAbility", "value": "Sails" }
+      ]
+    },
+    {
+      "id": "rudder-upgrade",
+      "name": "Rudder Upgrade",
+      "desc": "Turn faster under momentum",
+      "rules": [
+        { "op": "add", "path": "player.rudder", "value": 1 },
+        { "op": "addAbility", "value": "Rudder" }
+      ]
+    },
+    {
+      "id": "cannon-trunnions",
+      "name": "Cannon Trunnions",
+      "desc": "Cannons can auto-pivot +5°",
+      "rules": [
+        { "op": "add", "path": "player.cannonPivot", "value": 5 },
+        { "op": "clamp", "path": "player.cannonPivot", "min": 0, "max": 20 },
+        { "op": "addAbility", "value": "PivotCannons" }
+      ]
+    }
+  ],
+  "major": [
+    {
+      "id": "dreadnought-hull",
+      "name": "Dreadnought Hull",
+      "desc": "Massive hull growth, +40 max HP",
+      "rules": [
+        { "op": "add", "path": "player.size", "value": 5 },
+        { "op": "add", "path": "player.maxHp", "value": 40 },
+        { "op": "add", "path": "player.hp", "value": 28 },
+        { "op": "call", "fn": "clampHpToMax" },
+        { "op": "add", "path": "player.mass", "value": 10 },
+        { "op": "add", "path": "player.hullBeam", "value": 0.12 },
+        { "op": "add", "path": "player.sternTaper", "value": -0.06 },
+        { "op": "set", "path": "player.hullColor", "value": "#3f2f24" },
+        { "op": "set", "path": "player.trimColor", "value": "#c7a476" },
+        { "op": "addAbility", "value": "Dreadnought" }
+      ]
+    },
+    {
+      "id": "crimson-sails",
+      "name": "Crimson Sails",
+      "desc": "Faster ship, faster volleys",
+      "rules": [
+        { "op": "add", "path": "player.baseSpeed", "value": 0.45 },
+        { "op": "add", "path": "player.gunReload", "value": -0.04 },
+        { "op": "clamp", "path": "player.gunReload", "min": 0.8, "max": 999 },
+        { "op": "add", "path": "player.cannonReload", "value": -0.1 },
+        { "op": "clamp", "path": "player.cannonReload", "min": 0.9, "max": 999 },
+        { "op": "add", "path": "player.hullLength", "value": 0.08 },
+        { "op": "add", "path": "player.hullBeam", "value": -0.06 },
+        { "op": "add", "path": "player.bowSharpness", "value": 0.08 },
+        { "op": "set", "path": "player.sailColor", "value": "#d34d4d" },
+        { "op": "add", "path": "player.mastScale", "value": 0.2 },
+        { "op": "addAbility", "value": "CrimsonSails" }
+      ]
+    },
+    {
+      "id": "grand-broadside",
+      "name": "Grand Broadside",
+      "desc": "+2 cannons, +10 damage",
+      "rules": [
+        { "op": "autoInstallCannons", "perSide": 2 },
+        { "op": "add", "path": "player.bulletDamage", "value": 10 },
+        { "op": "add", "path": "player.size", "value": 1 },
+        { "op": "add", "path": "player.mass", "value": 3 },
+        { "op": "add", "path": "player.hullBeam", "value": 0.08 },
+        { "op": "addAbility", "value": "Broadside" },
+        { "op": "call", "fn": "clampArmament" }
+      ]
+    },
+    {
+      "id": "iron-ram-prow",
+      "name": "Iron Ram Prow",
+      "desc": "Deadlier collisions, ram visual",
+      "rules": [
+        { "op": "set", "path": "player.ram", "value": true },
+        { "op": "add", "path": "player.ramDamage", "value": 38 },
+        { "op": "add", "path": "player.size", "value": 2 },
+        { "op": "add", "path": "player.mass", "value": 4 },
+        { "op": "add", "path": "player.bowSharpness", "value": 0.18 },
+        { "op": "add", "path": "player.hullLength", "value": 0.06 },
+        { "op": "set", "path": "player.hullColor", "value": "#4a3a2e" },
+        { "op": "addAbility", "value": "IronRam" }
+      ]
+    }
+  ]
+}

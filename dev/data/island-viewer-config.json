@@ -1,0 +1,19 @@
+{
+  "title": "Island Viewer",
+  "profiles": [
+    { "id": "small", "label": "Small Archipelago", "islandCount": 14 },
+    { "id": "medium", "label": "Medium Sea", "islandCount": 24 },
+    { "id": "large", "label": "Large Scatter", "islandCount": 34 }
+  ],
+  "defaults": {
+    "profile": "medium",
+    "seed": 1337,
+    "worldWidth": 3600,
+    "worldHeight": 2600,
+    "showTerrain": true,
+    "showBuildings": true,
+    "showFoliage": true,
+    "showDocks": true,
+    "showPolygons": false
+  }
+}

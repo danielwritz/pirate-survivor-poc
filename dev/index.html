@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pirate Survivor Dev Museum</title>
+  <style>
+    html, body { margin: 0; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { margin: 0 0 20px; color: #9fc2d9; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .card {
+      display: block;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid #30516b;
+      background: #10293c;
+      color: #e8f5ff;
+      text-decoration: none;
+    }
+    .card:hover { border-color: #4f7896; background: #14344d; }
+    .title { font-weight: 700; margin-bottom: 6px; }
+    .desc { color: #b8d5e9; font-size: 14px; line-height: 1.35; }
+    .todo { opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Developer Museum</h1>
+    <p>Asset/feature inspection pages for fast visual and mechanical validation.</p>
+
+    <section class="grid">
+      <a class="card" href="/dev/ship-gallery.html">
+        <div class="title">Ship Gallery</div>
+        <div class="desc">Inspect hull silhouettes, size tiers, and shape controls.</div>
+      </a>
+
+      <a class="card" href="/dev/weapon-vfx-showcase.html">
+        <div class="title">Weapon & VFX Showcase</div>
+        <div class="desc">Trigger JSON-defined weapon and VFX presets with live particle simulation.</div>
+      </a>
+
+      <a class="card" href="/dev/upgrade-browser.html">
+        <div class="title">Upgrade Browser</div>
+        <div class="desc">Browse standard/major upgrades and preview cumulative before/after stat impacts.</div>
+      </a>
+
+      <a class="card" href="/dev/island-viewer.html">
+        <div class="title">Island Viewer</div>
+        <div class="desc">Regenerate procedural island sets by seed/profile and inspect visual/collision layers.</div>
+      </a>
+    </section>
+  </main>
+</body>
+</html>

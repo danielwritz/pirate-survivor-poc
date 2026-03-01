@@ -10,11 +10,38 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 - Added projectile max-range handling for player, enemy, and tower shots.
 - Added water splash VFX (blue/white circular particles) when shots expire at range.
 - Increased default gameplay camera zoom so the game starts more zoomed in.
+- Added shared ship/armament core modules (`src/core/shipMath.js`, `src/core/armament.js`) used by museum parity flows.
+- Added JSON upgrade rule engine (`src/systems/upgradeRuleEngine.js`) with rule-trace output.
+- Migrated upgrade descriptors to rule schema v2 in `dev/data/upgrades.json` (operation-based rules).
+- Main runtime upgrade offers now consume JSON upgrade rules instead of hardcoded apply blocks.
+- Upgrade Browser now renders sail + mount parity and exposes raw JSON, evaluated JSON, and applied-rule trace.
+- Weapon/VFX and Island Viewer pages now include JSON inspector panes for source + live evaluated state.
 
 ## Run
-Open `index.html` directly in a browser.
+Serve the workspace root with a local HTTP server, then open `index.html`.
+
+Example:
+- `npx serve .`
+- then open the URL it prints (typically `http://localhost:3000`)
 
 Canvas now runs fullscreen in the browser viewport.
+
+Developer museum screens are available under `dev/`.
+- Start page: `dev/index.html`
+- Ship Gallery: `dev/ship-gallery.html`
+- Weapon/VFX screen: `dev/weapon-vfx-showcase.html`
+- Upgrade Browser: `dev/upgrade-browser.html`
+- Island Viewer: `dev/island-viewer.html`
+
+## Development Architecture Direction
+- Build everything as reusable modules with clear, narrow APIs (`core`, `systems`, `entities`, `rendering`, `dev`).
+- Prefer manager composition over giant files:
+	- `GameManager` orchestrates top-level loop/state transitions.
+	- Sub-managers (combat, spawning, VFX, audio, UI) act as glue between pure components.
+- Define component/effect variants with JSON descriptors (data-first), then feed that data into reusable runtime modules.
+- For upgrades specifically, use operation-based rule arrays (`add`, `set`, `mul`, `clamp`, `autoInstallCannons`, `ensureRepairCrew`, `addAbility`, `call`) to keep gameplay and museum behavior aligned.
+- Keep mutable state inside manager/state factories rather than hidden globals to support testing and reuse.
+- Use museum pages under `dev/` as visual tests for modules and descriptors before integrating into main gameplay.
 
 ## Controls
 - Steer: `A` / `D`

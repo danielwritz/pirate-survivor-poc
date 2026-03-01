@@ -1,0 +1,66 @@
+{
+  "title": "Weapon & VFX Showcase",
+  "description": "JSON-defined showcase presets for reusable weapon and visual effect modules.",
+  "presets": [
+    {
+      "id": "gun-muzzle",
+      "label": "Gun Muzzle",
+      "effect": "muzzle",
+      "params": { "cannon": false }
+    },
+    {
+      "id": "cannon-muzzle",
+      "label": "Cannon Muzzle",
+      "effect": "muzzle",
+      "params": { "cannon": true }
+    },
+    {
+      "id": "impact-light",
+      "label": "Impact Debris (Light)",
+      "effect": "impact",
+      "params": { "heavy": false }
+    },
+    {
+      "id": "impact-heavy",
+      "label": "Impact Debris (Heavy)",
+      "effect": "impact",
+      "params": { "heavy": true }
+    },
+    {
+      "id": "deck-burst-light",
+      "label": "Deck Burst (Light)",
+      "effect": "deckBurst",
+      "params": { "heavy": false }
+    },
+    {
+      "id": "deck-burst-heavy",
+      "label": "Deck Burst (Heavy)",
+      "effect": "deckBurst",
+      "params": { "heavy": true }
+    },
+    {
+      "id": "water-splash-light",
+      "label": "Water Splash (Light)",
+      "effect": "waterSplash",
+      "params": { "heavy": false }
+    },
+    {
+      "id": "water-splash-heavy",
+      "label": "Water Splash (Heavy)",
+      "effect": "waterSplash",
+      "params": { "heavy": true }
+    },
+    {
+      "id": "gun-volley",
+      "label": "Gun Volley",
+      "effect": "volley",
+      "params": { "cannon": false, "count": 4 }
+    },
+    {
+      "id": "cannon-volley",
+      "label": "Cannon Volley",
+      "effect": "volley",
+      "params": { "cannon": true, "count": 2 }
+    }
+  ]
+}

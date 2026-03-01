@@ -1,11 +1,10 @@
-(function () {
-  function normalizeOr(x, y, fallbackX = 1, fallbackY = 0) {
+export function normalizeOr(x, y, fallbackX = 1, fallbackY = 0) {
     const len = Math.hypot(x, y);
     if (!Number.isFinite(len) || len <= 0.00001) return { x: fallbackX, y: fallbackY };
     return { x: x / len, y: y / len };
-  }
+}
 
-  function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
+export function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
     const particles = [];
     const dir = normalizeOr(dirX, dirY, 1, 0);
     const smokeCount = cannon ? 14 : 7;
@@ -55,10 +54,10 @@
       });
     }
 
-    return particles;
-  }
+  return particles;
+}
 
-  function getDamageDebrisPalette(target, fallbackHeavy = false) {
+function getDamageDebrisPalette(target, fallbackHeavy = false) {
     if (!target) {
       return fallbackHeavy
         ? ['#7a5b45', '#8e6b4f', '#5b4535', '#bf7b54']
@@ -70,10 +69,10 @@
     const deckBrown1 = '#8a6a4f';
     const deckBrown2 = '#6e5340';
     const darkChip = '#43372e';
-    return [hull, trim, deckBrown1, deckBrown2, darkChip];
-  }
+  return [hull, trim, deckBrown1, deckBrown2, darkChip];
+}
 
-  function createImpactDebrisParticles(x, y, dirX, dirY, heavy = false, target = null) {
+export function createImpactDebrisParticles(x, y, dirX, dirY, heavy = false, target = null) {
     const particles = [];
     const dir = normalizeOr(dirX, dirY, 1, 0);
     const normal = { x: -dir.x, y: -dir.y };
@@ -101,10 +100,10 @@
       });
     }
 
-    return particles;
-  }
+  return particles;
+}
 
-  function createDeckBurstParticles(x, y, dirX, dirY, heavy = false) {
+export function createDeckBurstParticles(x, y, dirX, dirY, heavy = false) {
     const particles = [];
     const dir = normalizeOr(dirX, dirY, 1, 0);
     const normal = { x: -dir.x, y: -dir.y };
@@ -133,13 +132,5 @@
       });
     }
 
-    return particles;
-  }
-
-  window.GameParticleEffects = {
-    normalizeOr,
-    createMuzzleBlastParticles,
-    createImpactDebrisParticles,
-    createDeckBurstParticles
-  };
-})();
+  return particles;
+}

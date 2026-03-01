@@ -38,9 +38,39 @@
     <div class="hint">Steer: A/D · Row forward: W · Brake: S · Toggle sail: Space · Toggle anchor: X · Mouse wheel zoom · Level-up: 1/2/3</div>
   </div>
 
-<script src="src/systems/particleEffects.js"></script>
-<script src="src/systems/audioSystem.js"></script>
-<script>
+<script type="module">
+import {
+  clamp,
+  cross2,
+  convexHull,
+  polygonPath as polygonPathCore,
+  polygonFromPoints as polygonFromPointsCore,
+  angleDiff,
+  seeded01
+} from './src/core/math.js';
+import {
+  ENDLESS_MODE,
+  MAX_ENEMIES_ON_SCREEN,
+  GOLD_MAGNET_PULL_FACTOR,
+  GOLD_MAGNET_BASE_SPEED
+} from './src/core/constants.js';
+import {
+  createMuzzleBlastParticles,
+  createImpactDebrisParticles,
+  createDeckBurstParticles
+} from './src/systems/particleEffects.js';
+import {
+  createGameAudioSystem,
+  normalizeOr
+} from './src/systems/audioSystem.js';
+import {
+  applyUpgradeRuleSet,
+  createUpgradeCatalog
+} from './src/systems/upgradeRuleEngine.js';
+import { getLevelConfig } from './src/core/levelConfig.js';
+import { createGameContext } from './src/core/context.js';
+import { DEFAULT_HULL_DESIGN, SHIPYARD_COST } from './src/core/player.js';
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -48,7 +78,23 @@ const statsEl = document.getElementById('stats');
 const windEl = document.getElementById('wind');
 const audioToggleBtn = document.getElementById('audioToggle');
 
+function polygonPath(cx, cy, radius, sides, rot) {
+  polygonPathCore(ctx, cx, cy, radius, sides, rot);
+}
+
+function polygonFromPoints(points) {
+  polygonFromPointsCore(ctx, points);
+}
+
 let audioSystem = null;
+
+const gameContext = createGameContext({ canvas, ctx });
+const { state, player } = gameContext;
+
+const runtimeUpgradeDescriptor = await fetch('./dev/data/upgrades.json')
+  .then((r) => (r.ok ? r.json() : { standard: [], major: [] }))
+  .catch(() => ({ standard: [], major: [] }));
+const runtimeUpgradeCatalog = createUpgradeCatalog(runtimeUpgradeDescriptor);
 
 function resizeCanvas() {
   const w = Math.max(900, window.innerWidth);
@@ -294,150 +340,6 @@ window.addEventListener('wheel', (e) => {
   const step = e.deltaY > 0 ? -0.06 : 0.06;
   state.zoomUserOffset = clamp(state.zoomUserOffset + step, -0.26, 0.62);
 }, { passive: false });
-
-const ENDLESS_MODE = true;
-const MAX_ENEMIES_ON_SCREEN = 10;
-const LEVEL_CONFIGS = [
-  { name: 'Coastal Skirmish', duration: 45, spawnRate: 1.0, bossEvery: 45, windShift: 16 },
-  { name: 'Open Waters', duration: 55, spawnRate: 1.2, bossEvery: 50, windShift: 14 },
-  { name: 'Storm Belt', duration: 65, spawnRate: 1.45, bossEvery: 55, windShift: 11 },
-  { name: 'Kraken Frontier', duration: 75, spawnRate: 1.75, bossEvery: 60, windShift: 9 }
-];
-
-function getLevelConfig(stageIndex) {
-  if (stageIndex < LEVEL_CONFIGS.length) {
-    return LEVEL_CONFIGS[stageIndex];
-  }
-
-  const tail = LEVEL_CONFIGS[LEVEL_CONFIGS.length - 1];
-  const extra = stageIndex - LEVEL_CONFIGS.length + 1;
-
-  return {
-    name: `Endless ${extra}`,
-    duration: Math.max(45, tail.duration - extra * 2),
-    spawnRate: tail.spawnRate + extra * 0.22,
-    bossEvery: Math.max(38, tail.bossEvery - extra),
-    windShift: Math.max(6, tail.windShift - Math.floor(extra * 0.4))
-  };
-}
-
-const state = {
-  time: 0,
-  gold: 100,
-  level: 1,
-  xp: 0,
-  xpToNext: 10,
-  stageIndex: 0,
-  stageTimer: 0,
-  difficultyTier: 0,
-  bossTimer: 0,
-  bossesDefeated: 0,
-  enemies: [],
-  bullets: [],
-  drops: [],
-  particles: [],
-  gameOver: false,
-  upgradesOffered: null,
-  wind: { x: 0.35, y: -0.12, timer: 0 },
-  world: { width: 3600, height: 2600 },
-  camera: { x: 0, y: 0 },
-  zoom: 1.28,
-  rowEffort: 0,
-  difficultyFromSize: 0,
-  defenseTier: 0,
-  shipValueTier: 0,
-  goldMagnetBonus: 0,
-  anchorNoticeTimer: 0,
-  anchorNoticeText: '',
-  playerAim: null,
-  zoomUserOffset: 0,
-  islands: [],
-  clouds: [],
-  mode: 'shipyard',
-  bossSpawnedThisStage: false,
-  shipyard: {
-    active: true,
-    freeEdit: true,
-    editMode: 'shape',
-    pendingCost: 0,
-    dragHandle: null,
-    dragStart: null,
-    baseDesign: null,
-    editDesign: null,
-    previewScale: 3.2,
-    launchRect: null,
-    resetRect: null,
-    modeRects: {},
-    weaponBrush: 'gun',
-    slotRects: [],
-    brushRects: {},
-    crewRects: {},
-    message: 'Start with 100 gold: place guns/cannons, assign crew roles, then launch.'
-  }
-};
-
-const player = {
-  x: 1800,
-  y: 1300,
-  hp: 100,
-  maxHp: 100,
-  size: 16,
-  heading: -Math.PI / 2,
-  speed: 0,
-  baseSpeed: 2.6,
-  gunReload: 1.35,
-  cannonReload: 2.2,
-  gunTimer: 1.35,
-  cannonTimer: 2.2,
-  bulletDamage: 9,
-  bulletSpeed: 6,
-  rowers: 0,
-  gunners: 2,
-  repairCrew: 0,
-  cannons: 0,
-  cannonCapacityBonus: 0,
-  cannonPivot: 0,
-  crew: 2,
-  rudder: 0,
-  sailOpen: true,
-  anchorDropped: false,
-  collectorSkiffs: [],
-  salvageSkiffCount: 0,
-  ram: false,
-  ramDamage: 46,
-  mass: 28,
-  hullLength: 1,
-  hullBeam: 1,
-  bowSharpness: 1,
-  sternTaper: 1,
-  impactTimer: 0,
-  repairSuppressed: 0,
-  damageSeed: 1337,
-  slots: [],
-  hullColor: '#5f4630',
-  sailColor: '#f0f7ff',
-  mastScale: 1,
-  maneuverPenalty: 0,
-  trimColor: '#d9b78d'
-};
-
-player.weaponLayout = { port: [], starboard: [] };
-
-const DEFAULT_HULL_DESIGN = {
-  bodyHalfLenMul: 0.58,
-  bodyHalfBeamMul: 0.72,
-  sternBeamMul: 1,
-  bowTipMul: 0.55,
-  sternTipMul: 0.4
-};
-
-player.hullDesign = { ...DEFAULT_HULL_DESIGN };
-
-const SHIPYARD_COST = {
-  gun: 9,
-  cannon: 22,
-  crew: 8
-};
 
 function getPlayerRanges() {
   const weapon = getPlayerWeaponCounts();
@@ -1168,8 +1070,6 @@ function getPlayerAutoTarget() {
   };
 }
 
-const GOLD_MAGNET_PULL_FACTOR = 0.95;
-const GOLD_MAGNET_BASE_SPEED = 2.1;
 let enemyIdSeed = 1;
 
 function squadAnchor() {
@@ -1205,17 +1105,17 @@ function spawnShipExplosion(x, y, size, boss = false) {
 }
 
 function spawnMuzzleBlast(x, y, dirX, dirY, cannon = false) {
-  const particles = window.GameParticleEffects.createMuzzleBlastParticles(x, y, dirX, dirY, cannon);
+  const particles = createMuzzleBlastParticles(x, y, dirX, dirY, cannon);
   state.particles.push(...particles);
 }
 
 function spawnImpactDebris(x, y, dirX, dirY, heavy = false, target = null) {
-  const particles = window.GameParticleEffects.createImpactDebrisParticles(x, y, dirX, dirY, heavy, target);
+  const particles = createImpactDebrisParticles(x, y, dirX, dirY, heavy, target);
   state.particles.push(...particles);
 }
 
 function spawnDeckBurst(x, y, dirX, dirY, heavy = false) {
-  const particles = window.GameParticleEffects.createDeckBurstParticles(x, y, dirX, dirY, heavy);
+  const particles = createDeckBurstParticles(x, y, dirX, dirY, heavy);
   state.particles.push(...particles);
 }
 
@@ -1360,192 +1260,63 @@ function autoInstallCannons(perSideCount = 1) {
   syncArmamentDerivedStats();
 }
 
-const upgradePool = [
-  {
-    name: 'Crew Musketeers',
-    desc: '+1 crew, faster fire',
-    apply() {
-      player.crew += 1;
-      player.gunners += 1;
-      const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
-      player.gunners = Math.min(player.gunners, caps.maxGunners);
-      player.gunReload = Math.max(0.75, player.gunReload - 0.05);
-      player.hullLength += 0.03;
-      player.bowSharpness += 0.04;
-      addAbility('Musketeers');
-    }
-  },
-  {
-    name: 'Cannons',
-    desc: '+1 cannon, +damage',
-    apply() {
-      autoInstallCannons(1);
-      player.bulletDamage += 3;
-      player.cannonReload = Math.max(1.0, player.cannonReload - 0.1);
-      player.hullBeam += 0.03;
-      addAbility('Cannons');
-    }
-  },
-  {
-    name: 'Cannon Installments',
-    desc: '+1 cannon capacity/side, heavier hull',
-    apply() {
-      player.cannonCapacityBonus += 1;
-      player.size += 1.4;
-      player.mass += 4;
-      player.hullBeam += 0.06;
-      player.hullLength += 0.04;
-      player.baseSpeed = Math.max(1.6, player.baseSpeed - 0.08);
-      player.maneuverPenalty = clamp(player.maneuverPenalty + 0.04, 0, 0.42);
-      addAbility('Installments');
-    }
-  },
-  {
-    name: 'Rowers',
-    desc: '+1 rower, wind mitigation',
-    apply() {
-      player.rowers += 1;
-      player.baseSpeed += 0.16;
-      player.hullLength += 0.02;
-      addAbility('Rowers');
-    }
-  },
-  {
-    name: 'Repair Crew',
-    desc: '+1 repair crew, passive hull regen',
-    apply() {
-      const deckCap = getDeckCrewCapacity(player);
-      let spare = getSpareCrewCapacity(player);
-      if (spare <= 0 && player.crew < deckCap) {
-        player.crew += 1;
-        spare = getSpareCrewCapacity(player);
-      }
-      if (spare > 0) {
-        player.repairCrew += 1;
-        clampPlayerSupportCrewToDeck();
-      }
-      addAbility('RepairCrew');
-    }
-  },
-  {
-    name: 'Salvage Skiffs',
-    desc: '+gold magnet range, +1 auto collector boat',
-    apply() {
-      state.goldMagnetBonus = Math.min(1.25, state.goldMagnetBonus + 0.22);
-      player.salvageSkiffCount = Math.min(4, (player.salvageSkiffCount || 0) + 1);
-      ensureCollectorSkiffs();
-      addAbility('SalvageSkiffs');
-    }
-  },
-  {
-    name: 'Reinforced Hull',
-    desc: '+15 max HP and heal 10',
-    apply() {
-      player.maxHp += 15;
-      player.hp = Math.min(player.maxHp, player.hp + 10);
-      player.hullBeam += 0.05;
-      player.sternTaper -= 0.03;
-      addAbility('Hull');
-    }
-  },
-  {
-    name: 'Ram Bow',
-    desc: 'Ramming enabled, +size',
-    apply() {
-      player.ram = true;
-      player.size += 2;
-      player.bowSharpness += 0.14;
-      addAbility('Ram');
-    }
-  },
-  {
-    name: 'Sail Mastery',
-    desc: '+speed, bigger ship',
-    apply() {
-      player.baseSpeed += 0.25;
-      player.size += 1;
-      player.mass += 2;
-      player.hullLength += 0.05;
-      player.hullBeam -= 0.03;
-      addAbility('Sails');
-    }
-  },
-  {
-    name: 'Rudder Upgrade',
-    desc: 'Turn faster under momentum',
-    apply() {
-      player.rudder += 1;
-      addAbility('Rudder');
-    }
-  },
-  {
-    name: 'Cannon Trunnions',
-    desc: 'Cannons can auto-pivot +5°',
-    apply() {
-      player.cannonPivot = Math.min(20, player.cannonPivot + 5);
-      addAbility('PivotCannons');
-    }
+function ensureRepairCrewFromRule() {
+  const deckCap = getDeckCrewCapacity(player);
+  let spare = getSpareCrewCapacity(player);
+  if (spare <= 0 && player.crew < deckCap) {
+    player.crew += 1;
+    spare = getSpareCrewCapacity(player);
   }
-];
+  if (spare > 0) {
+    player.repairCrew += 1;
+    clampPlayerSupportCrewToDeck();
+  }
+}
 
-const majorUpgradePool = [
-  {
-    name: 'Dreadnought Hull',
-    desc: 'Massive hull growth, +40 max HP',
-    apply() {
-      player.size += 5;
-      player.maxHp += 40;
-      player.hp = Math.min(player.maxHp, player.hp + 28);
-      player.mass += 10;
-      player.hullBeam += 0.12;
-      player.sternTaper -= 0.06;
-      player.hullColor = '#3f2f24';
-      player.trimColor = '#c7a476';
-      addAbility('Dreadnought');
+function applyRuntimeUpgradeDefinition(definition) {
+  const trace = applyUpgradeRuleSet(
+    { player, state },
+    definition.rules || [],
+    {
+      env: {
+        autoInstallCannons: (_player, perSide) => autoInstallCannons(perSide),
+        ensureRepairCrew: () => ensureRepairCrewFromRule(),
+        clampArmament: () => clampPlayerArmamentToHull(),
+        ensureCollectorSkiffs: () => ensureCollectorSkiffs(),
+        clampHpToMax: () => {
+          player.hp = Math.min(player.maxHp, player.hp);
+        },
+        postApply: () => {
+          player.gunReload = Math.max(0.75, player.gunReload);
+          player.cannonReload = Math.max(0.9, player.cannonReload);
+          player.baseSpeed = Math.max(1.6, player.baseSpeed);
+          player.cannonPivot = clamp(player.cannonPivot, 0, 20);
+          player.hp = Math.min(player.maxHp, player.hp);
+          clampPlayerCrewToDeck();
+          clampPlayerSupportCrewToDeck();
+          clampPlayerArmamentToHull();
+          syncArmamentDerivedStats();
+        }
+      }
     }
-  },
-  {
-    name: 'Crimson Sails',
-    desc: 'Faster ship, faster volleys',
+  );
+
+  state.lastUpgradeRuleTrace = trace;
+}
+
+function toRuntimeUpgradeOption(definition) {
+  return {
+    id: definition.id,
+    name: definition.name,
+    desc: definition.desc,
     apply() {
-      player.baseSpeed += 0.45;
-      player.gunReload = Math.max(0.8, player.gunReload - 0.04);
-      player.cannonReload = Math.max(0.9, player.cannonReload - 0.1);
-      player.hullLength += 0.08;
-      player.hullBeam -= 0.06;
-      player.bowSharpness += 0.08;
-      player.sailColor = '#d34d4d';
-      player.mastScale += 0.2;
-      addAbility('CrimsonSails');
+      applyRuntimeUpgradeDefinition(definition);
     }
-  },
-  {
-    name: 'Grand Broadside',
-    desc: '+2 cannons, +10 damage',
-    apply() {
-      autoInstallCannons(2);
-      player.bulletDamage += 10;
-      player.size += 1;
-      player.mass += 3;
-      player.hullBeam += 0.08;
-      addAbility('Broadside');
-    }
-  },
-  {
-    name: 'Iron Ram Prow',
-    desc: 'Deadlier collisions, ram visual',
-    apply() {
-      player.ram = true;
-      player.ramDamage += 38;
-      player.size += 2;
-      player.mass += 4;
-      player.bowSharpness += 0.18;
-      player.hullLength += 0.06;
-      player.hullColor = '#4a3a2e';
-      addAbility('IronRam');
-    }
-  }
-];
+  };
+}
+
+const upgradePool = (runtimeUpgradeCatalog.standard || []).map(toRuntimeUpgradeOption);
+const majorUpgradePool = (runtimeUpgradeCatalog.major || []).map(toRuntimeUpgradeOption);
 
 function addAbility(label) {
   if (player.slots.length < 4 && !player.slots.includes(label)) {
@@ -1689,49 +1460,6 @@ function initWorld() {
   }
 }
 
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function polygonPath(cx, cy, radius, sides, rot) {
-  ctx.beginPath();
-  for (let i = 0; i < sides; i++) {
-    const a = rot + (i / sides) * Math.PI * 2;
-    const px = cx + Math.cos(a) * radius;
-    const py = cy + Math.sin(a) * radius;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
-
-function cross2(o, a, b) {
-  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-}
-
-function convexHull(points) {
-  if (!points || points.length < 3) return points || [];
-  const sorted = [...points].sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
-  const lower = [];
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross2(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-  const upper = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i];
-    while (upper.length >= 2 && cross2(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-  lower.pop();
-  upper.pop();
-  return lower.concat(upper);
-}
-
 function buildIslandPolygons(island) {
   const points = [];
   for (const patch of island.patches) {
@@ -1762,20 +1490,6 @@ function buildIslandPolygons(island) {
 
   island.outerPoly = outer;
   island.innerPoly = inner;
-}
-
-function polygonFromPoints(points) {
-  if (!points || points.length < 3) return;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
-    ctx.lineTo(points[i].x, points[i].y);
-  }
-  ctx.closePath();
-}
-
-function angleDiff(a, b) {
-  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
 function updateCamera() {
@@ -1918,11 +1632,6 @@ function getVesselSeparationVector(entity) {
   }
 
   return { x: ax, y: ay };
-}
-
-function seeded01(seed) {
-  const s = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  return s - Math.floor(s);
 }
 
 function drawDeckDamageMarks(entity, hull, zoomScale = 1) {
@@ -2117,15 +1826,13 @@ function getRightVector() {
   const f = getForwardVector();
   return { x: -f.y, y: f.x };
 }
-audioSystem = window.GameAudioSystem.createGameAudioSystem({
+audioSystem = createGameAudioSystem({
   getPlayerPosition: () => ({ x: player.x, y: player.y }),
   getForwardVector,
   getRightVector,
   button: audioToggleBtn,
   clamp
 });
-
-const normalizeOr = window.GameAudioSystem.normalizeOr;
 
 function playGunVolleySfx(originX, originY, dirX, dirY, count = 1, sourceSize = 16) {
   audioSystem.playGunVolleySfx(originX, originY, dirX, dirY, count, sourceSize);

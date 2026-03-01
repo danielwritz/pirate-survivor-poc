@@ -94,12 +94,43 @@ A pirate-themed survivor-like naval action game where a small ship grows into a 
 - Fullscreen canvas viewport by default
 - Mouse-wheel zoom augments automatic size-based camera zoom
 
+## Engineering Architecture (Module-First)
+- Systems are designed as reusable modules so they can be lifted into other games with minimal changes.
+- Runtime coordination follows manager layering:
+  - `GameManager` owns frame orchestration and high-level mode flow.
+  - Domain managers (combat, progression, world, VFX, audio, UI) coordinate subsystem calls.
+  - Components/utilities remain focused and composable (geometry, particle generators, hull shape helpers, etc.).
+- Shape and effect variants are data-driven through JSON descriptors wherever practical.
+  - Example descriptor targets: VFX presets, weapon configurations, ship archetype templates, upgrade presentation metadata.
+  - Managers consume descriptor data and apply it to runtime components.
+- State should be created via factories and passed explicitly (context/dependency injection style) to improve long-term maintainability and testability.
+- Dev museum screens serve as integration probes for modules + descriptors before shipping changes into the main game loop.
+
 ## Latest Implementation Notes (2026-03-01)
 - Shipyard now has explicit `Shape/Size` and `Weapons` modes so interaction targets do not overlap.
 - Hull shaping uses a triangle-body-triangle model with symmetric control handles and a dedicated stern-width scalar.
 - Collector skiffs now use docked state behavior (mounted to ship sides while idle, dispatched only for collection tasks).
 - Projectiles are range-limited with per-shot travel tracking; expired shots splash into water instead of flying indefinitely.
 - Camera default baseline zoom is increased for a closer, more readable combat view.
+- Upgrade definitions are now schema-v2 JSON rule arrays (operation based) instead of hardcoded inline `apply()` functions.
+- Runtime level-up choices now consume JSON rule descriptors through a shared rule engine, improving parity with dev museum pages.
+- Shared ship/armament helpers were extracted into dedicated core modules so mount/cap/sail behavior can be reused by museum managers.
+- Museum pages now expose JSON inspectors for source descriptor data and live evaluated state (plus rule trace where applicable).
+
+## Upgrade Rule Schema v2 (Current)
+- Descriptor file: `dev/data/upgrades.json`
+- Top-level shape:
+  - `schemaVersion`
+  - `baseline` (`player`, `state`)
+  - `standard[]`, `major[]`
+- Each upgrade entry includes:
+  - `id`, `name`, `desc`
+  - `rules[]` (ordered operations)
+- Core operations implemented:
+  - Numeric/property ops: `set`, `add`, `mul`, `min`, `max`, `clamp`
+  - Gameplay semantic ops: `autoInstallCannons`, `ensureRepairCrew`, `addAbility`
+  - Hook op: `call` for manager/runtime-scoped side effects (e.g. clamping armament or ensuring skiffs)
+- Rule evaluation emits an applied trace for debugging and museum inspection.
 
 ## Upgrade Categories
 - Offense: cannons, gunners, damage scaling

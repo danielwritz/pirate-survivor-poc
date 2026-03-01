@@ -1,25 +1,24 @@
-(function () {
-  function localClamp(v, min, max) {
+function localClamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
-  }
+}
 
-  function createCrusherCurve(steps = 30) {
+function createCrusherCurve(steps = 30) {
     const n = 4096;
     const curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const x = (i / (n - 1)) * 2 - 1;
       curve[i] = Math.round(x * steps) / steps;
     }
-    return curve;
-  }
+  return curve;
+}
 
-  function normalizeOr(x, y, fallbackX = 1, fallbackY = 0) {
+export function normalizeOr(x, y, fallbackX = 1, fallbackY = 0) {
     const len = Math.hypot(x, y);
     if (!Number.isFinite(len) || len <= 0.00001) return { x: fallbackX, y: fallbackY };
     return { x: x / len, y: y / len };
-  }
+}
 
-  function createGameAudioSystem(config) {
+export function createGameAudioSystem(config) {
     const {
       getPlayerPosition,
       getForwardVector,
@@ -467,21 +466,15 @@
       window.addEventListener('keydown', unlockAudio, { passive: true });
     }
 
-    bindUi();
+  bindUi();
 
-    return {
-      unlockAudio,
-      setSfxMuted,
-      playUiChirp,
-      playGunVolleySfx,
-      playCannonVolleySfx,
-      playGunImpactSfx,
-      playCannonImpactSfx
-    };
-  }
-
-  window.GameAudioSystem = {
-    createGameAudioSystem,
-    normalizeOr
+  return {
+    unlockAudio,
+    setSfxMuted,
+    playUiChirp,
+    playGunVolleySfx,
+    playCannonVolleySfx,
+    playGunImpactSfx,
+    playCannonImpactSfx
   };
-})();
+}
