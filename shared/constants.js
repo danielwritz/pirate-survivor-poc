@@ -29,6 +29,7 @@ export const STARTING_CREW = 2;
 export const STARTING_GUNNERS = 2;
 
 // ─── Movement ───
+export const PACE = 12;                          // movement-rate multiplier (SP uses dt*12)
 export const ROW_ACCEL_BASE = 0.14;
 export const ROW_ACCEL_PER_ROWER = 0.075;
 export const ENEMY_ROW_ACCEL_BASE = 0.12;
@@ -42,8 +43,12 @@ export const BRAKE_DRAG = 0.06;
 export const IDLE_DRAG = 0.018;
 export const INERTIA_BASE_MASS = 28;
 export const INERTIA_DIVISOR = 44;
-export const WIND_RESIST_PER_ROWER = 0.14;   // fraction per rower
+export const ACCEL_MASS_DIVISOR = 16;          // SP accel divisor: max(1, mass/16)
+export const WIND_RESIST_PER_ROWER = 0.16;   // fraction per rower (matches SP)
 export const WIND_RESIST_MAX = 0.85;
+export const WIND_DRIFT_FACTOR = 0.18;         // SP wind drift lateral push
+export const WIND_DRIFT_PACE = 2.8;           // SP wind drift dt multiplier
+export const SPEED_CAP_OFFSET = 1.9;           // SP: maxSpeed = baseSpeed + 1.9
 
 // ─── Combat: Guns ───
 export const GUN_PIVOT_RAD = 30 * (Math.PI / 180);

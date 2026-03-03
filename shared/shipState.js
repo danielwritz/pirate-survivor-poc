@@ -243,6 +243,15 @@ export function shipSnapshot(ship) {
     // Combat state
     onFire: ship.onFire,
     ram: ship.ram,
+    ramDamage: ship.ramDamage,
+    burnTime: r1(ship.fireTimer || 0),
+
+    // Reload timers (for HUD bars)
+    gunTimer: r2(ship.gunTimer || 0),
+    cannonTimer: r2(ship.cannonTimer || 0),
+    gunReload: r2(ship.gunReload),
+    cannonReload: r2(ship.cannonReload),
+    baseSpeed: r2(ship.baseSpeed),
 
     // Crew (for HUD display)
     crew: ship.crew,
@@ -250,6 +259,11 @@ export function shipSnapshot(ship) {
     gunners: ship.gunners,
     repairCrew: ship.repairCrew,
     rudder: ship.rudder,
+
+    // Flag / pennant (NPC visuals)
+    flagColor: ship.flagColor || null,
+    flagAccent: ship.flagAccent || null,
+    flagStripes: ship.flagStripes || 0,
 
     // Economy
     doubloons: Math.floor(ship.doubloons),

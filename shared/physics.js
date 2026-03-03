@@ -8,12 +8,15 @@
 
 import { clamp } from '../src/core/math.js';
 import {
+  PACE,
   ROW_ACCEL_BASE, ROW_ACCEL_PER_ROWER,
   SAIL_PUSH_BASE, SAIL_PUSH_SIZE_FACTOR,
   TURN_BASE, TURN_RUDDER, TURN_ROWER,
   BRAKE_DRAG, IDLE_DRAG,
-  INERTIA_BASE_MASS, INERTIA_DIVISOR,
+  INERTIA_BASE_MASS, INERTIA_DIVISOR, ACCEL_MASS_DIVISOR,
   WIND_RESIST_PER_ROWER, WIND_RESIST_MAX,
+  WIND_DRIFT_FACTOR, WIND_DRIFT_PACE,
+  SPEED_CAP_OFFSET,
   WORLD_EDGE_PAD,
   COLLISION_RADIUS_MUL, IMPACT_COOLDOWN, MIN_IMPACT_SPEED, RESTITUTION,
   RAM_MULTIPLIER, RAM_SELF_REDUCTION
@@ -52,13 +55,15 @@ export function stepShipPhysics(ship, input, wind, world, dt) {
     return;
   }
 
+  const pace = dt * PACE;              // SP uses dt * 12
   const inertia = getInertia(ship.mass);
+  const accelDiv = Math.max(1, (ship.mass || 28) / ACCEL_MASS_DIVISOR) * inertia;  // SP formula
   const fwd = forwardVector(ship.heading);
 
   // ─── Rowing ───
   if (input.forward) {
     const rowPower = ROW_ACCEL_BASE + (ship.rowers || 0) * ROW_ACCEL_PER_ROWER;
-    ship.speed += (rowPower / inertia) * dt * 60;
+    ship.speed += (rowPower / accelDiv) * pace;
   }
 
   // ─── Sail push ───
@@ -66,39 +71,40 @@ export function stepShipPhysics(ship, input, wind, world, dt) {
     const alignment = fwd.x * wind.x + fwd.y * wind.y;
     if (alignment > 0) {
       const push = alignment * (SAIL_PUSH_BASE + (ship.size || 16) * SAIL_PUSH_SIZE_FACTOR);
-      ship.speed += (push / inertia) * dt * 60;
+      ship.speed += (push / accelDiv) * pace;
     }
   }
 
   // ─── Wind drift (lateral push) ───
   if (wind) {
     const rowerResist = clamp((ship.rowers || 0) * WIND_RESIST_PER_ROWER, 0, WIND_RESIST_MAX);
-    const driftFactor = (1 - rowerResist) * 0.012 * dt * 60;
+    const driftFactor = (1 - rowerResist) * WIND_DRIFT_FACTOR * dt * WIND_DRIFT_PACE;
     ship.x += wind.x * driftFactor;
     ship.y += wind.y * driftFactor;
   }
 
-  // ─── Drag ───
+  // ─── Drag (linear, matches SP) ───
   const drag = input.brake ? BRAKE_DRAG : IDLE_DRAG;
-  ship.speed *= Math.pow(1 - drag, dt * 60);
+  ship.speed -= drag * ship.speed * pace;
 
   // ─── Speed cap ───
-  const maxSpeed = (ship.baseSpeed || 2.6) * 1.6;
+  const maxSpeed = (ship.baseSpeed || 2.6) + SPEED_CAP_OFFSET;
   ship.speed = clamp(ship.speed, 0, maxSpeed);
 
   // ─── Steering ───
   const turnInput = (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0);
   if (turnInput !== 0) {
+    const steerDiv = 1 + Math.max(0, ((ship.mass || 28) - INERTIA_BASE_MASS) / 40);  // SP uses /40
     const turnRate = (TURN_BASE + (ship.rudder || 0) * TURN_RUDDER + (ship.rowers || 0) * TURN_ROWER)
-      / inertia
+      / steerDiv
       * (1 - (ship.maneuverPenalty || 0));
     const speedFactor = 0.3 + Math.min(1.2, ship.speed / 2.4);
-    ship.heading += turnInput * turnRate * speedFactor * dt * 60;
+    ship.heading += turnInput * turnRate * speedFactor * pace;
   }
 
   // ─── Position ───
-  ship.x += fwd.x * ship.speed * dt * 60;
-  ship.y += fwd.y * ship.speed * dt * 60;
+  ship.x += fwd.x * ship.speed * pace;
+  ship.y += fwd.y * ship.speed * pace;
 
   // ─── World clamp ───
   ship.x = clamp(ship.x, WORLD_EDGE_PAD, world.width - WORLD_EDGE_PAD);

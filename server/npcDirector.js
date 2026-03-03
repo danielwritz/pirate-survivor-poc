@@ -120,6 +120,19 @@ export function spawnNpc(director, playerPositions, roundTime) {
   ship.sailColor = archetype.sailColor;
   ship.invulnTimer = 0; // NPCs don't get spawn invuln
 
+  // Flag / pennant visuals (threat-based palette for client rendering)
+  const threat = Math.min(4, 1 + Math.floor(director.currentUpgradeCount / 2));
+  const flagPalettes = [
+    { flag: '#4f89c2', accent: '#b7d6f1' },
+    { flag: '#d08a39', accent: '#f4d5a8' },
+    { flag: '#b44d74', accent: '#f3bfd1' },
+    { flag: '#4c9d5b', accent: '#b7e6be' }
+  ];
+  const pick = flagPalettes[(id + threat) % flagPalettes.length];
+  ship.flagColor = pick.flag;
+  ship.flagAccent = pick.accent;
+  ship.flagStripes = threat;
+
   // Apply difficulty upgrades
   const upgradeCount = director.currentUpgradeCount;
   scaleNpcWithUpgrades(ship, upgradeCount);
@@ -260,7 +273,20 @@ function tickNpcAi(npc, playerShips, world, dt, spawnBullet) {
       // Auto-fire cannons toward target
       if (dist < cannonRange) {
         const side = cross >= 0 ? 'starboard' : 'port';
-        fireCannonBroadside(ship, side, angleToTarget, spawnBullet);
+        const didFire = fireCannonBroadside(ship, side, angleToTarget, spawnBullet);
+        if (didFire && sim.events) {
+          const perpSign = side === 'starboard' ? 1 : -1;
+          sim.events.push({
+            type: 'cannonFire',
+            id: ship.id,
+            x: ship.x, y: ship.y,
+            dx: -Math.sin(ship.heading) * perpSign,
+            dy: Math.cos(ship.heading) * perpSign,
+            count: 1,
+            size: ship.size,
+            side
+          });
+        }
       }
 
       // Return to approach if target moves away

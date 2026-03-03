@@ -119,11 +119,16 @@ export function playerFireCannon(sim, playerId, aimAngle) {
   });
 
   if (fired) {
+    const perpSign = side === 'starboard' ? 1 : -1;
     sim.events.push({
       type: 'cannonFire',
       id: playerId,
       x: ship.x,
       y: ship.y,
+      dx: -Math.sin(ship.heading) * perpSign,
+      dy: Math.cos(ship.heading) * perpSign,
+      count: fired === true ? 1 : (fired || 1),
+      size: ship.size,
       side
     });
   }
@@ -214,10 +219,24 @@ export function tick(sim) {
   // ─── Gun auto-fire for all ships ───
   for (const entry of allShips) {
     const targets = allShips.filter(t => t.id !== entry.id);
+    let gunFiredCount = 0;
+    let gfDx = 0, gfDy = 0;
     tickGunAutoFire(entry.ship, targets, dt, (bullet) => {
       bullet.id = sim.nextBulletId++;
       sim.bullets.push(bullet);
+      gunFiredCount++;
+      gfDx = bullet.vx;
+      gfDy = bullet.vy;
     });
+    if (gunFiredCount > 0) {
+      sim.events.push({
+        type: 'gunFire',
+        x: entry.ship.x, y: entry.ship.y,
+        dx: gfDx, dy: gfDy,
+        count: gunFiredCount,
+        size: entry.ship.size
+      });
+    }
   }
 
   // ─── Bullet update + hit detection ───
@@ -241,6 +260,9 @@ export function tick(sim) {
       x: bullet.x,
       y: bullet.y,
       heavy: bullet.heavy,
+      dx: bullet.vx,
+      dy: bullet.vy,
+      size: victimShip.size,
       victimId: victimShip.id
     });
   });
