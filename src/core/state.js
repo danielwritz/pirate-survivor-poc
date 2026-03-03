@@ -44,7 +44,7 @@ export function createGameState() {
     wind: { x: 0.35, y: -0.12, timer: 0 },
     world: { width: 3600, height: 2600 },
     camera: { x: 0, y: 0 },
-    zoom: 1.28,
+    zoom: 2.0,
     rowEffort: 0,
     difficultyFromSize: 0,
     defenseTier: 0,

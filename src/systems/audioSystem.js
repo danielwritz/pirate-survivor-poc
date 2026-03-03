@@ -36,6 +36,7 @@ export function createGameAudioSystem(config) {
       ready: false,
       lastGunAt: -10,
       lastCannonAt: -10,
+      lastPlayerCannonAt: -10,
       lastGunImpactAt: -10,
       lastCannonImpactAt: -10
     };
@@ -115,17 +116,18 @@ export function createGameAudioSystem(config) {
       const dirPan = dirX * right.x + dirY * right.y;
       const dirFront = dirX * fwd.x + dirY * fwd.y;
 
-      const pan = clamp(sourcePan * 0.55 + dirPan * 0.45, -1, 1);
-      const front = clamp(sourceFront * 0.45 + dirFront * 0.55, -1, 1);
-      const distanceAtten = 1 / (1 + (sourceDist / 520) ** 1.6);
-      const gain = clamp(0.18 + distanceAtten * 1.25, 0.06, 1.25);
+      const pan = clamp(sourcePan * 0.8 + dirPan * 0.2, -1, 1);
+      const front = clamp(sourceFront * 0.65 + dirFront * 0.35, -1, 1);
+      const distanceNorm = clamp(sourceDist / 920, 0, 1);
+      const distanceAtten = 1 / (1 + (sourceDist / 360) ** 2.15);
+      const gain = clamp(0.012 + distanceAtten * 1.05, 0.008, 1.05);
       return {
         pan,
         front,
         gain,
         sourceDist,
         distanceAtten,
-        distanceNorm: clamp(sourceDist / 900, 0, 1)
+        distanceNorm
       };
     }
 
@@ -133,7 +135,10 @@ export function createGameAudioSystem(config) {
       const voiceGain = audio.ctx.createGain();
       const tone = audio.ctx.createBiquadFilter();
       tone.type = 'lowpass';
-      tone.frequency.value = spatial.front < 0 ? 1300 : 3400;
+      const farCut = 1 - spatial.distanceNorm;
+      const frontBase = spatial.front < 0 ? 980 : 2450;
+      const frontBoost = spatial.front < 0 ? 460 : 1700;
+      tone.frequency.value = frontBase + frontBoost * farCut;
       tone.Q.value = spatial.front < 0 ? 0.6 : 0.25;
 
       const crusher = audio.ctx.createWaveShaper();
@@ -243,19 +248,29 @@ export function createGameAudioSystem(config) {
     function playCannonVolleySfx(originX, originY, dirX, dirY, count = 1, sourceSize = 16) {
       safeRun(() => {
         if (!audio.ready || audio.muted || count <= 0) return;
-        if (audio.ctx.currentTime - audio.lastCannonAt < 0.09) return;
-        audio.lastCannonAt = audio.ctx.currentTime;
+        const playerPos = getPlayerPosition();
+        const isPlayerSource = Math.hypot(originX - playerPos.x, originY - playerPos.y) < 18;
+        const nowTime = audio.ctx.currentTime;
+        if (isPlayerSource) {
+          if (nowTime - audio.lastPlayerCannonAt < 0.02) return;
+          audio.lastPlayerCannonAt = nowTime;
+        } else {
+          if (nowTime - audio.lastCannonAt < 0.09) return;
+          audio.lastCannonAt = nowTime;
+        }
 
         const dir = normalizeOr(dirX, dirY, 1, 0);
         const bass = bassFromSourceSize(sourceSize);
         const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+        const nearField = spatial.sourceDist < 120;
+        const cannonGain = nearField ? Math.max(0.46, spatial.gain * 1.12) : spatial.gain;
         const now = audio.ctx.currentTime;
         const out = createVoiceChain(spatial);
         const weight = clamp(0.8 + count * 0.12 + bass * 0.25, 0.85, 2.05);
         const dur = 0.24 + Math.random() * 0.15;
 
         out.gain.setValueAtTime(0.0001, now);
-        out.gain.linearRampToValueAtTime(0.3 * weight * spatial.gain, now + 0.007);
+        out.gain.linearRampToValueAtTime(0.34 * weight * cannonGain, now + 0.007);
         out.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
         const low = audio.ctx.createOscillator();
@@ -295,7 +310,7 @@ export function createGameAudioSystem(config) {
         blastLp.Q.value = 0.65;
         const blastGain = audio.ctx.createGain();
         blastGain.gain.setValueAtTime(0.0001, now);
-        blastGain.gain.linearRampToValueAtTime(0.2 * weight * spatial.gain, now + 0.008);
+        blastGain.gain.linearRampToValueAtTime(0.24 * weight * cannonGain, now + 0.008);
         blastGain.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.88);
         blast.connect(blastLp);
         blastLp.connect(blastGain);
@@ -305,7 +320,7 @@ export function createGameAudioSystem(config) {
         const echoOut = createVoiceChain({
           pan: spatial.pan * 0.65,
           front: spatial.front,
-          gain: spatial.gain * (0.34 + spatial.distanceNorm * 0.42)
+          gain: cannonGain * (0.34 + spatial.distanceNorm * 0.42)
         });
         const echoDur = dur * 0.72;
         echoOut.gain.setValueAtTime(0.0001, now + echoDelay);
@@ -331,6 +346,44 @@ export function createGameAudioSystem(config) {
         blast.stop(now + dur);
         echoOsc.start(now + echoDelay);
         echoOsc.stop(now + echoDelay + echoDur + 0.02);
+
+        if (isPlayerSource) {
+          const dry = audio.ctx.createGain();
+          dry.gain.setValueAtTime(0.0001, now);
+          dry.gain.linearRampToValueAtTime(0.22, now + 0.004);
+          dry.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
+          dry.connect(audio.master);
+
+          const dryOsc = audio.ctx.createOscillator();
+          dryOsc.type = 'triangle';
+          dryOsc.frequency.setValueAtTime(118, now);
+          dryOsc.frequency.exponentialRampToValueAtTime(52, now + 0.08);
+          const dryLP = audio.ctx.createBiquadFilter();
+          dryLP.type = 'lowpass';
+          dryLP.frequency.value = 950;
+          dryOsc.connect(dryLP);
+          dryLP.connect(dry);
+
+          const dryNoise = audio.ctx.createBufferSource();
+          const dryNoiseBuffer = audio.ctx.createBuffer(1, Math.floor(audio.ctx.sampleRate * 0.06), audio.ctx.sampleRate);
+          const dryData = dryNoiseBuffer.getChannelData(0);
+          for (let i = 0; i < dryData.length; i++) {
+            const decay = 1 - i / dryData.length;
+            dryData[i] = (Math.random() * 2 - 1) * decay * 0.7;
+          }
+          dryNoise.buffer = dryNoiseBuffer;
+          const dryBP = audio.ctx.createBiquadFilter();
+          dryBP.type = 'bandpass';
+          dryBP.frequency.value = 420;
+          dryBP.Q.value = 0.8;
+          dryNoise.connect(dryBP);
+          dryBP.connect(dry);
+
+          dryOsc.start(now);
+          dryOsc.stop(now + 0.1);
+          dryNoise.start(now);
+          dryNoise.stop(now + 0.085);
+        }
       });
     }
 

@@ -140,6 +140,5 @@ Developer museum screens are available under `dev/`.
 - Boss defeats increase difficulty tier and unlock major ship transformations
 
 ## Next Iteration Ideas
-- Better enemy wave director and boss behaviors
-- Distinct ship classes
-- Persistent meta-progression
+- Canonical roadmap lives in `ROADMAP.md`.
+- Use `ROADMAP.md` for forward-looking priorities and planning updates.

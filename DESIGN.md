@@ -174,7 +174,5 @@ Major upgrades are intentionally high-impact and visibly alter ship presentation
 - Semi-transparent moving cloud overlay for atmosphere
 
 ## Next Build Targets
-1. Island plunder encounters
-2. Better wave director and boss attack patterns
-3. Distinct ship archetypes (ram, broadside, speed)
-4. Meta-progression between runs
+- Canonical roadmap lives in `ROADMAP.md`.
+- Keep this document focused on vision/mechanics/architecture; update roadmap priorities in `ROADMAP.md`.

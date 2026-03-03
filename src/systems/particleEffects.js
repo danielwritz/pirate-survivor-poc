@@ -9,17 +9,18 @@ export function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
     const dir = normalizeOr(dirX, dirY, 1, 0);
     const smokeCount = cannon ? 14 : 7;
     const emberCount = cannon ? 5 : 2;
+    const plumeCount = cannon ? 7 : 3;
     const smokeColors = ['#4b4f55', '#707780', '#8c939d', '#555b63'];
     const emberColors = ['#f3c46a', '#f08b42', '#de543c'];
 
     for (let i = 0; i < smokeCount; i++) {
-      const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.75 : 0.95);
-      const speed = (cannon ? 1.15 : 0.75) + Math.random() * (cannon ? 1.15 : 0.85);
-      const life = (cannon ? 0.28 : 0.18) + Math.random() * (cannon ? 0.26 : 0.16);
+      const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.26 : 0.34);
+      const speed = (cannon ? 0.42 : 0.28) + Math.random() * (cannon ? 0.36 : 0.26);
+      const life = 2 + (cannon ? 0.85 : 0.58) + Math.random() * (cannon ? 0.9 : 0.55);
       const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
       particles.push({
-        x: x + dir.x * (cannon ? 4 : 2) + (Math.random() - 0.5) * 2,
-        y: y + dir.y * (cannon ? 4 : 2) + (Math.random() - 0.5) * 2,
+        x: x + dir.x * (cannon ? 0.3 : 0.2) + (Math.random() - 0.5) * 0.6,
+        y: y + dir.y * (cannon ? 0.3 : 0.2) + (Math.random() - 0.5) * 0.6,
         vx: Math.cos(ang) * speed,
         vy: Math.sin(ang) * speed,
         size: (cannon ? 2.8 : 1.7) + Math.random() * (cannon ? 2.6 : 1.6),
@@ -28,8 +29,36 @@ export function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
         life,
         maxLife: life,
         color,
-        sides: Math.random() < 0.5 ? 4 : 5,
-        drift: (cannon ? 0.08 : 0.06) + Math.random() * 0.12
+        sides: Math.random() < 0.45 ? 3 : (Math.random() < 0.7 ? 4 : 5),
+        drift: (cannon ? 0.03 : 0.02) + Math.random() * 0.06,
+        drag: 0.987 + Math.random() * 0.009,
+        currentX: (Math.random() - 0.5) * 0.004,
+        currentY: (Math.random() - 0.5) * 0.004
+      });
+    }
+
+    for (let i = 0; i < plumeCount; i++) {
+      const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.14 : 0.2);
+      const speed = (cannon ? 0.72 : 0.52) + Math.random() * (cannon ? 0.48 : 0.32);
+      const life = 2 + (cannon ? 1.15 : 0.76) + Math.random() * (cannon ? 1.1 : 0.7);
+      const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
+      particles.push({
+        x: x + dir.x * (cannon ? 0.45 : 0.3),
+        y: y + dir.y * (cannon ? 0.45 : 0.3),
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed,
+        size: (cannon ? 2.4 : 1.5) + Math.random() * (cannon ? 1.9 : 1.2),
+        rot: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.24,
+        life,
+        maxLife: life,
+        color,
+        sides: Math.random() < 0.5 ? 3 : 4,
+        drift: 0.012 + Math.random() * 0.04,
+        drag: 0.994 + Math.random() * 0.004,
+        currentX: dir.x * (0.004 + Math.random() * 0.006),
+        currentY: dir.y * (0.004 + Math.random() * 0.006),
+        circle: true
       });
     }
 
@@ -76,27 +105,40 @@ export function createImpactDebrisParticles(x, y, dirX, dirY, heavy = false, tar
     const particles = [];
     const dir = normalizeOr(dirX, dirY, 1, 0);
     const normal = { x: -dir.x, y: -dir.y };
-    const count = heavy ? 22 : 12;
+    const count = heavy ? 14 : 7;
     const palette = getDamageDebrisPalette(target, heavy);
 
     for (let i = 0; i < count; i++) {
       const ang = Math.atan2(normal.y, normal.x) + (Math.random() - 0.5) * (heavy ? 0.56 : 0.82);
       const speed = (heavy ? 2.0 : 1.2) + Math.random() * (heavy ? 2.6 : 1.6);
-      const life = (heavy ? 0.22 : 0.15) + Math.random() * (heavy ? 0.25 : 0.18);
+      const airTime = (heavy ? 1.2 : 0.85) + Math.random() * (heavy ? 0.85 : 0.55);
+      const baseSize = (heavy ? 1.8 : 1.1) + Math.random() * (heavy ? 2.1 : 1.2);
+      const peakSize = baseSize * ((heavy ? 1.75 : 1.45) + Math.random() * 0.35);
+      const settleSize = baseSize * (0.6 + Math.random() * 0.2);
       const color = palette[Math.floor(Math.random() * palette.length)];
       particles.push({
         x: x + normal.x * (heavy ? 2.8 : 1.8),
         y: y + normal.y * (heavy ? 2.8 : 1.8),
         vx: Math.cos(ang) * speed,
         vy: Math.sin(ang) * speed,
-        size: (heavy ? 2.1 : 1.2) + Math.random() * (heavy ? 2.8 : 1.7),
+        size: baseSize,
         rot: Math.random() * Math.PI * 2,
         spin: (Math.random() - 0.5) * (heavy ? 0.58 : 0.42),
-        life,
-        maxLife: life,
+        life: airTime,
+        maxLife: airTime,
         color,
-        sides: Math.random() < 0.45 ? 3 : (Math.random() < 0.6 ? 4 : 5),
-        drift: 0.02 + Math.random() * 0.08
+        sides: Math.random() < 0.5 ? 3 : (Math.random() < 0.65 ? 4 : 5),
+        drift: 0.02 + Math.random() * 0.08,
+        settleToWater: true,
+        settled: false,
+        lingerLife: 120,
+        lingerDrag: 0.996 + Math.random() * 0.002,
+        lingerDrift: 0.0002 + Math.random() * 0.0008,
+        splashOnSettle: true,
+        splashHeavy: !!heavy,
+        baseSize,
+        peakSize,
+        settleSize
       });
     }
 

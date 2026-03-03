@@ -109,6 +109,7 @@ const runtimeUpgradeDescriptor = await fetchFirstJson(
 const runtimeUpgradeCatalog = createUpgradeCatalog(runtimeUpgradeDescriptor);
 const GUN_PIVOT_DEG = 30;
 const GUN_PIVOT_RAD = GUN_PIVOT_DEG * (Math.PI / 180);
+const DEFAULT_STARTER_PRESET_ID = 'balanced-brig';
 const STARTER_SHIP_PRESETS = [
   {
     id: 'balanced-brig',
@@ -127,7 +128,7 @@ const STARTER_SHIP_PRESETS = [
     gunners: 4,
     repairCrew: 1,
     crew: 6,
-    cannonPivot: 12
+    cannonPivot: 0
   },
   {
     id: 'iron-broadside',
@@ -140,13 +141,13 @@ const STARTER_SHIP_PRESETS = [
       bowTipMul: 0.45,
       sternTipMul: 0.28
     },
-    gunPerSide: 1,
-    cannonPerSide: 2,
+    gunPerSide: 2,
+    cannonPerSide: 1,
     rowers: 0,
     gunners: 5,
     repairCrew: 1,
     crew: 6,
-    cannonPivot: 22
+    cannonPivot: 0
   },
   {
     id: 'swift-cutter',
@@ -159,13 +160,13 @@ const STARTER_SHIP_PRESETS = [
       bowTipMul: 0.98,
       sternTipMul: 0.6
     },
-    gunPerSide: 3,
-    cannonPerSide: 0,
+    gunPerSide: 2,
+    cannonPerSide: 1,
     rowers: 2,
     gunners: 3,
     repairCrew: 0,
     crew: 5,
-    cannonPivot: 8
+    cannonPivot: 0
   }
 ];
 
@@ -333,6 +334,14 @@ function applyStarterShipPreset(presetId) {
   return true;
 }
 
+function startDirectlyWithStarterShip() {
+  const fallbackId = STARTER_SHIP_PRESETS[0]?.id;
+  const applied = applyStarterShipPreset(DEFAULT_STARTER_PRESET_ID) || (fallbackId ? applyStarterShipPreset(fallbackId) : false);
+  if (!applied) return;
+  launchFromShipyard();
+  state.shipyard.message = '';
+}
+
 function getShipyardHandleScreenPoints() {
   const sy = state.shipyard;
   if (!sy.editDesign) return null;
@@ -465,6 +474,8 @@ canvas.addEventListener('pointerdown', (e) => {
       spawnDevtoolsEnemyAtCursor();
       return;
     }
+
+    handlePlayerCannonClick(p.x, p.y);
     return;
   }
 
@@ -605,6 +616,13 @@ function getPlayerRanges() {
   };
 }
 
+function getPlayerVisionRange() {
+  const ranges = getPlayerRanges();
+  const base = ranges.cannon + 44;
+  const bonus = Number(player.lookoutRangeBonus || 0);
+  return clamp(base + bonus, 180, 980);
+}
+
 function getPlayerWeaponSlotCount() {
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
   return clamp(Math.max(3, Math.ceil(caps.maxGunners * 0.6) + 2), 3, 12);
@@ -626,6 +644,230 @@ function ensurePlayerWeaponLayout() {
   };
   player.weaponLayout.port = normalize(player.weaponLayout.port);
   player.weaponLayout.starboard = normalize(player.weaponLayout.starboard);
+
+  if (!player.cannonMountTimers) {
+    player.cannonMountTimers = { port: [], starboard: [] };
+  }
+  if (!player.cannonVolleyTimers) {
+    player.cannonVolleyTimers = { port: 0, starboard: 0 };
+  }
+  const normalizeTimers = (arr) => {
+    const out = Array.isArray(arr) ? [...arr] : [];
+    while (out.length < slots) out.push(0);
+    if (out.length > slots) out.length = slots;
+    for (let i = 0; i < out.length; i++) {
+      out[i] = Number.isFinite(out[i]) ? Math.max(0, out[i]) : 0;
+    }
+    return out;
+  };
+  player.cannonMountTimers.port = normalizeTimers(player.cannonMountTimers.port);
+  player.cannonMountTimers.starboard = normalizeTimers(player.cannonMountTimers.starboard);
+  player.cannonVolleyTimers.port = Number.isFinite(player.cannonVolleyTimers.port)
+    ? Math.max(0, player.cannonVolleyTimers.port)
+    : 0;
+  player.cannonVolleyTimers.starboard = Number.isFinite(player.cannonVolleyTimers.starboard)
+    ? Math.max(0, player.cannonVolleyTimers.starboard)
+    : 0;
+}
+
+function getCannonTimerLane(side) {
+  ensurePlayerWeaponLayout();
+  return side === 'port' ? player.cannonMountTimers.port : player.cannonMountTimers.starboard;
+}
+
+function tickPlayerCannonMountTimers(dt) {
+  ensurePlayerWeaponLayout();
+  const tickLane = (lane) => {
+    for (let i = 0; i < lane.length; i++) {
+      lane[i] = Math.max(0, lane[i] - dt);
+    }
+  };
+  tickLane(player.cannonMountTimers.port);
+  tickLane(player.cannonMountTimers.starboard);
+  player.cannonVolleyTimers.port = Math.max(0, (player.cannonVolleyTimers.port || 0) - dt);
+  player.cannonVolleyTimers.starboard = Math.max(0, (player.cannonVolleyTimers.starboard || 0) - dt);
+}
+
+function getPlayerCannonRemainingRatio(side, index) {
+  const lane = getCannonTimerLane(side);
+  const remaining = Number(lane[index] || 0);
+  const reload = toFinitePositive(getEffectiveReloadTimes().cannon, 2.8);
+  return clamp(remaining / reload, 0, 1);
+}
+
+function getPlayerCannonHudLoad() {
+  ensurePlayerWeaponLayout();
+  const reload = toFinitePositive(getEffectiveReloadTimes().cannon, 2.8);
+  let sum = 0;
+  let count = 0;
+  const appendLane = (laneTypes, laneTimers) => {
+    for (let i = 0; i < laneTypes.length; i++) {
+      if (laneTypes[i] !== 'cannon') continue;
+      const remaining = Number(laneTimers[i] || 0);
+      sum += clamp(1 - (remaining / reload), 0, 1);
+      count += 1;
+    }
+  };
+  appendLane(player.weaponLayout.port, player.cannonMountTimers.port);
+  appendLane(player.weaponLayout.starboard, player.cannonMountTimers.starboard);
+  if (count <= 0) return 1;
+  return clamp(sum / count, 0, 1);
+}
+
+function getManualAimTarget() {
+  const devtools = ensureDevtoolsState();
+  const cursor = devtools.cursorWorld || { x: player.x, y: player.y };
+  return {
+    x: cursor.x,
+    y: cursor.y,
+    angle: Math.atan2(cursor.y - player.y, cursor.x - player.x)
+  };
+}
+
+function firePlayerCannonsAtCursor(sideSign) {
+  const right = getRightVector();
+  const forward = getForwardVector();
+  const shape = getHullShape(player);
+  ensurePlayerWeaponLayout();
+  const sideKey = sideSign < 0 ? 'port' : 'starboard';
+  if ((player.cannonVolleyTimers?.[sideKey] || 0) > 0.001) return;
+  const lane = sideSign < 0 ? player.weaponLayout.port : player.weaponLayout.starboard;
+  const timerLane = getCannonTimerLane(sideKey);
+  const totalSlots = Math.max(1, lane.length);
+  const ranges = getPlayerRanges();
+  const targetAngle = getManualAimTarget().angle;
+  const pivotRad = player.cannonPivot * (Math.PI / 180);
+  const reload = toFinitePositive(getEffectiveReloadTimes().cannon, 2.8);
+
+  let fired = 0;
+  let dirXAcc = 0;
+  let dirYAcc = 0;
+
+  for (let i = 0; i < totalSlots; i++) {
+    if (lane[i] !== 'cannon') continue;
+    if ((timerLane[i] || 0) > 0.001) continue;
+
+    const mount = getHullSideMount(shape, i, totalSlots, sideSign, 0.12, 0.88);
+    const mountLen = Math.max(8, player.size * 0.48);
+    const muzzleLift = mountLen + 0.7;
+    const localX = mount.x + mount.nx * muzzleLift;
+    const localY = mount.y + mount.ny * muzzleLift;
+    const spawnX = player.x + forward.x * localX + right.x * localY;
+    const spawnY = player.y + forward.y * localX + right.y * localY;
+
+    const mountWorldAngle = player.heading + Math.atan2(mount.ny, mount.nx);
+    const adjust = clamp(angleDiff(targetAngle, mountWorldAngle), -pivotRad, pivotRad);
+    const dir = mountWorldAngle + adjust + (Math.random() - 0.5) * 0.1;
+    const dirX = Math.cos(dir);
+    const dirY = Math.sin(dir);
+
+    state.bullets.push({
+      x: spawnX,
+      y: spawnY,
+      vx: dirX * (player.bulletSpeed + 0.45),
+      vy: dirY * (player.bulletSpeed + 0.45),
+      dmg: player.bulletDamage + 4,
+      heavy: true,
+      owner: 'player',
+      sourceSize: player.size,
+      maxRange: ranges.cannon,
+      travel: 0
+    });
+
+    timerLane[i] = reload;
+    fired += 1;
+    dirXAcc += dirX;
+    dirYAcc += dirY;
+    spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, true);
+  }
+
+  if (fired > 0) {
+    player.cannonVolleyTimers[sideKey] = reload;
+    const len = Math.hypot(dirXAcc, dirYAcc) || 1;
+    playCannonVolleySfx(player.x, player.y, dirXAcc / len, dirYAcc / len, fired, player.size);
+  }
+}
+
+function handlePlayerCannonClick(screenX, screenY) {
+  if (state.mode !== 'combat' || state.upgradesOffered || state.gameOver) return;
+  const world = screenToWorld(screenX, screenY);
+  const fwd = getForwardVector();
+  const dx = world.x - player.x;
+  const dy = world.y - player.y;
+  const cross = fwd.x * dy - fwd.y * dx;
+  const sideSign = cross >= 0 ? 1 : -1;
+  firePlayerCannonsAtCursor(sideSign);
+}
+
+function getCursorAimedSideSign() {
+  const devtools = ensureDevtoolsState();
+  const cursor = devtools.cursorWorld || { x: player.x, y: player.y };
+  const fwd = getForwardVector();
+  const dx = cursor.x - player.x;
+  const dy = cursor.y - player.y;
+  const cross = fwd.x * dy - fwd.y * dx;
+  return cross >= 0 ? 1 : -1;
+}
+
+function drawCursorCannonReloadIndicators(cursorScreenX, cursorScreenY) {
+  ensurePlayerWeaponLayout();
+  const sideSign = getCursorAimedSideSign();
+  const sideKey = sideSign < 0 ? 'port' : 'starboard';
+  const lane = sideSign < 0 ? player.weaponLayout.port : player.weaponLayout.starboard;
+  const timerLane = getCannonTimerLane(sideKey);
+  const sideVolleyRemaining = player.cannonVolleyTimers?.[sideKey] || 0;
+
+  const cannonIndices = [];
+  for (let i = 0; i < lane.length; i++) {
+    if (lane[i] === 'cannon') cannonIndices.push(i);
+  }
+  if (!cannonIndices.length) return;
+
+  const ringRadius = 22;
+  const dotRadius = 4.2;
+  const count = cannonIndices.length;
+
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const idx = cannonIndices[i];
+    const ready = (timerLane[idx] || 0) <= 0.001 && sideVolleyRemaining <= 0.001;
+    const angle = -Math.PI / 2 + (Math.PI * 2 * i) / count;
+    const x = cursorScreenX + Math.cos(angle) * ringRadius;
+    const y = cursorScreenY + Math.sin(angle) * ringRadius;
+
+    ctx.beginPath();
+    ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+    ctx.fillStyle = ready ? '#ff2d2d' : '#000000';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAimReticle() {
+  if (state.mode !== 'combat') return;
+  const devtools = ensureDevtoolsState();
+  const cursor = devtools.cursorWorld || { x: player.x, y: player.y };
+  const p = toScreen(cursor.x, cursor.y);
+  const radius = 10;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(190,140,78,0.9)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(212,167,98,0.92)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(p.x - (radius + 5), p.y);
+  ctx.lineTo(p.x + (radius + 5), p.y);
+  ctx.moveTo(p.x, p.y - (radius + 5));
+  ctx.lineTo(p.x, p.y + (radius + 5));
+  ctx.stroke();
+  drawCursorCannonReloadIndicators(p.x, p.y);
+  ctx.restore();
 }
 
 function getPlayerWeaponCounts() {
@@ -672,12 +914,20 @@ function getWeaponCrewRatio() {
   return clamp((player.gunners || 0) / demand, 0.25, 1.55);
 }
 
+function toFinitePositive(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return num;
+}
+
 function getEffectiveReloadTimes() {
-  const ratio = getWeaponCrewRatio();
-  const factor = clamp(1.52 - ratio * 0.58, 0.72, 1.88);
+  const ratio = toFinitePositive(getWeaponCrewRatio(), 1);
+  const factor = clamp(toFinitePositive(1.52 - ratio * 0.58, 1), 0.72, 1.88);
+  const gunBase = toFinitePositive(player.gunReload, 1.35);
+  const cannonBase = toFinitePositive(player.cannonReload, 3.4);
   return {
-    gun: player.gunReload * factor,
-    cannon: player.cannonReload * (factor * 1.04)
+    gun: Math.max(0.08, gunBase * factor),
+    cannon: Math.max(0.2, cannonBase * (factor * 1.04))
   };
 }
 
@@ -743,6 +993,12 @@ function updateCollectorSkiffs(dt) {
 
   const magnetRange = getGoldMagnetRange();
   const skiffCollectionRange = Math.max(120, getPlayerRanges().cannon * 0.92);
+  const isDropAssignable = (drop) => {
+    const dPlayer = Math.hypot(drop.x - player.x, drop.y - player.y);
+    if (dPlayer < magnetRange * 0.9) return false;
+    if (dPlayer > skiffCollectionRange) return false;
+    return true;
+  };
   const taken = new Set();
   for (const skiff of player.collectorSkiffs) {
     if (skiff.target && state.drops.includes(skiff.target)) taken.add(skiff.target);
@@ -752,6 +1008,7 @@ function updateCollectorSkiffs(dt) {
     const skiff = player.collectorSkiffs[i];
     const dock = getCollectorHomePosition(i, player.collectorSkiffs.length);
     if (skiff.docked == null) skiff.docked = true;
+    if (skiff.stuckTimer == null) skiff.stuckTimer = 0;
 
     if (skiff.docked && !skiff.target && !skiff.carrying && !skiff.runner) {
       skiff.x = dock.x;
@@ -783,18 +1040,23 @@ function updateCollectorSkiffs(dt) {
         skiff.carrying += runner.carrying;
         skiff.runner = null;
       }
+
+      if (skiff.runner) {
+        skiff.target = null;
+        skiff.vx = 0;
+        skiff.vy = 0;
+        continue;
+      }
     }
 
     if (skiff.target && !state.drops.includes(skiff.target)) skiff.target = null;
 
-    if (!skiff.carrying && !skiff.target) {
+    if (!skiff.carrying && !skiff.target && !skiff.runner) {
       let best = null;
       let bestScore = Infinity;
       for (const drop of state.drops) {
         if (taken.has(drop)) continue;
-        const dPlayer = Math.hypot(drop.x - player.x, drop.y - player.y);
-        if (dPlayer < magnetRange * 0.9) continue;
-        if (dPlayer > skiffCollectionRange) continue;
+        if (!isDropAssignable(drop)) continue;
         const dSkiff = Math.hypot(drop.x - skiff.x, drop.y - skiff.y);
         if (dSkiff < bestScore) {
           best = drop;
@@ -805,6 +1067,11 @@ function updateCollectorSkiffs(dt) {
         skiff.docked = false;
         skiff.target = best;
         taken.add(best);
+      } else {
+        skiff.target = null;
+        if (!skiff.runner) {
+          skiff.carrying = 0;
+        }
       }
     }
 
@@ -814,11 +1081,26 @@ function updateCollectorSkiffs(dt) {
     const dx = target.x - skiff.x;
     const dy = target.y - skiff.y;
     const dist = Math.hypot(dx, dy) || 1;
+
+    if (!skiff.target && !skiff.runner && dist < 18) {
+      skiff.x = dock.x;
+      skiff.y = dock.y;
+      if (skiff.carrying > 0) addGold(skiff.carrying);
+      skiff.carrying = 0;
+      skiff.target = null;
+      skiff.runner = null;
+      skiff.vx = 0;
+      skiff.vy = 0;
+      skiff.docked = true;
+      continue;
+    }
+
     const dirX = dx / dist;
     const dirY = dy / dist;
     const avoid = getShoreAvoidanceVector({ x: skiff.x, y: skiff.y, size: 5 }, 120);
-    const moveX = dirX + avoid.x * 1.8;
-    const moveY = dirY + avoid.y * 1.8;
+    const avoidWeight = dist < 22 ? 0.45 : 1.8;
+    const moveX = dirX + avoid.x * avoidWeight;
+    const moveY = dirY + avoid.y * avoidWeight;
     const moveLen = Math.hypot(moveX, moveY) || 1;
     const speed = skiff.carrying ? 1.6 : 1.9;
     skiff.vx = (moveX / moveLen) * speed;
@@ -827,6 +1109,20 @@ function updateCollectorSkiffs(dt) {
     skiff.y += skiff.vy * dt * 60;
     skiff.x = clamp(skiff.x, 20, state.world.width - 20);
     skiff.y = clamp(skiff.y, 20, state.world.height - 20);
+
+    if (dist > 10 && Math.hypot(skiff.vx, skiff.vy) < 0.22) {
+      skiff.stuckTimer += dt;
+    } else {
+      skiff.stuckTimer = Math.max(0, skiff.stuckTimer - dt * 0.8);
+    }
+
+    if (skiff.stuckTimer > 1.25) {
+      const push = getShoreAvoidanceVector({ x: skiff.x, y: skiff.y, size: 6 }, 150);
+      skiff.x = clamp(skiff.x + push.x * 22 + (Math.random() - 0.5) * 8, 20, state.world.width - 20);
+      skiff.y = clamp(skiff.y + push.y * 22 + (Math.random() - 0.5) * 8, 20, state.world.height - 20);
+      if (!skiff.carrying) skiff.target = null;
+      skiff.stuckTimer = 0;
+    }
 
     const skiffHeading = Math.atan2(skiff.vy || 0, skiff.vx || 1);
     const skiffSpeed = Math.hypot(skiff.vx || 0, skiff.vy || 0);
@@ -849,10 +1145,10 @@ function updateCollectorSkiffs(dt) {
       skiff.target = null;
     }
 
-    if (skiff.carrying && Math.hypot(dock.x - skiff.x, dock.y - skiff.y) < 16) {
+    if (Math.hypot(dock.x - skiff.x, dock.y - skiff.y) < 16 && !skiff.target && !skiff.runner) {
       skiff.x = dock.x;
       skiff.y = dock.y;
-      addGold(skiff.carrying);
+      if (skiff.carrying > 0) addGold(skiff.carrying);
       skiff.carrying = 0;
       skiff.target = null;
       skiff.runner = null;
@@ -1328,6 +1624,17 @@ function drawPerimeterMountWithAim(mount, length, thickness, color, aimOffset = 
   ctx.restore();
 }
 
+function drawCannonReloadOverlay(mount, length, thickness, aimOffset = 0, remainingRatio = 0) {
+  if (remainingRatio <= 0.001) return;
+  const fillLen = Math.max(0, length * clamp(remainingRatio, 0, 1));
+  ctx.save();
+  ctx.translate(mount.x, mount.y);
+  ctx.rotate(Math.atan2(mount.ny, mount.nx) + aimOffset);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, -thickness * 0.5, fillLen, thickness);
+  ctx.restore();
+}
+
 function getDistributedCannonMask(totalPorts, cannonPorts) {
   const total = Math.max(0, totalPorts);
   const cannons = clamp(cannonPorts, 0, total);
@@ -1446,6 +1753,93 @@ function spawnShipExplosion(x, y, size, boss = false, palette = null) {
       currentY: state.wind.y * push
     });
   }
+}
+
+function spawnPlayerShipBreakup() {
+  const shape = getHullShape(player);
+  const fwdX = Math.cos(player.heading || 0);
+  const fwdY = Math.sin(player.heading || 0);
+  const rightX = -fwdY;
+  const rightY = fwdX;
+
+  const toWorld = (localX, localY) => ({
+    x: player.x + fwdX * localX + rightX * localY,
+    y: player.y + fwdY * localX + rightY * localY
+  });
+
+  const hullSamples = 40;
+  const sailSamples = 20;
+  const pieces = hullSamples + sailSamples;
+  const colors = [
+    player.hullColor || '#5f4630',
+    player.trimColor || '#d9b78d',
+    player.sailColor || '#f0f7ff',
+    '#6e523b',
+    '#493829'
+  ];
+
+  for (let i = 0; i < pieces; i++) {
+    const fromSail = i >= hullSamples;
+    let localX;
+    let localY;
+
+    if (fromSail) {
+      const mast = Math.max(8, player.size * 1.2 * (player.mastScale || 1));
+      localX = (Math.random() - 0.5) * player.size * 2.4;
+      localY = -mast * (0.25 + Math.random() * 0.55);
+    } else {
+      localX = shape.sternX + Math.random() * (shape.bowX - shape.sternX);
+      const halfW = hullHalfWidthAt(shape, localX) * 0.9;
+      localY = (Math.random() * 2 - 1) * halfW;
+    }
+
+    const world = toWorld(localX, localY);
+    const localLen = Math.hypot(localX, localY) || 1;
+    let outLocalX = localX / localLen;
+    let outLocalY = localY / localLen;
+    outLocalX += (Math.random() - 0.5) * 0.55;
+    outLocalY += (Math.random() - 0.5) * 0.55;
+    const outLen = Math.hypot(outLocalX, outLocalY) || 1;
+    outLocalX /= outLen;
+    outLocalY /= outLen;
+
+    const outWorldX = fwdX * outLocalX + rightX * outLocalY;
+    const outWorldY = fwdY * outLocalX + rightY * outLocalY;
+    const speed = (fromSail ? 1.2 : 1.6) + Math.random() * (fromSail ? 1.6 : 2.2);
+    const airTime = 0.9 + Math.random() * (fromSail ? 0.7 : 1.0);
+    const baseSize = (fromSail ? 1.4 : 1.9) + Math.random() * (fromSail ? 1.9 : 2.7);
+    const peakSize = baseSize * (1.25 + Math.random() * 0.4);
+    const settleSize = baseSize * (0.52 + Math.random() * 0.22);
+
+    state.particles.push({
+      x: world.x,
+      y: world.y,
+      vx: outWorldX * speed,
+      vy: outWorldY * speed,
+      size: baseSize,
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.42,
+      life: airTime,
+      maxLife: airTime,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      sides: 3,
+      drift: -0.012 - Math.random() * 0.028,
+      drag: 0.978 + Math.random() * 0.012,
+      settleToWater: true,
+      settled: false,
+      lingerLife: 120,
+      lingerDrag: 0.996 + Math.random() * 0.002,
+      lingerDrift: 0.0002 + Math.random() * 0.0008,
+      splashOnSettle: true,
+      splashHeavy: !fromSail,
+      baseSize,
+      peakSize,
+      settleSize
+    });
+  }
+
+  spawnShipExplosion(player.x, player.y, player.size, true, player);
+  spawnWaterSplash(player.x, player.y, true);
 }
 
 function spawnMuzzleBlast(x, y, dirX, dirY, cannon = false) {
@@ -1936,6 +2330,20 @@ function ensureRepairCrewFromRule() {
   }
 }
 
+function applyHullArmorVisualTier() {
+  const tier = clamp(Number(player.hullArmorTier || 0), 0, 4);
+  const palette = [
+    { hullColor: '#5f4630', trimColor: '#b87333' },
+    { hullColor: '#5a422d', trimColor: '#b87a3f' },
+    { hullColor: '#553e2b', trimColor: '#9c8058' },
+    { hullColor: '#503a28', trimColor: '#7f8791' },
+    { hullColor: '#4b3626', trimColor: '#b8c1cb' }
+  ];
+  const style = palette[tier] || palette[0];
+  player.hullColor = style.hullColor;
+  player.trimColor = style.trimColor;
+}
+
 function applyRuntimeUpgradeDefinition(definition) {
   const trace = applyUpgradeRuleSet(
     { player, state },
@@ -1947,12 +2355,13 @@ function applyRuntimeUpgradeDefinition(definition) {
         ensureRepairCrew: () => ensureRepairCrewFromRule(),
         clampArmament: () => clampPlayerArmamentToHull(),
         ensureCollectorSkiffs: () => ensureCollectorSkiffs(),
+        applyHullArmorVisualTier: () => applyHullArmorVisualTier(),
         clampHpToMax: () => {
           player.hp = Math.min(player.maxHp, player.hp);
         },
         postApply: () => {
-          player.gunReload = Math.max(0.75, player.gunReload);
-          player.cannonReload = Math.max(0.9, player.cannonReload);
+          player.gunReload = Math.max(0.75, toFinitePositive(player.gunReload, 1.35));
+          player.cannonReload = Math.max(1.5, toFinitePositive(player.cannonReload, 3.4));
           player.baseSpeed = Math.max(1.6, player.baseSpeed);
           player.cannonPivot = clamp(player.cannonPivot, 0, 30);
           player.hp = Math.min(player.maxHp, player.hp);
@@ -2125,6 +2534,8 @@ function initWorld() {
       drift: 0.2 + Math.random() * 0.35
     });
   }
+
+  startDirectlyWithStarterShip();
 }
 
 function buildIslandPolygons(island) {
@@ -2337,6 +2748,178 @@ function drawDeckDamageMarks(entity, hull, zoomScale = 1) {
   }
 }
 
+function ensureShipDamageState(entity) {
+  if (!Array.isArray(entity.fractureMarks)) entity.fractureMarks = [];
+  entity.burnTime = Math.max(0, Number(entity.burnTime || 0));
+  entity.burnTick = Math.max(0, Number(entity.burnTick || 0));
+}
+
+function worldPointToShipLocal(entity, worldX, worldY) {
+  const fwdX = Math.cos(entity.heading || 0);
+  const fwdY = Math.sin(entity.heading || 0);
+  const rightX = -fwdY;
+  const rightY = fwdX;
+  const dx = worldX - entity.x;
+  const dy = worldY - entity.y;
+  return {
+    x: dx * fwdX + dy * fwdY,
+    y: dx * rightX + dy * rightY
+  };
+}
+
+function addHullFractureMark(entity, worldX, worldY, severity = 1) {
+  ensureShipDamageState(entity);
+  const local = worldPointToShipLocal(entity, worldX, worldY);
+  const shape = getHullShape(entity);
+  const halfW = hullHalfWidthAt(shape, local.x) * 0.82;
+  const clampedY = clamp(local.y, -halfW, halfW);
+  const markCount = 1 + Math.floor(clamp(severity, 0, 2.4) * 1.2);
+
+  for (let i = 0; i < markCount; i++) {
+    const life = 4.2 + Math.random() * 4.6;
+    const longSide = 2.2 + Math.random() * (2.8 + severity * 2.2);
+    const shortSide = 0.7 + Math.random() * (0.9 + severity * 0.7);
+    entity.fractureMarks.push({
+      x: local.x + (Math.random() - 0.5) * 2.8,
+      y: clampedY + (Math.random() - 0.5) * 2.6,
+      w: longSide,
+      h: shortSide,
+      rot: Math.random() * Math.PI * 2,
+      life,
+      maxLife: life
+    });
+  }
+
+  if (entity.fractureMarks.length > 38) {
+    entity.fractureMarks.splice(0, entity.fractureMarks.length - 38);
+  }
+}
+
+function drawFractureMarks(entity, hull, zoomScale = 1) {
+  const marks = entity.fractureMarks;
+  if (!Array.isArray(marks) || !marks.length) return;
+
+  for (const mark of marks) {
+    const fade = clamp(mark.life / Math.max(0.001, mark.maxLife), 0, 1);
+    const hw = hullHalfWidthAt(hull, mark.x) * 0.8;
+    const y = clamp(mark.y, -hw, hw);
+    const width = Math.max(1, (Number(mark.w) || Math.max(0.8, Number(mark.size) || 1.6)) * zoomScale);
+    const height = Math.max(0.5, (Number(mark.h) || Math.max(0.45, width * 0.3)) * zoomScale);
+    ctx.save();
+    ctx.globalAlpha = 0.28 + (1 - fade) * 0.5;
+    ctx.fillStyle = '#060607';
+    ctx.translate(mark.x, y);
+    ctx.rotate(mark.rot);
+    ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
+    ctx.restore();
+  }
+}
+
+function spawnShipFireFx(entity, intensity = 0.45) {
+  const shape = getHullShape(entity);
+  const fwdX = Math.cos(entity.heading || 0);
+  const fwdY = Math.sin(entity.heading || 0);
+  const rightX = -fwdY;
+  const rightY = fwdX;
+  const count = 1 + Math.floor(intensity * 3 + Math.random() * 2);
+
+  for (let i = 0; i < count; i++) {
+    const t = Math.random();
+    const minX = shape.sternShoulderX * 0.7;
+    const maxX = shape.shoulderX * 0.7;
+    const localX = minX + (maxX - minX) * t;
+    const laneWidth = hullHalfWidthAt(shape, localX) * 0.5;
+    const localY = (Math.random() * 2 - 1) * laneWidth;
+    const worldX = entity.x + fwdX * localX + rightX * localY;
+    const worldY = entity.y + fwdY * localX + rightY * localY;
+    const life = 0.18 + Math.random() * (0.3 + intensity * 0.45);
+    const hot = Math.random() < 0.68;
+    state.particles.push({
+      x: worldX,
+      y: worldY,
+      vx: (Math.random() - 0.5) * (0.2 + intensity * 0.38),
+      vy: -0.1 - Math.random() * (0.35 + intensity * 0.5),
+      size: 1.1 + Math.random() * (1.6 + intensity * 1.9),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.22,
+      life,
+      maxLife: life,
+      color: hot ? (Math.random() < 0.55 ? '#ffb14e' : '#ff7b42') : '#2a2120',
+      sides: hot ? 5 : 6,
+      drift: hot ? (0.44 + Math.random() * 0.44) : (0.18 + Math.random() * 0.24),
+      drag: hot ? 0.92 : 0.95,
+      circle: !hot
+    });
+  }
+}
+
+function drawShipBurningOverlay(entity, hull) {
+  if (!(entity.burnTime > 0)) return;
+  const intensity = clamp(entity.burnTime / 7, 0.2, 1);
+  const flames = 2 + Math.floor(intensity * 4);
+  const seed = (entity.damageSeed || entity.id || 17) * 0.37;
+
+  for (let i = 0; i < flames; i++) {
+    const t = ((i + 1) / (flames + 1));
+    const minX = hull.sternShoulderX * 0.62;
+    const maxX = hull.shoulderX * 0.72;
+    const x = minX + (maxX - minX) * t;
+    const hw = hullHalfWidthAt(hull, x) * 0.48;
+    const wave = Math.sin(state.time * 7.5 + seed + i * 1.27);
+    const y = clamp(wave * hw * 0.55, -hw, hw);
+    const h = 2 + intensity * 2.8 + Math.sin(state.time * 10 + i * 2.1) * 0.4;
+    ctx.fillStyle = 'rgba(255,178,80,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x + h * 0.52, y + h * 0.1);
+    ctx.lineTo(x - h * 0.52, y + h * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,114,58,0.72)';
+    ctx.beginPath();
+    ctx.arc(x, y - h * 0.18, h * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function tryIgniteShip(entity, bullet, impactBoost = 0, chanceBonus = 0) {
+  if (!bullet?.heavy) return;
+  ensureShipDamageState(entity);
+  const dmg = Math.max(0, Number(bullet.dmg || 0));
+  const chance = clamp(0.16 + dmg * 0.008 + impactBoost * 0.06 + chanceBonus, 0.14, 0.78);
+  if (Math.random() >= chance) return;
+  entity.burnTime = Math.min(12, Math.max(entity.burnTime, 2.6 + Math.random() * 2.4 + impactBoost * 0.9));
+  entity.burnTick = Math.min(entity.burnTick || 0.2, 0.12);
+}
+
+function updateShipDamageState(entity, dt, isPlayerShip = false) {
+  ensureShipDamageState(entity);
+
+  if (entity.fractureMarks.length) {
+    for (const mark of entity.fractureMarks) mark.life -= dt;
+    entity.fractureMarks = entity.fractureMarks.filter((mark) => mark.life > 0);
+  }
+
+  if (entity.burnTime <= 0) return;
+
+  entity.burnTime = Math.max(0, entity.burnTime - dt);
+  entity.burnTick -= dt;
+  const intensity = clamp(entity.burnTime / 7, 0.2, 1);
+  while (entity.burnTick <= 0 && entity.burnTime > 0) {
+    entity.burnTick += 0.2;
+    const tickDamage = (isPlayerShip ? 0.52 : 0.68) * (0.78 + intensity * 1.15);
+    if (isPlayerShip) {
+      damagePlayer(tickDamage);
+    } else {
+      entity.hp -= tickDamage;
+    }
+  }
+
+  if (Math.random() < dt * (5 + intensity * 8)) {
+    spawnShipFireFx(entity, intensity);
+  }
+}
+
 function spawnEnemy() {
   const margin = 130;
   const edge = Math.floor(Math.random() * 4);
@@ -2424,7 +3007,7 @@ function spawnEnemyAt(x, y, forcedKind = null) {
     rudder: kind === 'rammer' ? 2 : 1,
     mass: 20 + size * 0.9,
     gunReload: Math.max(0.66, (1.3 - state.difficultyTier * 0.035) * (1.08 - (quality - 1) * 0.18)),
-    cannonReload: Math.max(0.92, (2.1 - state.difficultyTier * 0.05) * (1.12 - (quality - 1) * 0.26)),
+    cannonReload: Math.max(1.25, (2.8 - state.difficultyTier * 0.04) * (1.14 - (quality - 1) * 0.22)),
     gunTimer: Math.random() * 0.8,
     cannonTimer: Math.random() * 1.2,
     gunRange: 102 + size * 3.0 + state.difficultyTier * 7 + Math.random() * 22,
@@ -2490,7 +3073,7 @@ function spawnBossAt(x, y) {
     rudder: 2,
     mass: 46 + size,
     gunReload: Math.max(0.78, 1.25 - state.difficultyTier * 0.03),
-    cannonReload: Math.max(0.82, 1.45 - state.difficultyTier * 0.04),
+    cannonReload: Math.max(1.1, 2.05 - state.difficultyTier * 0.03),
     gunTimer: 0.4,
     cannonTimer: 0.7,
     gunRange: 150 + size * 3.3,
@@ -2753,12 +3336,11 @@ function shootAtNearest() {
   if (weapon.gunTotal <= 0 && weapon.cannonTotal <= 0) return { firedGun: false, firedCannon: false };
 
   const ranges = getPlayerRanges();
-  if (aim.dist > Math.max(ranges.gun, ranges.cannon)) return { firedGun: false, firedCannon: false };
+  if (aim.dist > ranges.gun) return { firedGun: false, firedCannon: false };
   const effective = getEffectiveReloadTimes();
   const canGun = weapon.gunTotal > 0 && player.gunTimer >= effective.gun;
-  const canCannon = weapon.cannonTotal > 0 && player.cannonTimer >= effective.cannon;
-  if (!canGun && !canCannon) return { firedGun: false, firedCannon: false };
-  return broadsideFire(aim.sideSign, aim.target, aim.dist, canGun, canCannon);
+  if (!canGun) return { firedGun: false, firedCannon: false };
+  return broadsideFire(aim.sideSign, aim.target, aim.dist, canGun, false);
 }
 
 function offerUpgrades() {
@@ -2783,24 +3365,24 @@ function getUpgradeCardInfo(upgrade) {
   let desc = upgrade.desc;
   let blocked = false;
 
-  if (upgrade.name === 'Cannons') {
+  if (upgrade.name === 'Cannoneers') {
     const weapon = getPlayerWeaponCounts();
     const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
     if (weapon.cannonPerSide >= caps.maxCannonsPerSide) {
       blocked = true;
-      desc = `At cap ${weapon.cannonPerSide}/${caps.maxCannonsPerSide} per side. Take Cannon Installments to expand.`;
+      desc = `At cap ${weapon.cannonPerSide}/${caps.maxCannonsPerSide} per side. Take Cannon Racks to expand.`;
     } else {
       desc = `${upgrade.desc} (${Math.min(caps.maxCannonsPerSide, weapon.cannonPerSide + 1)}/${caps.maxCannonsPerSide} per side)`;
     }
   }
 
-  if (upgrade.name === 'Cannon Installments') {
+  if (upgrade.name === 'Cannon Racks') {
     const current = getShipWeaponCaps(player, player.cannonCapacityBonus);
     const next = getShipWeaponCaps(player, player.cannonCapacityBonus + 1);
     desc = `${upgrade.desc} (${current.maxCannonsPerSide}→${next.maxCannonsPerSide} per side)`;
   }
 
-  if (upgrade.name === 'Repair Crew') {
+  if (upgrade.name === 'Shipwrights') {
     const spare = getSpareCrewCapacity(player);
     if (spare <= 0 && player.crew >= getDeckCrewCapacity(player)) {
       blocked = true;
@@ -2810,6 +3392,12 @@ function getUpgradeCardInfo(upgrade) {
       const approxPerSec = (0.36 + effective * 0.3).toFixed(1);
       desc = `${upgrade.desc} (Repair crew ${player.repairCrew}→${effective}, ~${approxPerSec} HP/s out of combat)`;
     }
+  }
+
+  if (upgrade.name === "Crow's Nest") {
+    const current = Math.round(getPlayerVisionRange());
+    const next = Math.round(clamp(current + 40, 180, 980));
+    desc = `${upgrade.desc} (${current}→${next})`;
   }
 
   return { desc, blocked };
@@ -2869,10 +3457,11 @@ function resolveVesselCollision(a, b, dt) {
     a.y -= ny * overlap;
     b.speed = 0;
   } else {
-    a.x -= nx * overlap * (massB / totalMass);
-    a.y -= ny * overlap * (massB / totalMass);
-    b.x += nx * overlap * (massA / totalMass);
-    b.y += ny * overlap * (massA / totalMass);
+    const pushScale = 1.18;
+    a.x -= nx * overlap * pushScale * (massB / totalMass);
+    a.y -= ny * overlap * pushScale * (massB / totalMass);
+    b.x += nx * overlap * pushScale * (massA / totalMass);
+    b.y += ny * overlap * pushScale * (massA / totalMass);
   }
 
   a.x = clamp(a.x, 24, state.world.width - 24);
@@ -2885,37 +3474,86 @@ function resolveVesselCollision(a, b, dt) {
   const relNormalSpeed = (va.x * a.speed - vb.x * b.speed) * nx + (va.y * a.speed - vb.y * b.speed) * ny;
   if (relNormalSpeed <= 0) return;
 
-  const restitution = 0.2;
-  const impulse = (1 + restitution) * relNormalSpeed / (1 / massA + 1 / massB);
-  a.speed = Math.max(0, a.speed - (impulse / massA) * 0.46);
-  b.speed = Math.max(0, b.speed - (impulse / massB) * 0.46);
+  const impactRelativeSpeedMin = 0.55;
+  const impactSpeedDiffMin = 0.28;
+  const impactDamageMin = 0.35;
+  const speedDiff = Math.abs((a.speed || 0) - (b.speed || 0));
+  const canDealImpactDamage = relNormalSpeed >= impactRelativeSpeedMin && speedDiff >= impactSpeedDiffMin;
 
-  a.heading += (-ny * 0.012) + (Math.random() - 0.5) * 0.016;
-  b.heading += (ny * 0.012) + (Math.random() - 0.5) * 0.016;
+  const aBowIntoB = va.x * nx + va.y * ny;
+  const bBowIntoA = -(vb.x * nx + vb.y * ny);
+  const ramAttackA = !!a.ram && aBowIntoB > 0.35 && (a.speed || 0) > (b.speed || 0) + 0.15;
+  const ramAttackB = !!b.ram && bBowIntoA > 0.35 && (b.speed || 0) > (a.speed || 0) + 0.15;
+  const ramSpeedBonus = clamp((relNormalSpeed - 0.75) * 0.95, 0, 1.2);
+
+  const restitution = 0.24;
+  const impulse = (1 + restitution) * relNormalSpeed / (1 / massA + 1 / massB);
+  a.speed = Math.max(0, a.speed - (impulse / massA) * 0.58);
+  b.speed = Math.max(0, b.speed - (impulse / massB) * 0.58);
+
+  a.heading += (-ny * 0.018) + (Math.random() - 0.5) * 0.02;
+  b.heading += (ny * 0.018) + (Math.random() - 0.5) * 0.02;
+
+  const hitAX = a.x + nx * collisionRadius(a) * 0.72;
+  const hitAY = a.y + ny * collisionRadius(a) * 0.72;
+  const hitBX = b.x - nx * collisionRadius(b) * 0.72;
+  const hitBY = b.y - ny * collisionRadius(b) * 0.72;
+
+  if (!canDealImpactDamage) return;
 
   a.impactTimer = Math.max(0, (a.impactTimer || 0) - dt);
   b.impactTimer = Math.max(0, (b.impactTimer || 0) - dt);
 
   if ((a.impactTimer || 0) <= 0) {
     const impactOnA = vesselImpactPower(b, -nx, -ny);
-    const dmgA = Math.max(0, impactOnA * 0.00074 - massA * 0.007);
-    if (a === player) {
-      const bossImpactScale = b.kind === 'boss' ? 1.45 : 1;
-      damagePlayer(dmgA * bossImpactScale);
+    const crushA = Math.max(0, relNormalSpeed * (massB / Math.max(1, massA)) * 0.55);
+    let dmgA = Math.max(0, impactOnA * 0.00104 + crushA * 0.32 - massA * 0.0045);
+    if (b.ram || b.kind === 'rammer') dmgA *= 1.34;
+    if ((b.ram || b.kind === 'rammer') && relNormalSpeed > 0.7) dmgA = Math.max(dmgA, 1.2);
+    if (ramAttackB) {
+      dmgA *= 1.55 + ramSpeedBonus * 0.9;
+      dmgA += relNormalSpeed * 0.65;
     }
-    else a.hp -= dmgA;
-    a.impactTimer = 0.2;
+    if (ramAttackA) {
+      dmgA *= 0.24;
+    }
+    if (dmgA >= impactDamageMin) {
+      if (a === player) {
+        const bossImpactScale = b.kind === 'boss' ? 1.45 : 1;
+        damagePlayer(dmgA * bossImpactScale);
+      }
+      else a.hp -= dmgA;
+      addHullFractureMark(a, hitAX, hitAY, 0.8 + dmgA * 0.38 + (b.ram ? 0.45 : 0));
+      spawnImpactDebris(hitAX, hitAY, -nx, -ny, true, a);
+      spawnDeckBurst(hitAX, hitAY, -nx, -ny, true);
+      a.impactTimer = 0.28;
+    }
   }
 
   if ((b.impactTimer || 0) <= 0) {
     const impactOnB = vesselImpactPower(a, nx, ny);
-    const dmgB = Math.max(0, impactOnB * 0.00074 - massB * 0.007);
-    if (b === player) {
-      const bossImpactScale = a.kind === 'boss' ? 1.45 : 1;
-      damagePlayer(dmgB * bossImpactScale);
+    const crushB = Math.max(0, relNormalSpeed * (massA / Math.max(1, massB)) * 0.55);
+    let dmgB = Math.max(0, impactOnB * 0.00104 + crushB * 0.32 - massB * 0.0045);
+    if (a.ram || a.kind === 'rammer') dmgB *= 1.34;
+    if ((a.ram || a.kind === 'rammer') && relNormalSpeed > 0.7) dmgB = Math.max(dmgB, 1.2);
+    if (ramAttackA) {
+      dmgB *= 1.55 + ramSpeedBonus * 0.9;
+      dmgB += relNormalSpeed * 0.65;
     }
-    else b.hp -= dmgB;
-    b.impactTimer = 0.2;
+    if (ramAttackB) {
+      dmgB *= 0.24;
+    }
+    if (dmgB >= impactDamageMin) {
+      if (b === player) {
+        const bossImpactScale = a.kind === 'boss' ? 1.45 : 1;
+        damagePlayer(dmgB * bossImpactScale);
+      }
+      else b.hp -= dmgB;
+      addHullFractureMark(b, hitBX, hitBY, 0.8 + dmgB * 0.38 + (a.ram ? 0.45 : 0));
+      spawnImpactDebris(hitBX, hitBY, nx, ny, true, b);
+      spawnDeckBurst(hitBX, hitBY, nx, ny, true);
+      b.impactTimer = 0.28;
+    }
   }
 }
 
@@ -2952,6 +3590,28 @@ function drawHullBody(size, hullColor, trimColor, profile, ramEnabled = false) {
   ctx.miterLimit = 2;
   pathHull();
   ctx.stroke();
+
+  if (Number(profile?.hullArmorTier || 0) >= 4) {
+    ctx.save();
+    pathHull();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(58,62,69,0.82)';
+    ctx.lineWidth = 1.6;
+    const dashStep = Math.max(4.2, beam * 0.16);
+    for (let y = -shoulderHalfBeam * 0.92; y <= shoulderHalfBeam * 0.92; y += dashStep) {
+      const span = Math.max(10, (shoulderX - sternShoulderX) * 0.8);
+      const startX = sternShoulderX + 2 + (Math.abs(y) * 0.22);
+      const segment = Math.max(4.5, span * 0.08);
+      const gap = Math.max(3.5, segment * 0.7);
+      for (let x = startX; x < shoulderX - 2; x += segment + gap) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - 0.3);
+        ctx.lineTo(Math.min(x + segment, shoulderX - 2), y + 0.3);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
 
   if (ramEnabled) {
     ctx.save();
@@ -3012,48 +3672,69 @@ function drawReactiveSail(entity, size, sailColor, mastTopY, enemySail = false) 
   const windMag = Math.hypot(state.wind.x, state.wind.y);
   const windForward = fwd.x * state.wind.x + fwd.y * state.wind.y;
   const windSide = right.x * state.wind.x + right.y * state.wind.y;
-  const seed = (entity.id || 0) * 0.61 + (enemySail ? 1.3 : 0.2);
-  const flutter = Math.sin(state.time * 8.4 + seed) * 0.35 + Math.sin(state.time * 13.2 + seed * 1.7) * 0.2;
   const intensity = clamp(windMag / 0.55, 0, 1.5);
-  const openFactor = entity.sailOpen ? 1 : 0;
-  const billow = (0.28 + intensity * 0.98 + Math.max(0, windForward) * 0.68 + flutter * 0.08) * openFactor;
-  const bend = clamp(windSide * (1.24 + intensity * 0.96) + flutter * 0.22, -1.65, 1.65);
-  const chord = size * (enemySail ? 0.9 : 1.08);
-  const leechX = chord * (0.72 + billow * 0.54);
-  const footY = mastTopY + size * (enemySail ? 0.68 : 0.74);
 
   if (!entity.sailOpen) {
     ctx.fillStyle = '#d6ddd2';
-    const furlW = Math.max(7, size * 0.44);
-    ctx.fillRect(1.2, mastTopY + size * 0.1, furlW, 4);
-    ctx.fillRect(1.2, mastTopY + size * 0.2, furlW * 0.85, 3);
+    const furlW = Math.max(8, size * 0.5);
+    const furlH = Math.max(2.5, size * 0.09);
+    ctx.fillRect(-furlW * 0.4, mastTopY + size * 0.16, furlW, furlH);
+    ctx.fillRect(-furlW * 0.33, mastTopY + size * 0.28, furlW * 0.86, furlH * 0.9);
     return;
   }
 
-  const topCtrlX = leechX * 0.52 + bend * size * 0.26;
-  const topCtrlY = mastTopY + size * (0.05 + intensity * 0.08 + flutter * 0.03);
-  const leechY = mastTopY + size * (0.2 + bend * 0.1 + flutter * 0.03);
-  const lowCtrlX = leechX * 0.92 + bend * size * 0.46;
-  const lowCtrlY = mastTopY + size * (0.58 - bend * 0.09 - flutter * 0.04);
+  const windAngleLocal = windMag > 0.0001 ? Math.atan2(windSide, windForward) : 0;
+  const flutter = Math.sin(state.time * 8.6 + (entity.id || 0) * 0.73 + size * 0.09) * (0.03 + intensity * 0.02);
+  const billowPulse = Math.sin(state.time * 3.2 + (entity.id || 0) * 0.41 + size * 0.05);
+  const sailAngle = windAngleLocal + Math.PI * 0.5 + flutter;
+  const pivotX = 0;
+  const pivotY = mastTopY + size * 0.22;
 
-  ctx.fillStyle = sailColor;
-  ctx.beginPath();
-  ctx.moveTo(2, mastTopY + 2);
-  ctx.bezierCurveTo(topCtrlX * 0.56, topCtrlY, topCtrlX, mastTopY + size * 0.16, leechX, leechY);
-  ctx.bezierCurveTo(lowCtrlX, mastTopY + size * 0.42, lowCtrlX * 0.64, lowCtrlY, 2, footY);
-  ctx.closePath();
-  ctx.fill();
+  const mainW = size * (enemySail ? 2.02 : 2.3) * (1 + (billowPulse * 0.02 + intensity * 0.03));
+  const mainH = Math.max(3.4, size * 0.27);
+  const rearW = mainW * 0.58;
+  const rearH = Math.max(2.8, mainH * 0.92);
+  const frontW = mainW * 0.34;
+  const frontH = Math.max(2.4, mainH * 0.84);
 
-  ctx.strokeStyle = 'rgba(250,255,255,0.38)';
-  ctx.lineWidth = Math.max(0.8, size * 0.03);
+  const windLocalX = windForward;
+  const windLocalY = windSide;
+  const windLen = Math.hypot(windLocalX, windLocalY) || 1;
+  const ghostOffX = (windLocalX / windLen) * (size * 0.15 + intensity * 0.45);
+  const ghostOffY = (windLocalY / windLen) * (size * 0.15 + intensity * 0.45);
+
+  const drawRigLayer = (alpha = 1, offX = 0, offY = 0) => {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(pivotX + offX, pivotY + offY);
+    ctx.rotate(sailAngle + Math.sin(state.time * 6.4 + (entity.id || 0) * 0.31) * 0.015);
+
+    ctx.fillStyle = sailColor;
+    ctx.fillRect(-mainW * 0.5, -mainH * 0.5, mainW, mainH);
+
+    ctx.fillStyle = sailColor;
+    ctx.fillRect(-rearW * 0.5 - size * 0.6, -rearH * 0.5 + size * 0.06, rearW, rearH);
+
+    ctx.fillStyle = 'rgba(206,214,224,0.92)';
+    ctx.fillRect(-frontW * 0.5 + size * 0.33, -frontH * 0.5 - size * 0.08, frontW, frontH);
+
+    ctx.restore();
+  };
+
+  drawRigLayer(0.38, ghostOffX, ghostOffY);
+  drawRigLayer(1, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.strokeStyle = 'rgba(230,240,248,0.62)';
+  ctx.lineWidth = Math.max(1, size * 0.05);
+  const trailX = pivotX - Math.cos(sailAngle) * (mainW * 0.44);
+  const trailY = pivotY - Math.sin(sailAngle) * (mainW * 0.44);
   ctx.beginPath();
-  ctx.moveTo(3, mastTopY + size * 0.22);
-  ctx.bezierCurveTo(leechX * 0.36 + bend * size * 0.18, mastTopY + size * (0.24 + flutter * 0.03), leechX * 0.66 + bend * size * 0.24, mastTopY + size * 0.28, leechX * 0.9, mastTopY + size * (0.3 + bend * 0.08));
+  ctx.moveTo(trailX, trailY);
+  ctx.lineTo(-size * 0.92, size * 0.54);
   ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(3, mastTopY + size * 0.43);
-  ctx.bezierCurveTo(leechX * 0.38 + bend * size * 0.2, mastTopY + size * (0.45 + flutter * 0.04), leechX * 0.64 + bend * size * 0.3, mastTopY + size * 0.51, leechX * 0.86, mastTopY + size * (0.49 + bend * 0.09));
-  ctx.stroke();
+  ctx.restore();
 }
 
 function drawDeckCrewSpots(hull, crewCount, deckCapacity, committedCrew = 0, spotScale = 1) {
@@ -3097,6 +3778,94 @@ function drawDeckCrewSpots(hull, crewCount, deckCapacity, committedCrew = 0, spo
   }
 }
 
+function createCrewVisual(index, hull) {
+  const minX = hull.sternShoulderX * 0.72;
+  const maxX = hull.shoulderX * 0.72;
+  const t = seeded01(index * 1.37 + 11.3);
+  const x = minX + (maxX - minX) * t;
+  const hw = hullHalfWidthAt(hull, x) * 0.62;
+  const y = (seeded01(index * 2.11 + 7.9) * 2 - 1) * hw;
+  const heading = seeded01(index * 3.73 + 4.2) * Math.PI * 2;
+  return {
+    x,
+    y,
+    vx: Math.cos(heading) * 0.18,
+    vy: Math.sin(heading) * 0.18,
+    tone: Math.floor(seeded01(index * 6.17 + 3.1) * 5),
+    size: 1.65 + seeded01(index * 5.19 + 2.7) * 0.95,
+    turnTimer: seeded01(index * 4.61 + 9.6) * 1.2
+  };
+}
+
+function ensurePlayerCrewVisuals(hull) {
+  if (!Array.isArray(player.crewVisuals)) player.crewVisuals = [];
+  const crewCount = Math.max(0, Math.floor(Math.min(player.crew || 0, getDeckCrewCapacity(player))));
+
+  while (player.crewVisuals.length < crewCount) {
+    player.crewVisuals.push(createCrewVisual(player.crewVisuals.length, hull));
+  }
+  if (player.crewVisuals.length > crewCount) {
+    player.crewVisuals.length = crewCount;
+  }
+}
+
+function updatePlayerCrewVisuals(dt, frantic = true) {
+  const hull = getHullShape(player);
+  ensurePlayerCrewVisuals(hull);
+  if (!player.crewVisuals.length) return;
+
+  const accel = frantic ? 0.18 : 0.07;
+  const maxSpeed = frantic ? 0.62 : 0.28;
+  const drift = frantic ? 0.94 : 0.9;
+
+  for (let i = 0; i < player.crewVisuals.length; i++) {
+    const mover = player.crewVisuals[i];
+    mover.turnTimer -= dt;
+    if (mover.turnTimer <= 0) {
+      const turn = (Math.random() - 0.5) * (frantic ? 1.9 : 1.2);
+      const cs = Math.cos(turn);
+      const sn = Math.sin(turn);
+      const nvx = mover.vx * cs - mover.vy * sn;
+      const nvy = mover.vx * sn + mover.vy * cs;
+      mover.vx = nvx;
+      mover.vy = nvy;
+      mover.turnTimer = (frantic ? 0.08 : 0.22) + Math.random() * (frantic ? 0.32 : 0.68);
+    }
+
+    mover.vx += (Math.random() - 0.5) * accel;
+    mover.vy += (Math.random() - 0.5) * accel;
+    const speed = Math.hypot(mover.vx, mover.vy);
+    if (speed > maxSpeed) {
+      mover.vx = (mover.vx / speed) * maxSpeed;
+      mover.vy = (mover.vy / speed) * maxSpeed;
+    }
+
+    mover.vx *= drift;
+    mover.vy *= drift;
+    mover.x += mover.vx * dt * 60;
+    mover.y += mover.vy * dt * 60;
+
+    const minX = hull.sternShoulderX * 0.74;
+    const maxX = hull.shoulderX * 0.74;
+    if (mover.x < minX) {
+      mover.x = minX;
+      mover.vx = Math.abs(mover.vx) * 0.7;
+    } else if (mover.x > maxX) {
+      mover.x = maxX;
+      mover.vx = -Math.abs(mover.vx) * 0.7;
+    }
+
+    const hw = hullHalfWidthAt(hull, mover.x) * 0.66;
+    if (mover.y < -hw) {
+      mover.y = -hw;
+      mover.vy = Math.abs(mover.vy) * 0.7;
+    } else if (mover.y > hw) {
+      mover.y = hw;
+      mover.vy = -Math.abs(mover.vy) * 0.7;
+    }
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   if (!state.upgradesOffered) return;
   const key = e.key;
@@ -3108,11 +3877,12 @@ window.addEventListener('keydown', (e) => {
 });
 
 function update(dt) {
-  if (state.gameOver) return;
   if (state.mode !== 'combat') {
     state.time += dt;
+    updatePlayerCrewVisuals(dt, false);
     return;
   }
+  updatePlayerCrewVisuals(dt, !state.upgradesOffered);
   if (state.upgradesOffered) return;
   clampPlayerCrewToDeck();
   clampPlayerSupportCrewToDeck();
@@ -3122,6 +3892,7 @@ function update(dt) {
   state.anchorNoticeTimer = Math.max(0, (state.anchorNoticeTimer || 0) - dt);
   player.impactTimer = Math.max(0, (player.impactTimer || 0) - dt);
   player.repairSuppressed = Math.max(0, (player.repairSuppressed || 0) - dt);
+  updateShipDamageState(player, dt, true);
 
   const cfg = getLevelConfig(state.stageIndex);
   state.stageTimer += dt;
@@ -3144,10 +3915,11 @@ function update(dt) {
     state.wind.y = Math.sin(angle) * strength;
   }
 
-  const forwardPressed = keys.has('w') || keys.has('arrowup');
-  const brakePressed = keys.has('s') || keys.has('arrowdown');
-  const turnLeft = keys.has('a') || keys.has('arrowleft');
-  const turnRight = keys.has('d') || keys.has('arrowright');
+  const controlsEnabled = !state.gameOver;
+  const forwardPressed = controlsEnabled && (keys.has('w') || keys.has('arrowup'));
+  const brakePressed = controlsEnabled && (keys.has('s') || keys.has('arrowdown'));
+  const turnLeft = controlsEnabled && (keys.has('a') || keys.has('arrowleft'));
+  const turnRight = controlsEnabled && (keys.has('d') || keys.has('arrowright'));
   const anchored = !!player.anchorDropped;
 
   const fwd = getForwardVector();
@@ -3191,7 +3963,7 @@ function update(dt) {
   resolveIslandCollisions(player, dt, true);
   spawnVesselWakeParticles(player.x, player.y, player.heading, player.size, player.speed, player.baseSpeed + 0.4, 1);
 
-  const zoomTarget = clamp(1.28 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.5, 1.6);
+  const zoomTarget = clamp(2.0 - (player.size - 16) * 0.008 + state.zoomUserOffset, 0.6, 2.4);
   state.zoom += (zoomTarget - state.zoom) * 0.09;
   state.difficultyFromSize = Math.floor(Math.max(0, (16 - state.zoom * 16) * 0.9));
   ensureIslandDefenses();
@@ -3199,9 +3971,9 @@ function update(dt) {
 
   player.gunTimer += dt;
   player.cannonTimer += dt;
-  const firedPlayer = shootAtNearest();
+  tickPlayerCannonMountTimers(dt);
+  const firedPlayer = state.gameOver ? { firedGun: false, firedCannon: false } : shootAtNearest();
   if (firedPlayer.firedGun) player.gunTimer = 0;
-  if (firedPlayer.firedCannon) player.cannonTimer = 0;
 
   updateShipValueTier();
   const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09 + state.shipValueTier * 0.06;
@@ -3311,6 +4083,7 @@ function update(dt) {
 
   for (const enemy of state.enemies) {
     enemy.impactTimer = Math.max(0, (enemy.impactTimer || 0) - dt);
+    updateShipDamageState(enemy, dt, false);
     const ai = ensureEnemyAiState(enemy);
     const profile = getEnemyAiProfile(enemy);
     ai.sideLock = Math.max(0, ai.sideLock - dt);
@@ -3437,7 +4210,7 @@ function update(dt) {
     }
   }
 
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < state.enemies.length; i++) {
       resolveVesselCollision(player, state.enemies[i], dt);
     }
@@ -3463,6 +4236,8 @@ function update(dt) {
         const dmgScale = b.owner === 'enemy' ? 0.64 : 1;
         enemy.hp -= b.dmg * dmgScale;
         const n = normalizeOr(b.vx, b.vy, 1, 0);
+        addHullFractureMark(enemy, b.x, b.y, 0.6 + (b.heavy ? 0.8 : 0.3));
+        tryIgniteShip(enemy, b, b.heavy ? 1 : 0, 0.12);
         spawnImpactDebris(enemy.x, enemy.y, n.x, n.y, !!b.heavy, enemy);
         spawnDeckBurst(enemy.x, enemy.y, n.x, n.y, !!b.heavy);
         if (b.heavy) playCannonImpactSfx(enemy.x, enemy.y, n.x, n.y, b.sourceSize || 16);
@@ -3596,6 +4371,8 @@ function update(dt) {
       const bossScale = b.sourceKind === 'boss' ? 1.6 : 1;
       damagePlayer(b.dmg * (b.heavy ? 0.28 : 0.18) * bossScale);
       const n = normalizeOr(b.vx, b.vy, 1, 0);
+      addHullFractureMark(player, b.x, b.y, 0.6 + (b.heavy ? 0.9 : 0.35));
+      tryIgniteShip(player, b, b.heavy ? 1 : 0, 0);
       spawnImpactDebris(player.x, player.y, n.x, n.y, !!b.heavy, player);
       spawnDeckBurst(player.x, player.y, n.x, n.y, !!b.heavy);
       if (b.heavy) playCannonImpactSfx(player.x, player.y, n.x, n.y, b.sourceSize || 16);
@@ -3635,6 +4412,21 @@ function update(dt) {
   updateCollectorSkiffs(dt);
 
   for (const p of state.particles) {
+    if (p.settleToWater && !p.settled) {
+      const totalAirTime = Math.max(0.0001, Number(p.maxLife || 1));
+      const airProgress = clamp(1 - ((p.life || 0) / totalAirTime), 0, 1);
+      const baseSize = Number.isFinite(p.baseSize) ? p.baseSize : (p.size || 1.5);
+      const peakSize = Number.isFinite(p.peakSize) ? p.peakSize : baseSize * 1.5;
+      const settleSize = Number.isFinite(p.settleSize) ? p.settleSize : baseSize * 0.7;
+      if (airProgress < 0.75) {
+        const t = airProgress / 0.75;
+        p.size = baseSize + (peakSize - baseSize) * t;
+      } else {
+        const t = (airProgress - 0.75) / 0.25;
+        p.size = peakSize + (settleSize - peakSize) * t;
+      }
+    }
+
     p.x += p.vx * dt * 60;
     p.y += p.vy * dt * 60;
     if (p.currentX || p.currentY) {
@@ -3647,6 +4439,24 @@ function update(dt) {
     p.y -= p.drift * dt * 60;
     p.rot += p.spin;
     p.life -= dt;
+
+    if (p.settleToWater && !p.settled && p.life <= 0) {
+      p.settled = true;
+      p.life = Math.max(1, Number(p.lingerLife || 120));
+      p.maxLife = p.life;
+      p.size = Number.isFinite(p.settleSize) ? p.settleSize : p.size;
+      p.vx *= 0.03;
+      p.vy *= 0.03;
+      p.spin = 0;
+      p.drag = Number.isFinite(p.lingerDrag) ? p.lingerDrag : 0.992;
+      p.drift = Number.isFinite(p.lingerDrift) ? p.lingerDrift : 0.006;
+      p.currentX = (state.wind.x || 0) * 0.006;
+      p.currentY = (state.wind.y || 0) * 0.006;
+      if (p.splashOnSettle) {
+        spawnWaterSplash(p.x, p.y, !!p.splashHeavy);
+        p.splashOnSettle = false;
+      }
+    }
   }
   state.particles = state.particles.filter((p) => p.life > 0);
 
@@ -3671,7 +4481,12 @@ function update(dt) {
 
   if (player.hp <= 0) {
     player.hp = 0;
-    state.gameOver = true;
+    if (!state.gameOver) {
+      state.gameOver = true;
+      state.playerSunk = true;
+      state.finalScore = Math.round(state.gold + state.level * 28 + state.bossesDefeated * 180 + state.stageIndex * 95);
+      spawnPlayerShipBreakup();
+    }
   }
 }
 
@@ -3687,36 +4502,31 @@ function drawShip() {
   const sLen = hull.len;
   const sBeam = hull.beam;
 
-  ctx.fillStyle = player.trimColor;
   const mast = Math.max(8, s * 1.2 * player.mastScale);
-  ctx.fillRect(-2, -mast, 4, mast);
-  drawReactiveSail(player, s, player.sailColor, -mast, false);
 
-  const crewCount = Math.min(player.crew, getDeckCrewCapacity(player));
-  ctx.fillStyle = '#1f2f3a';
-  const crewCols = Math.max(1, Math.ceil(Math.sqrt(crewCount * 1.2)));
-  const crewRows = Math.max(1, Math.ceil(crewCount / crewCols));
-  const crewSpanX = Math.min(sLen * 0.72, 8 + crewCols * 3.2);
-  const crewSpanY = Math.min(sBeam * 0.95, 7 + crewRows * 3.0);
-  const stepX = crewCols <= 1 ? 0 : crewSpanX / (crewCols - 1);
-  const stepY = crewRows <= 1 ? 0 : crewSpanY / (crewRows - 1);
-  for (let i = 0; i < crewCount; i++) {
-    const col = i % crewCols;
-    const row = Math.floor(i / crewCols);
-    const px = (col - (crewCols - 1) / 2) * stepX - sLen * 0.02;
-    let py = (row - (crewRows - 1) / 2) * stepY;
-    const hw = hullHalfWidthAt(hull, px) * 0.72;
-    py = clamp(py, -hw, hw);
-    ctx.beginPath();
-    ctx.arc(px, py, 2.2, 0, Math.PI * 2);
-    ctx.fill();
+  ensurePlayerCrewVisuals(hull);
+  const crewPalette = ['#f4efe6', '#d5ccb8', '#b49b76', '#2a2d31', '#5c4636'];
+  for (const mover of player.crewVisuals || []) {
+    const hw = hullHalfWidthAt(hull, mover.x) * 0.68;
+    const px = mover.x;
+    const py = clamp(mover.y, -hw, hw);
+    const size = mover.size;
+    const tone = crewPalette[mover.tone % crewPalette.length];
+    ctx.fillStyle = tone;
+    ctx.fillRect(px - size * 0.5, py - size * 0.5, size, size);
+    ctx.fillStyle = 'rgba(240,245,250,0.34)';
+    ctx.fillRect(px - size * 0.22, py - size * 0.46, size * 0.44, size * 0.2);
   }
 
   drawDeckDamageMarks(player, hull, 1);
+  drawFractureMarks(player, hull, 1);
+  drawShipBurningOverlay(player, hull);
 
   ensurePlayerWeaponLayout();
   const slotCount = Math.max(1, player.weaponLayout.port.length);
   const aim = state.playerAim;
+  const manualAim = getManualAimTarget();
+  const manualLocalAngle = angleDiff(manualAim.angle, player.heading);
   const targetLocalAngle = aim ? angleDiff(aim.targetAngle, player.heading) : null;
   const pivotRad = player.cannonPivot * (Math.PI / 180);
   for (let i = 0; i < slotCount; i++) {
@@ -3733,12 +4543,17 @@ function drawShip() {
       const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
       const color = cannonPort ? '#5f656c' : '#d5dbe2';
       let aimOffset = 0;
-      if (aim && targetLocalAngle !== null && aim.sideSign < 0) {
+      if (cannonPort) {
         const base = Math.atan2(portMount.ny, portMount.nx);
-        const pivot = cannonPort ? pivotRad : GUN_PIVOT_RAD;
-        aimOffset = clamp(angleDiff(targetLocalAngle, base), -pivot, pivot);
+        aimOffset = clamp(angleDiff(manualLocalAngle, base), -pivotRad, pivotRad);
+      } else if (aim && targetLocalAngle !== null && aim.sideSign < 0) {
+        const base = Math.atan2(portMount.ny, portMount.nx);
+        aimOffset = clamp(angleDiff(targetLocalAngle, base), -GUN_PIVOT_RAD, GUN_PIVOT_RAD);
       }
       drawPerimeterMountWithAim(portMount, length, thickness, color, aimOffset);
+      if (cannonPort) {
+        drawCannonReloadOverlay(portMount, length, thickness, aimOffset, getPlayerCannonRemainingRatio('port', i));
+      }
     }
 
     if (starType !== 'empty') {
@@ -3747,14 +4562,23 @@ function drawShip() {
       const thickness = cannonPort ? Math.max(2.8, s * 0.14) : Math.max(1.8, s * 0.1);
       const color = cannonPort ? '#5f656c' : '#d5dbe2';
       let aimOffset = 0;
-      if (aim && targetLocalAngle !== null && aim.sideSign > 0) {
+      if (cannonPort) {
         const base = Math.atan2(starboardMount.ny, starboardMount.nx);
-        const pivot = cannonPort ? pivotRad : GUN_PIVOT_RAD;
-        aimOffset = clamp(angleDiff(targetLocalAngle, base), -pivot, pivot);
+        aimOffset = clamp(angleDiff(manualLocalAngle, base), -pivotRad, pivotRad);
+      } else if (aim && targetLocalAngle !== null && aim.sideSign > 0) {
+        const base = Math.atan2(starboardMount.ny, starboardMount.nx);
+        aimOffset = clamp(angleDiff(targetLocalAngle, base), -GUN_PIVOT_RAD, GUN_PIVOT_RAD);
       }
       drawPerimeterMountWithAim(starboardMount, length, thickness, color, aimOffset);
+      if (cannonPort) {
+        drawCannonReloadOverlay(starboardMount, length, thickness, aimOffset, getPlayerCannonRemainingRatio('starboard', i));
+      }
     }
   }
+
+  ctx.fillStyle = player.trimColor;
+  ctx.fillRect(-2, -mast, 4, mast);
+  drawReactiveSail(player, s, player.sailColor, -mast, false);
 
   ctx.restore();
 }
@@ -3771,9 +4595,7 @@ function drawEnemyShip(enemy) {
   const sLen = hull.len;
   const sBeam = hull.beam;
 
-  ctx.fillStyle = '#b8997a';
-  ctx.fillRect(-1.5, -s * 1.12, 3, s * 1.12);
-  drawReactiveSail(enemy, s, enemy.sailColor, -s * 1.12, true);
+  const enemyMast = s * 1.12;
 
   const flagBaseX = 2;
   const flagTop = -s * 1.08;
@@ -3807,6 +4629,8 @@ function drawEnemyShip(enemy) {
   }
 
   drawDeckDamageMarks(enemy, hull, 0.95);
+  drawFractureMarks(enemy, hull, 0.95);
+  drawShipBurningOverlay(enemy, hull);
 
   const gunPorts = Math.max(1, enemy.gunners);
   for (let i = 0; i < gunPorts; i++) {
@@ -3823,6 +4647,10 @@ function drawEnemyShip(enemy) {
     drawPerimeterMount(starboardMount, Math.max(6.6, s * 0.42), Math.max(2.5, s * 0.13), '#596068');
   }
 
+  ctx.fillStyle = '#b8997a';
+  ctx.fillRect(-1.5, -enemyMast, 3, enemyMast);
+  drawReactiveSail(enemy, s, enemy.sailColor, -enemyMast, true);
+
   ctx.restore();
 }
 
@@ -3830,6 +4658,8 @@ function drawCollectorSkiffs() {
   if (!player.collectorSkiffs || !player.collectorSkiffs.length) return;
   for (let i = 0; i < player.collectorSkiffs.length; i++) {
     const skiff = player.collectorSkiffs[i];
+    const visible = !skiff.docked || !!skiff.runner || !!skiff.target || (skiff.carrying || 0) > 0;
+    if (!visible) continue;
     const pos = toScreen(skiff.x, skiff.y);
     const heading = Math.atan2(skiff.vy || 0, skiff.vx || 1);
     ctx.save();
@@ -4078,13 +4908,105 @@ function drawCloudOverlay() {
   }
 }
 
+function drawVisionCloudMask() {
+  const center = toScreen(player.x, player.y);
+  const visionPx = getPlayerVisionRange() * state.zoom;
+
+  const baseRadius = Math.max(140, visionPx * 0.98);
+  const dissolveBand = Math.max(90, visionPx * 0.28);
+
+  const fieldRadiusAt = (angle) => {
+    const wobbleA = Math.sin(angle * 3 + state.time * 0.19 + player.x * 0.0017) * 0.08;
+    const wobbleB = Math.sin(angle * 5 - state.time * 0.27 + player.y * 0.0013) * 0.05;
+    const wobbleC = Math.sin(angle * 8 + state.time * 0.11) * 0.03;
+    return baseRadius * (1 + wobbleA + wobbleB + wobbleC);
+  };
+
+  const cloudOutsideFactor = (px, py) => {
+    const dx = px - center.x;
+    const dy = py - center.y;
+    const dist = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx);
+    const edge = fieldRadiusAt(angle);
+    return clamp((dist - edge) / dissolveBand, 0, 1);
+  };
+
+  const drawFogCloudBlob = (x, y, scale, alphaBase) => {
+    const w = 154 * scale;
+    const h = 52 * scale;
+    ctx.fillStyle = `rgba(198,216,231,${alphaBase * 0.78})`;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x + w * 0.18, y - h * 0.34, w * 0.64, h * 0.46);
+    ctx.fillRect(x + w * 0.14, y + h * 0.6, w * 0.52, h * 0.32);
+
+    ctx.fillStyle = `rgba(156,178,197,${alphaBase * 0.68})`;
+    ctx.fillRect(x + w * 0.06, y + h * 0.18, w * 0.88, h * 0.52);
+
+    ctx.fillStyle = `rgba(108,132,154,${alphaBase * 0.58})`;
+    ctx.fillRect(x + w * 0.24, y - h * 0.06, w * 0.46, h * 0.72);
+  };
+
+  const layers = [
+    { sx: 154, sy: 104, ox: 0, oy: 0, scale: 1.22, driftMul: 1, alphaMul: 1 },
+    { sx: 148, sy: 98, ox: 58, oy: 30, scale: 1.14, driftMul: 0.8, alphaMul: 0.92 },
+    { sx: 142, sy: 94, ox: 28, oy: 58, scale: 1.08, driftMul: 1.24, alphaMul: 0.86 },
+    { sx: 136, sy: 90, ox: 74, oy: 14, scale: 1.02, driftMul: 0.66, alphaMul: 0.82 }
+  ];
+
+  for (let l = 0; l < layers.length; l++) {
+    const layer = layers[l];
+    const driftX = (state.time * (11 + l * 1.6) + state.wind.x * 110 * layer.driftMul) % layer.sx;
+    const driftY = (state.time * (7 + l * 1.2) + state.wind.y * 90 * layer.driftMul) % layer.sy;
+
+    for (let y = -220; y < canvas.height + 220; y += layer.sy) {
+      for (let x = -280; x < canvas.width + 280; x += layer.sx) {
+        const cellX = Math.floor((x + 5000) / layer.sx);
+        const cellY = Math.floor((y + 5000) / layer.sy);
+        const seed = cellX * 17.13 + cellY * 31.79 + l * 91.37;
+        const r1 = seeded01(seed + 0.11);
+        const r2 = seeded01(seed + 0.29);
+        const r3 = seeded01(seed + 0.47);
+        const r4 = seeded01(seed + 0.63);
+        const r5 = seeded01(seed + 0.83);
+
+        const jitterX = (r1 * 2 - 1) * 26;
+        const jitterY = (r2 * 2 - 1) * 20;
+        const scaleJitter = 0.86 + r3 * 0.42;
+        const alphaJitter = 0.7 + r4 * 0.56;
+
+        const baseX = x + driftX + layer.ox + jitterX;
+        const baseY = y + driftY + layer.oy + jitterY;
+
+        const probeX = baseX + 94 * layer.scale;
+        const probeY = baseY + 32 * layer.scale;
+        const outside = cloudOutsideFactor(probeX, probeY);
+        if (outside <= 0.01) continue;
+
+        const alpha = (0.2 + Math.pow(outside, 0.74) * 0.72) * layer.alphaMul * alphaJitter;
+        const mainScale = layer.scale * scaleJitter;
+        drawFogCloudBlob(baseX, baseY, mainScale, alpha);
+
+        if (r5 > 0.34) {
+          const subX = baseX + (r2 * 2 - 1) * 34;
+          const subY = baseY + (r1 * 2 - 1) * 26;
+          const subScale = mainScale * (0.72 + r4 * 0.28);
+          drawFogCloudBlob(subX, subY, subScale, alpha * 0.78);
+        }
+      }
+    }
+  }
+
+  ctx.fillStyle = 'rgba(9,15,22,0.24)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 function drawHud() {
   const weapon = getPlayerWeaponCounts();
   const effectiveReloads = getEffectiveReloadTimes();
   const magnetRange = getGoldMagnetRange();
   const hpRatio = clamp(player.hp / player.maxHp, 0, 1);
   const gunLoad = clamp(player.gunTimer / Math.max(0.001, effectiveReloads.gun), 0, 1);
-  const cannonLoad = clamp(player.cannonTimer / Math.max(0.001, effectiveReloads.cannon), 0, 1);
+  const cannonLoad = getPlayerCannonHudLoad();
   const stageLabel = getLevelConfig(state.stageIndex).name;
   const modeLabel = ENDLESS_MODE ? 'Endless' : 'Campaign';
   const bossIn = Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer));
@@ -4527,6 +5449,7 @@ function drawShipyardScreen() {
 }
 
 function draw() {
+  canvas.style.cursor = state.mode === 'combat' ? 'none' : 'default';
   if (state.mode === 'shipyard') {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawShipyardScreen();
@@ -4559,7 +5482,7 @@ function draw() {
     ctx.restore();
   }
 
-  drawShip();
+  if (!state.playerSunk) drawShip();
   drawCollectorSkiffs();
 
   for (const b of state.bullets) {
@@ -4620,6 +5543,7 @@ function draw() {
   }
 
   drawCloudOverlay();
+  drawVisionCloudMask();
 
   if (state.upgradesOffered) {
     const cardW = Math.min(560, canvas.width * 0.68);
@@ -4655,9 +5579,12 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.font = '40px system-ui';
-    ctx.fillText('Ship Sunk', 390, 250);
+    ctx.textAlign = 'center';
+    ctx.fillText('Ship Sunk', canvas.width * 0.5, 250);
     ctx.font = '20px system-ui';
-    ctx.fillText('Refresh to sail again', 392, 290);
+    ctx.fillText(`Score: ${Math.round(state.finalScore || 0)}`, canvas.width * 0.5, 290);
+    ctx.fillText('Refresh to start again', canvas.width * 0.5, 322);
+    ctx.textAlign = 'left';
   }
 
   statsEl.textContent = '';
@@ -4665,6 +5592,7 @@ function draw() {
 
   drawHud();
   drawCombatDevtools();
+  drawAimReticle();
 
   ctx.save();
   ctx.translate(canvas.width - 78, 76);

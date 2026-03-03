@@ -9,7 +9,7 @@
       "hp": 100,
       "baseSpeed": 2.6,
       "gunReload": 1.35,
-      "cannonReload": 2.2,
+      "cannonReload": 3.4,
       "rowers": 0,
       "gunners": 2,
       "repairCrew": 0,
@@ -22,6 +22,8 @@
       "bowSharpness": 1,
       "sternTaper": 1,
       "salvageSkiffCount": 0,
+      "lookoutRangeBonus": 0,
+      "hullArmorTier": 0,
       "bulletDamage": 9,
       "ram": false,
       "ramDamage": 46,
@@ -144,6 +146,9 @@
         { "op": "add", "path": "player.hp", "value": 10 },
         { "op": "max", "path": "player.hp", "value": 0 },
         { "op": "call", "fn": "clampHpToMax" },
+        { "op": "add", "path": "player.hullArmorTier", "value": 1 },
+        { "op": "clamp", "path": "player.hullArmorTier", "min": 0, "max": 4 },
+        { "op": "call", "fn": "applyHullArmorVisualTier" },
         { "op": "add", "path": "player.hullBeam", "value": 0.05 },
         { "op": "add", "path": "player.sternTaper", "value": -0.03 },
         { "op": "addAbility", "value": "Hull" }
@@ -185,11 +190,21 @@
     {
       "id": "cannon-trunnions",
       "name": "Cannon Trunnions",
-      "desc": "Cannons can auto-pivot +5°",
+      "desc": "Cannons can auto-pivot +1°",
       "rules": [
-        { "op": "add", "path": "player.cannonPivot", "value": 5 },
+        { "op": "add", "path": "player.cannonPivot", "value": 1 },
         { "op": "clamp", "path": "player.cannonPivot", "min": 0, "max": 20 },
         { "op": "addAbility", "value": "PivotCannons" }
+      ]
+    },
+    {
+      "id": "crows-nest",
+      "name": "Crow's Nest",
+      "desc": "+40 sight range",
+      "rules": [
+        { "op": "add", "path": "player.lookoutRangeBonus", "value": 40 },
+        { "op": "clamp", "path": "player.lookoutRangeBonus", "min": 0, "max": 520 },
+        { "op": "addAbility", "value": "CrowsNest" }
       ]
     }
   ],
@@ -206,8 +221,9 @@
         { "op": "add", "path": "player.mass", "value": 10 },
         { "op": "add", "path": "player.hullBeam", "value": 0.12 },
         { "op": "add", "path": "player.sternTaper", "value": -0.06 },
-        { "op": "set", "path": "player.hullColor", "value": "#3f2f24" },
-        { "op": "set", "path": "player.trimColor", "value": "#c7a476" },
+        { "op": "add", "path": "player.hullArmorTier", "value": 1 },
+        { "op": "clamp", "path": "player.hullArmorTier", "min": 0, "max": 4 },
+        { "op": "call", "fn": "applyHullArmorVisualTier" },
         { "op": "addAbility", "value": "Dreadnought" }
       ]
     },
