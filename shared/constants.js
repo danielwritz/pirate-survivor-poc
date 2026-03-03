@@ -1,0 +1,159 @@
+/**
+ * Shared constants — single source of truth for all tuning values.
+ * Used by both server and client. No DOM/canvas dependencies.
+ */
+
+// ─── Tick / Timing ───
+export const TICK_RATE = 20;
+export const TICK_INTERVAL = 1 / TICK_RATE;
+export const ROUND_DURATION = 10 * 60;        // 10 minutes
+
+// ─── World ───
+export const WORLD_WIDTH = 3600;
+export const WORLD_HEIGHT = 2600;
+export const WORLD_EDGE_PAD = 24;
+export const WIND_SHIFT_INTERVAL = 18;
+
+// ─── Ship defaults ───
+export const BASE_SPEED = 2.6;
+export const BASE_MASS = 28;
+export const BASE_SIZE = 16;
+export const BASE_HP = 20;
+export const BASE_RUDDER = 0;
+export const BASE_GUN_RELOAD = 1.35;
+export const BASE_CANNON_RELOAD = 3.4;
+export const BASE_BULLET_DAMAGE = 9;
+export const BASE_BULLET_SPEED = 6;
+export const BASE_RAM_DAMAGE = 46;
+export const STARTING_CREW = 2;
+export const STARTING_GUNNERS = 2;
+
+// ─── Movement ───
+export const ROW_ACCEL_BASE = 0.14;
+export const ROW_ACCEL_PER_ROWER = 0.075;
+export const ENEMY_ROW_ACCEL_BASE = 0.12;
+export const ENEMY_ROW_ACCEL_PER_ROWER = 0.06;
+export const SAIL_PUSH_BASE = 0.11;
+export const SAIL_PUSH_SIZE_FACTOR = 0.0018;
+export const TURN_BASE = 0.012;
+export const TURN_RUDDER = 0.006;
+export const TURN_ROWER = 0.002;
+export const BRAKE_DRAG = 0.06;
+export const IDLE_DRAG = 0.018;
+export const INERTIA_BASE_MASS = 28;
+export const INERTIA_DIVISOR = 44;
+export const WIND_RESIST_PER_ROWER = 0.14;   // fraction per rower
+export const WIND_RESIST_MAX = 0.85;
+
+// ─── Combat: Guns ───
+export const GUN_PIVOT_RAD = 30 * (Math.PI / 180);
+export const GUN_SPREAD = 0.18;
+export const BULLET_SPEED_GUN_BONUS = 0.2;   // added to player bulletSpeed
+export const INCOMING_DMG_SCALE_GUN = 0.18;
+
+// ─── Combat: Cannons ───
+export const CANNON_PIVOT_RAD_BASE = 0;       // per-ship cannonPivot upgrades this
+export const CANNON_SPREAD = 0.1;
+export const BULLET_SPEED_CANNON_BONUS = 0.45;
+export const CANNON_DMG_BONUS = 4;            // flat bonus on cannon bullets
+export const INCOMING_DMG_SCALE_CANNON = 0.28;
+export const CANNON_VOLLEY_COOLDOWN = 0.6;    // seconds between cannon volleys per side
+
+// ─── Combat: Range ───
+export const GUN_RANGE_BASE = 124;
+export const GUN_RANGE_PER_GUN = 3;
+export const GUN_RANGE_PER_GUNNER = 4;
+export const GUN_RANGE_PER_LEVEL = 0.8;
+export const CANNON_RANGE_MIN_OVER_GUN = 70;
+export const CANNON_RANGE_BASE = 236;
+export const CANNON_RANGE_PER_CANNON = 20;
+export const CANNON_RANGE_PER_PIVOT = 1.6;
+export const CANNON_RANGE_PER_LEVEL = 1.2;
+
+// ─── Combat: Crew efficiency ───
+export const CREW_EFFICIENCY_A = 1.52;
+export const CREW_EFFICIENCY_B = 0.58;
+export const CREW_EFFICIENCY_MIN = 0.72;
+export const CREW_EFFICIENCY_MAX = 1.88;
+export const WEAPON_DEMAND_PER_GUN = 0.55;
+export const WEAPON_DEMAND_PER_CANNON = 1.15;
+
+// ─── Combat: Fire / Ignition ───
+export const FIRE_CHANCE_BASE = 0.16;
+export const FIRE_CHANCE_PER_DMG = 0.008;
+export const FIRE_TICK_INTERVAL = 0.2;        // seconds between fire ticks
+export const FIRE_DMG_PLAYER = 0.52;
+export const FIRE_DMG_ENEMY = 0.68;
+export const FIRE_DURATION_BASE = 3.0;        // seconds
+
+// ─── Collision ───
+export const COLLISION_RADIUS_MUL = 0.72;
+export const IMPACT_COOLDOWN = 0.28;
+export const MIN_IMPACT_SPEED = 0.55;
+export const RESTITUTION = 0.24;
+export const RAM_MULTIPLIER = 1.55;
+export const RAM_SELF_REDUCTION = 0.24;
+
+// ─── HP / Repair ───
+export const REPAIR_RATE_BASE = 0.36;
+export const REPAIR_RATE_PER_CREW = 0.3;
+export const REPAIR_SUPPRESS_TIME = 2.4;
+
+// ─── Death / Respawn ───
+export const DOUBLOON_DROP_RATIO = 0.20;
+export const RESPAWN_INVULN = 2.0;
+
+// ─── Doubloon pickup ───
+export const DOUBLOON_PICKUP_RADIUS = 28;
+export const DOUBLOON_MAGNET_RADIUS = 90;
+export const DOUBLOON_MAGNET_SPEED = 2.0;
+export const DOUBLOON_TIMEOUT = 30;           // seconds before uncollected drops vanish
+export const GOLD_MAGNET_PULL_FACTOR = 0.95;
+export const GOLD_MAGNET_BASE_SPEED = 2.1;
+
+// ─── XP / Levels ───
+export const XP_START = 10;
+export const XP_SCALE = 1.3;
+export const XP_ADD = 5;
+export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
+
+// ─── NPC ───
+export const MAX_NPCS = 10;
+export const NPC_SPAWN_INTERVAL_BASE = 4.0;    // seconds between spawns, decreases with time
+export const NPC_BASE_DOUBLOON_REWARD = 3;
+export const NPC_DOUBLOON_PER_UPGRADE = 2;
+
+// ─── Islands ───
+export const ISLAND_COUNT = 24;
+export const ISLAND_CONTACT_SPEED_MUL = 0.25;
+export const ISLAND_CONTACT_DMG_BASE = 3.5;
+export const ISLAND_CONTACT_DMG_MASS = 0.03;
+
+// ─── Tower defenses ───
+export const TOWER_CHANCE_BASE = 0.18;
+export const TOWER_CHANCE_PER_TIER = 0.08;
+export const TOWER_CHANCE_MAX = 0.85;
+export const TOWER_FIRE_RATE_BASE = 1.6;
+export const TOWER_FIRE_RATE_MIN = 0.7;
+export const TOWER_FIRE_RATE_PER_LEVEL = 0.12;
+export const TOWER_DMG_BASE = 5;
+export const TOWER_DMG_PER_LEVEL = 1.5;
+
+// ─── Building ───
+export const BUILDING_HP_BASE = 18;
+export const BUILDING_HP_SIZE_MUL = 1.6;
+export const BUILDING_DMG_CANNON_SCALE = 1.05;
+export const BUILDING_DMG_GUN_SCALE = 0.58;
+export const BUILDING_GOLD_MIN = 2;
+
+// ─── Vision ───
+export const VISION_BASE_OFFSET = 44;
+export const VISION_MIN = 180;
+export const VISION_MAX = 980;
+export const LOOKOUT_BONUS_MAX = 520;
+
+// ─── Camera ───
+export const CAMERA_ZOOM_BASE = 2.0;
+export const CAMERA_ZOOM_PER_LOOKOUT = -0.0012;  // zoom out as crow's nest grows
+export const CAMERA_ZOOM_MIN = 0.6;
+export const CAMERA_ZOOM_MAX = 2.4;

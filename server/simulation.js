@@ -1,0 +1,640 @@
+/**
+ * Main game simulation — orchestrates all directors and shared systems.
+ * Server-side only. Authoritative game state.
+ *
+ * Architecture:
+ *   simulation.js  →  shared/physics.js      (movement, collisions)
+ *                  →  shared/combat.js        (broadside, bullets, damage, fire)
+ *                  →  shared/shipState.js     (ship factory, derived stats)
+ *                  →  server/upgradeDirector  (XP, levels, upgrade offers)
+ *                  →  server/npcDirector      (NPC spawning, AI, difficulty)
+ *                  →  server/worldManager     (islands, buildings, towers)
+ */
+
+import { createShip, shipSnapshot } from '../shared/shipState.js';
+import { stepShipPhysics, forwardVector, resolveShipCollision } from '../shared/physics.js';
+import { tickGunAutoFire, fireCannonBroadside, tickBullets, applyDamage, tickFire, tickRepair } from '../shared/combat.js';
+import { createNpcDirector, tickNpcDirector, getNpcShips, getNpcReward, removeNpc } from './npcDirector.js';
+import { createWorldState, damageBuildingAtPoint, tickTowers, applyIslandContact, updateDefenseTier, getWorldSnapshot } from './worldManager.js';
+import { loadCatalog, initStarterLoadout, awardXp, selectUpgrade } from './upgradeDirector.js';
+import { clamp } from '../src/core/math.js';
+import {
+  TICK_RATE, TICK_INTERVAL, ROUND_DURATION,
+  WORLD_WIDTH, WORLD_HEIGHT, WORLD_EDGE_PAD,
+  WIND_SHIFT_INTERVAL,
+  DOUBLOON_DROP_RATIO, RESPAWN_INVULN,
+  DOUBLOON_PICKUP_RADIUS, DOUBLOON_MAGNET_RADIUS, DOUBLOON_MAGNET_SPEED,
+  DOUBLOON_TIMEOUT, PASSIVE_DOUBLOON_RATE
+} from '../shared/constants.js';
+
+export { TICK_RATE, TICK_INTERVAL };
+
+// ─── Spawn points ───
+const SPAWN_CORNERS = [
+  { x: 200, y: 200 }, { x: 3400, y: 200 },
+  { x: 200, y: 2400 }, { x: 3400, y: 2400 },
+  { x: 1800, y: 200 }, { x: 1800, y: 2400 },
+  { x: 200, y: 1300 }, { x: 3400, y: 1300 },
+  { x: 900, y: 650 }, { x: 2700, y: 1950 }
+];
+
+// ─── Simulation factory ───
+
+export async function createSimulation() {
+  // Load upgrade catalog before anything else
+  await loadCatalog();
+
+  const seed = Date.now();
+
+  return {
+    time: 0,
+    roundTimer: ROUND_DURATION,
+    world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    wind: { x: 0.35, y: -0.12, timer: 0 },
+    players: new Map(),           // playerId → { ship, input }
+    bullets: [],
+    drops: [],                    // { x, y, value, vx, vy, age }
+    nextPlayerId: 1,
+    nextBulletId: 1,
+    events: [],                   // per-tick events for clients
+
+    // Directors
+    npcDirector: createNpcDirector(),
+    worldState: createWorldState(seed),
+
+    // Round seed (for client world gen sync)
+    roundSeed: seed
+  };
+}
+
+// ─── Player management ───
+
+export function addPlayer(sim, name) {
+  const id = sim.nextPlayerId++;
+  const spawn = SPAWN_CORNERS[(sim.players.size) % SPAWN_CORNERS.length];
+  const ship = createShip(spawn.x, spawn.y, { id, name: name || `Player ${id}` });
+
+  // Apply starter loadout
+  initStarterLoadout(ship);
+
+  sim.players.set(id, {
+    ship,
+    input: { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false }
+  });
+  return id;
+}
+
+export function removePlayer(sim, id) {
+  sim.players.delete(id);
+}
+
+export function setPlayerInput(sim, id, input) {
+  const pd = sim.players.get(id);
+  if (!pd) return;
+  if (input.forward !== undefined) pd.input.forward = !!input.forward;
+  if (input.brake !== undefined) pd.input.brake = !!input.brake;
+  if (input.turnLeft !== undefined) pd.input.turnLeft = !!input.turnLeft;
+  if (input.turnRight !== undefined) pd.input.turnRight = !!input.turnRight;
+  if (input.sailOpen !== undefined) pd.input.sailOpen = !!input.sailOpen;
+  if (input.anchored !== undefined) pd.input.anchored = !!input.anchored;
+}
+
+/**
+ * Handle cannon fire request from a player (click-to-aim).
+ */
+export function playerFireCannon(sim, playerId, aimAngle) {
+  const pd = sim.players.get(playerId);
+  if (!pd || !pd.ship.alive) return;
+
+  const ship = pd.ship;
+  const fwd = forwardVector(ship.heading);
+  const dx = Math.cos(aimAngle) - fwd.x;
+  const dy = Math.sin(aimAngle) - fwd.y;
+  const cross = fwd.x * Math.sin(aimAngle) - fwd.y * Math.cos(aimAngle);
+  const side = cross >= 0 ? 'starboard' : 'port';
+
+  const fired = fireCannonBroadside(ship, side, aimAngle, (bullet) => {
+    bullet.id = sim.nextBulletId++;
+    sim.bullets.push(bullet);
+  });
+
+  if (fired) {
+    sim.events.push({
+      type: 'cannonFire',
+      id: playerId,
+      x: ship.x,
+      y: ship.y,
+      side
+    });
+  }
+}
+
+/**
+ * Handle upgrade selection from a player.
+ */
+export function playerSelectUpgrade(sim, playerId, choiceIndex) {
+  const pd = sim.players.get(playerId);
+  if (!pd) return null;
+  return selectUpgrade(pd.ship, choiceIndex);
+}
+
+// ─── Main tick ───
+
+export function tick(sim) {
+  const dt = TICK_INTERVAL;
+  sim.time += dt;
+  sim.roundTimer -= dt;
+  sim.events = [];
+
+  // Wind
+  sim.wind.timer += dt;
+  if (sim.wind.timer >= WIND_SHIFT_INTERVAL) {
+    sim.wind.timer = 0;
+    const angle = Math.random() * Math.PI * 2;
+    const strength = 0.2 + Math.random() * 0.35;
+    sim.wind.x = Math.cos(angle) * strength;
+    sim.wind.y = Math.sin(angle) * strength;
+  }
+
+  // Gather all ships for combat/collision
+  const allPlayerShips = [];
+  const allShips = [];   // { ship, id }
+
+  // ─── Player physics ───
+  for (const [id, pd] of sim.players) {
+    if (!pd.ship.alive) continue;
+    const ship = pd.ship;
+
+    stepShipPhysics(ship, pd.input, sim.wind, sim.world, dt);
+    tickRepair(ship, dt);
+    tickFire(ship, dt);
+
+    // Island contact
+    const islandDmg = applyIslandContact(ship, sim.worldState, dt);
+    if (islandDmg > 0) {
+      const died = applyDamage(ship, islandDmg, false);
+      if (died) handleDeath(sim, id, ship, -1);
+    }
+
+    allPlayerShips.push(ship);
+    allShips.push({ ship, id });
+  }
+
+  // ─── NPC tick ───
+  tickNpcDirector(sim.npcDirector, allPlayerShips, sim.world, dt, ROUND_DURATION - sim.roundTimer, (bullet) => {
+    bullet.id = sim.nextBulletId++;
+    sim.bullets.push(bullet);
+  });
+
+  // NPC physics + fire
+  for (const [npcId, npc] of sim.npcDirector.npcs) {
+    if (!npc.ship.alive) continue;
+    const ship = npc.ship;
+    const input = ship._input || { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
+
+    stepShipPhysics(ship, input, sim.wind, sim.world, dt);
+    tickRepair(ship, dt);
+
+    const fireDied = tickFire(ship, dt);
+    if (fireDied) {
+      handleNpcDeath(sim, npcId, npc.ship, -1);
+      continue;
+    }
+
+    // Island contact for NPCs
+    const islandDmg = applyIslandContact(ship, sim.worldState, dt);
+    if (islandDmg > 0) {
+      const died = applyDamage(ship, islandDmg, false);
+      if (died) { handleNpcDeath(sim, npcId, ship, -1); continue; }
+    }
+
+    allShips.push({ ship, id: npcId });
+  }
+
+  // ─── Gun auto-fire for all ships ───
+  for (const entry of allShips) {
+    const targets = allShips.filter(t => t.id !== entry.id);
+    tickGunAutoFire(entry.ship, targets, dt, (bullet) => {
+      bullet.id = sim.nextBulletId++;
+      sim.bullets.push(bullet);
+    });
+  }
+
+  // ─── Bullet update + hit detection ───
+  tickBullets(sim.bullets, allShips, sim.world, dt, (bullet, victimShip, dmg) => {
+    const died = applyDamage(victimShip, dmg, bullet.heavy);
+
+    // Building damage (bullets that miss ships can hit buildings)
+    // Actually, buildings are checked separately below
+
+    if (died) {
+      if (victimShip.isNpc) {
+        handleNpcDeath(sim, victimShip.id, victimShip, bullet.ownerId);
+      } else {
+        handleDeath(sim, victimShip.id, victimShip, bullet.ownerId);
+      }
+    }
+
+    // Fire event for client effects
+    sim.events.push({
+      type: 'hit',
+      x: bullet.x,
+      y: bullet.y,
+      heavy: bullet.heavy,
+      victimId: victimShip.id
+    });
+  });
+
+  // ─── Building damage from bullets that went out of range ───
+  // Check remaining bullets against buildings
+  for (let i = sim.bullets.length - 1; i >= 0; i--) {
+    const b = sim.bullets[i];
+    const buildingDrops = damageBuildingAtPoint(sim.worldState, b.x, b.y, b.dmg, b.heavy);
+    if (buildingDrops.length > 0) {
+      sim.drops.push(...buildingDrops);
+      sim.bullets.splice(i, 1);
+
+      sim.events.push({
+        type: 'buildingHit',
+        x: b.x,
+        y: b.y
+      });
+    }
+  }
+
+  // ─── Tower firing ───
+  const roundTime = ROUND_DURATION - sim.roundTimer;
+  const defenseLevel = Math.floor(roundTime / 90);
+  updateDefenseTier(sim.worldState, roundTime);
+  tickTowers(sim.worldState, allPlayerShips, defenseLevel, dt, (bullet) => {
+    bullet.id = sim.nextBulletId++;
+    sim.bullets.push(bullet);
+  });
+
+  // ─── Ship-to-ship collisions ───
+  for (let i = 0; i < allShips.length; i++) {
+    for (let j = i + 1; j < allShips.length; j++) {
+      const a = allShips[i].ship;
+      const b = allShips[j].ship;
+      if (!a.alive || !b.alive) continue;
+
+      const result = resolveShipCollision(a, b, sim.world);
+      if (!result) continue;
+
+      // Apply impact damage (respecting invulnerability)
+      if (result.impactA > 0 && (a.invulnTimer || 0) <= 0) {
+        const died = applyDamage(a, result.impactA, false);
+        if (died) {
+          if (a.isNpc) handleNpcDeath(sim, a.id, a, b.id);
+          else handleDeath(sim, a.id, a, b.id);
+        }
+      }
+      if (result.impactB > 0 && (b.invulnTimer || 0) <= 0) {
+        const died = applyDamage(b, result.impactB, false);
+        if (died) {
+          if (b.isNpc) handleNpcDeath(sim, b.id, b, a.id);
+          else handleDeath(sim, b.id, b, a.id);
+        }
+      }
+    }
+  }
+
+  // ─── Doubloon drops ───
+  tickDrops(sim, allPlayerShips, dt);
+
+  // ─── Passive doubloons + XP ───
+  for (const [id, pd] of sim.players) {
+    if (!pd.ship.alive) continue;
+    pd.ship.doubloons += dt * PASSIVE_DOUBLOON_RATE;
+  }
+
+  // ─── Round end ───
+  if (sim.roundTimer <= 0) {
+    resetRound(sim);
+  }
+}
+
+// ─── Death handling ───
+
+function handleDeath(sim, victimId, victimShip, killerId) {
+  victimShip.deaths += 1;
+  victimShip.alive = false;
+  victimShip.onFire = false;
+
+  // Credit killer
+  let killerName = '???';
+  if (killerId > 0) {
+    const killerPd = sim.players.get(killerId);
+    if (killerPd) {
+      killerPd.ship.kills += 1;
+      killerName = killerPd.ship.name;
+    }
+    // Check NPC killer
+    const npc = sim.npcDirector.npcs.get(killerId);
+    if (npc) killerName = npc.ship.name;
+  }
+
+  // Drop 20% doubloons
+  const dropAmount = Math.floor(victimShip.doubloons * DOUBLOON_DROP_RATIO);
+  if (dropAmount > 0) {
+    victimShip.doubloons -= dropAmount;
+    scatterDrops(sim, victimShip.x, victimShip.y, dropAmount);
+  }
+
+  // Event
+  sim.events.push({
+    type: 'kill',
+    killer: killerId,
+    killerName,
+    victim: victimId,
+    victimName: victimShip.name
+  });
+
+  // Immediate respawn
+  respawnShip(sim, victimShip);
+}
+
+function handleNpcDeath(sim, npcId, npcShip, killerId) {
+  npcShip.alive = false;
+  npcShip.onFire = false;
+
+  // Reward killer with doubloons + XP
+  const reward = getNpcReward(sim.npcDirector, npcId);
+  let killerName = '???';
+
+  if (killerId > 0) {
+    const killerPd = sim.players.get(killerId);
+    if (killerPd) {
+      killerPd.ship.kills += 1;
+      killerPd.ship.doubloons += reward;
+      killerName = killerPd.ship.name;
+
+      // XP from kill
+      const offer = awardXp(killerPd.ship, reward);
+      if (offer) {
+        sim.events.push({
+          type: 'upgradeOffer',
+          playerId: killerId,
+          offer
+        });
+      }
+    }
+  }
+
+  // Scatter NPC's doubloons as loot
+  if (reward > 1) {
+    scatterDrops(sim, npcShip.x, npcShip.y, Math.ceil(reward * 0.6));
+  }
+
+  // Event
+  sim.events.push({
+    type: 'kill',
+    killer: killerId,
+    killerName,
+    victim: npcId,
+    victimName: npcShip.name
+  });
+
+  // Ship explosion event
+  sim.events.push({
+    type: 'explosion',
+    x: npcShip.x,
+    y: npcShip.y,
+    size: npcShip.size
+  });
+
+  // Remove NPC
+  removeNpc(sim.npcDirector, npcId);
+}
+
+function scatterDrops(sim, x, y, totalValue) {
+  const numDrops = clamp(Math.ceil(totalValue / 5), 3, 20);
+  const perDrop = totalValue / numDrops;
+  for (let i = 0; i < numDrops; i++) {
+    const angle = (Math.PI * 2 * i) / numDrops + Math.random() * 0.4;
+    const dist = 20 + Math.random() * 40;
+    sim.drops.push({
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      value: Math.round(perDrop),
+      vx: Math.cos(angle) * (0.8 + Math.random() * 0.6),
+      vy: Math.sin(angle) * (0.8 + Math.random() * 0.6),
+      age: 0
+    });
+  }
+}
+
+function respawnShip(sim, ship) {
+  // Find position farthest from all living entities
+  let bestPos = SPAWN_CORNERS[0];
+  let bestMinDist = 0;
+
+  for (let x = 200; x < sim.world.width; x += 400) {
+    for (let y = 200; y < sim.world.height; y += 400) {
+      let minDist = Infinity;
+      for (const [, pd] of sim.players) {
+        if (!pd.ship.alive || pd.ship.id === ship.id) continue;
+        const dx = pd.ship.x - x;
+        const dy = pd.ship.y - y;
+        minDist = Math.min(minDist, dx * dx + dy * dy);
+      }
+      if (minDist > bestMinDist) {
+        bestMinDist = minDist;
+        bestPos = { x, y };
+      }
+    }
+  }
+
+  ship.x = bestPos.x;
+  ship.y = bestPos.y;
+  ship.heading = -Math.PI / 2;
+  ship.speed = 0;
+  ship.hp = ship.maxHp;
+  ship.repairSuppressed = 0;
+  ship.impactTimer = 0;
+  ship.invulnTimer = RESPAWN_INVULN;
+  ship.gunTimer = 0;
+  ship.cannonTimer = 0;
+  ship.onFire = false;
+  ship.fireTimer = 0;
+  ship.fireTicks = 0;
+  ship.alive = true;
+}
+
+// ─── Doubloon drops ───
+
+function tickDrops(sim, playerShips, dt) {
+  for (let i = sim.drops.length - 1; i >= 0; i--) {
+    const drop = sim.drops[i];
+    drop.age = (drop.age || 0) + dt;
+
+    // Scatter velocity decay
+    drop.vx *= 0.92;
+    drop.vy *= 0.92;
+    drop.x += drop.vx * dt * 30;
+    drop.y += drop.vy * dt * 30;
+    drop.x = clamp(drop.x, 4, sim.world.width - 4);
+    drop.y = clamp(drop.y, 4, sim.world.height - 4);
+
+    // Magnet + pickup
+    let collected = false;
+    for (const ship of playerShips) {
+      if (!ship.alive) continue;
+      const dx = ship.x - drop.x;
+      const dy = ship.y - drop.y;
+      const d = Math.hypot(dx, dy);
+
+      if (d < DOUBLOON_PICKUP_RADIUS) {
+        ship.doubloons += drop.value;
+        collected = true;
+
+        // XP from gold pickup
+        const offer = awardXp(ship, drop.value);
+        if (offer) {
+          sim.events.push({
+            type: 'upgradeOffer',
+            playerId: ship.id,
+            offer
+          });
+        }
+        break;
+      } else if (d < DOUBLOON_MAGNET_RADIUS && drop.age > 0.3) {
+        const pull = DOUBLOON_MAGNET_SPEED * dt * 60 / Math.max(1, d);
+        drop.x += dx * pull;
+        drop.y += dy * pull;
+      }
+    }
+
+    if (collected || drop.age > DOUBLOON_TIMEOUT) {
+      sim.drops.splice(i, 1);
+    }
+  }
+}
+
+// ─── Round reset ───
+
+export function resetRound(sim) {
+  const seed = Date.now();
+  sim.time = 0;
+  sim.roundTimer = ROUND_DURATION;
+  sim.wind = { x: 0.35, y: -0.12, timer: 0 };
+  sim.bullets = [];
+  sim.drops = [];
+  sim.roundSeed = seed;
+  sim.worldState = createWorldState(seed);
+  sim.npcDirector = createNpcDirector();
+
+  let idx = 0;
+  for (const [, pd] of sim.players) {
+    const spawn = SPAWN_CORNERS[idx % SPAWN_CORNERS.length];
+    const ship = pd.ship;
+    ship.x = spawn.x;
+    ship.y = spawn.y;
+    ship.heading = -Math.PI / 2;
+    ship.speed = 0;
+    ship.hp = ship.maxHp;
+    ship.repairSuppressed = 0;
+    ship.impactTimer = 0;
+    ship.invulnTimer = RESPAWN_INVULN;
+    ship.gunTimer = 0;
+    ship.cannonTimer = 0;
+    ship.cannonVolleyTimer = 0;
+    ship.onFire = false;
+    ship.fireTimer = 0;
+    ship.fireTicks = 0;
+    ship.doubloons = 0;
+    ship.kills = 0;
+    ship.deaths = 0;
+    ship.level = 1;
+    ship.xp = 0;
+    ship.xpToNext = 10;
+    ship.upgrades = [];
+    ship.slots = [];
+    ship.upgradeOffer = null;
+    ship.alive = true;
+
+    // Reset ship to starter baseline
+    ship.size = 16;
+    ship.mass = 28;
+    ship.baseSpeed = 2.6;
+    ship.maxHp = 20;
+    ship.hp = 20;
+    ship.gunReload = 1.35;
+    ship.cannonReload = 3.4;
+    ship.bulletDamage = 9;
+    ship.rudder = 0;
+    ship.maneuverPenalty = 0;
+    ship.hullLength = 1;
+    ship.hullBeam = 1;
+    ship.bowSharpness = 1;
+    ship.sternTaper = 1;
+    ship.hullColor = '#5f4630';
+    ship.trimColor = '#d9b78d';
+    ship.sailColor = '#f0f7ff';
+    ship.mastScale = 1;
+    ship.hullArmorTier = 0;
+    ship.ram = false;
+    ship.ramDamage = 46;
+    ship.lookoutRangeBonus = 0;
+    ship.cannonCapacityBonus = 0;
+    ship.cannonPivot = 0;
+
+    // Re-apply starter loadout
+    initStarterLoadout(ship);
+
+    idx++;
+  }
+
+  sim.events.push({ type: 'roundReset', seed });
+}
+
+// ─── State snapshot ───
+
+export function getStateSnapshot(sim) {
+  const players = {};
+  for (const [id, pd] of sim.players) {
+    players[id] = shipSnapshot(pd.ship);
+  }
+
+  // NPC ships
+  const npcs = {};
+  for (const [id, npc] of sim.npcDirector.npcs) {
+    if (npc.ship.alive) {
+      npcs[id] = shipSnapshot(npc.ship);
+    }
+  }
+
+  const bullets = sim.bullets.map(b => ({
+    id: b.id,
+    x: Math.round(b.x * 10) / 10,
+    y: Math.round(b.y * 10) / 10,
+    heavy: b.heavy,
+    ownerId: b.ownerId
+  }));
+
+  const drops = sim.drops.map(d => ({
+    x: Math.round(d.x * 10) / 10,
+    y: Math.round(d.y * 10) / 10,
+    value: d.value
+  }));
+
+  const snapshot = {
+    type: 'state',
+    time: Math.round(sim.time * 100) / 100,
+    roundTimer: Math.round(sim.roundTimer * 10) / 10,
+    wind: { x: Math.round(sim.wind.x * 1000) / 1000, y: Math.round(sim.wind.y * 1000) / 1000 },
+    world: sim.world,
+    roundSeed: sim.roundSeed,
+    players,
+    npcs,
+    bullets,
+    drops,
+    worldBuildings: getWorldSnapshot(sim.worldState)
+  };
+
+  if (sim.events.length > 0) {
+    snapshot.events = sim.events;
+  }
+
+  return snapshot;
+}

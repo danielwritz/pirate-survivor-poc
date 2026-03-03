@@ -1,38 +1,53 @@
 # Pirate Survivor Prototype
 
 Minimal browser prototype for the pirate-themed survivor game concept.
+**Primary direction: ranked multiplayer PvPvE** (10-minute rounds, authoritative server).
 
-## Latest Session Updates (2026-03-01)
-- Added first-run starter ship presets (prebuilt loadouts) in the shipyard; players now choose a preset before first launch.
-- Increased boss damage output against the player for both projectile hits and direct ship collision impacts.
-- Added a dedicated Sound Effects Showcase museum page for interactive procedural audio testing.
-- Added docked skiff behavior: skiffs stay snapped to ship sides until dispatched for distant gold, then snap back on return.
-- Refined shipwright hull editing model to explicit `bow triangle + center body + stern triangle` with symmetric drag controls.
-- Added a dedicated stern-width scalar and handle for rectangular or tapered rear profiles.
-- Split shipyard interactions into separate `Shape/Size` and `Weapons` modes so weapon slots no longer block hull shaping.
-- Added projectile max-range handling for player, enemy, and tower shots.
-- Added water splash VFX (blue/white circular particles) when shots expire at range.
-- Increased default gameplay camera zoom so the game starts more zoomed in.
-- Added shared ship/armament core modules (`src/core/shipMath.js`, `src/core/armament.js`) used by museum parity flows.
-- Added JSON upgrade rule engine (`src/systems/upgradeRuleEngine.js`) with rule-trace output.
-- Migrated upgrade descriptors to rule schema v2 in `data/upgrades.json` (operation-based rules, shared by runtime and dev museum).
-- Main runtime upgrade offers now consume JSON upgrade rules instead of hardcoded apply blocks.
-- Upgrade Browser now renders sail + mount parity and exposes raw JSON, evaluated JSON, and applied-rule trace.
-- Weapon/VFX and Island Viewer pages now include JSON inspector panes for source + live evaluated state.
-- Added baseline unit-test harness (`Vitest`) with initial coverage for core ship math, armament rules, and upgrade rule execution.
+## Project Direction
+- Multiplayer is the target experience. Single-player serves as sandbox/practice mode.
+- **Multiplayer prototype is live** — authoritative server with shared modules, full combat, NPCs, upgrades, islands.
+- SP mechanics are locked; current focus is MP feature parity and visual polish.
+- Forward planning lives in `ROADMAP.md`.
+- Multiplayer design: `multiplayerthoughts.md` (rules/ranking) + `multiplayer_layout_and_flow.md` (UI/flow).
+
+## Latest Session Updates (2026-03-03)
+
+### Multiplayer Implementation (Batches A–E)
+- **Authoritative server** running on Node.js + `ws` WebSocket library.
+- **Shared module architecture**: `shared/constants.js`, `shared/shipState.js`, `shared/physics.js`, `shared/combat.js`, `shared/upgradeRegistry.js`, `shared/world.js` — used by both server and client.
+- **Server directors**: `server/simulation.js` (tick loop), `server/npcDirector.js`, `server/upgradeDirector.js`, `server/worldManager.js`.
+- **Full SP-parity combat**: mount-level gun auto-fire, click-to-aim manual cannons, ramming, fire/ignition DoT, crew-scaled mechanics.
+- **Procedural world**: 24 seeded islands with buildings (destructible, gold drops), docks, tower defenses that scale with time.
+- **NPC enemies**: 2 archetypes (Standard/Heavy), AI state machine, difficulty ramp (+1 upgrade/60s), doubloon rewards.
+- **Upgrade progression**: XP/level system, 3-card picker (1/2/3 keys), 12 standard + 4 major upgrades, milestone majors every 5 levels.
+- **Client** (`mp.html`): island rendering, NPC ships, fire overlay, explosion particles, aim crosshair, scoreboard with Lv column, level display.
+- **Round lifecycle**: 10-minute timer with auto-restart and map re-seed.
+
+### Previous SP Updates (2026-03-01)
+- Starter ship presets, boss damage tuning, SFX showcase page.
+- Docked skiff behavior, shipwright hull editing, stern-width scalar.
+- Projectile max-range, water splash VFX, camera zoom tuning.
+- Shared core modules (`shipMath.js`, `armament.js`), JSON upgrade rule engine.
+- Upgrade Browser parity, Weapon/VFX inspector panes.
+- Vitest unit-test harness for core ship math, armament rules, upgrade rule execution.
 
 ## Run
-Serve the workspace root with a local HTTP server, then open `index.html`.
 
-Example:
-- `npx serve .`
-- then open the URL it prints (typically `http://localhost:3000`)
+### Multiplayer (primary)
+1. `npm install` (first time only)
+2. `node server/index.js`
+3. Open `http://localhost:3000` in one or more browser tabs
 
-Unit tests:
+### Single-player (sandbox)
+Serve the workspace root with a local HTTP server, then open `index.html`:
+- `npx serve . -l 4173`
+- Open `http://localhost:4173`
+
+### Unit tests
 - `npm install`
 - `npm test`
 
-Canvas now runs fullscreen in the browser viewport.
+Canvas runs fullscreen in the browser viewport.
 
 Developer museum screens are available under `dev/`.
 - Start page: `dev/index.html`
@@ -59,14 +74,24 @@ Developer museum screens are available under `dev/`.
 - Treat `data/` as canonical descriptor source for runtime + dev museum; avoid duplicating gameplay descriptor logic in page scripts.
 
 ## Controls
+
+### Shared (SP + MP)
 - Steer: `A` / `D`
 - Row forward: `W`
 - Brake / drag anchor: `S`
-- Toggle sail open/closed: `Space`
-- Toggle sound effects: `SFX: ON/OFF` HUD button
+- Toggle sail: `Space`
+- Level-up choices: `1`, `2`, `3`
+
+### Multiplayer
+- Fire cannons: **Click** (toward mouse cursor)
+- Guns: auto-fire when enemies in broadside arc
+- Scoreboard: hold `Tab`
+- Chat: `Enter` to type, `Enter` to send
+
+### Single-player only
+- Toggle SFX: HUD button
 - Zoom: mouse wheel
 - Combat: auto-fire
-- Level-up choices: `1`, `2`, `3`
 
 ## Implemented
 - Momentum-based ship steering (heavier hull = more inertia)
@@ -139,6 +164,7 @@ Developer museum screens are available under `dev/`.
 - Endless mode derives additional stages automatically after defined levels
 - Boss defeats increase difficulty tier and unlock major ship transformations
 
-## Next Iteration Ideas
-- Canonical roadmap lives in `ROADMAP.md`.
-- Use `ROADMAP.md` for forward-looking priorities and planning updates.
+## Next Up
+- **Batch F**: Visual polish — hull shape rendering, particle system, procedural audio, fog of war, camera zoom.
+- **Batch G**: Round lifecycle — results screen, auto-rank, spectator mode.
+- Full roadmap and checklist: `ROADMAP.md`.
