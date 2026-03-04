@@ -101,35 +101,112 @@ export function tickGunAutoFire(ship, targets, dt, spawnBullet) {
   for (let i = 0; i < totalSlots; i++) {
     if (lane[i] !== 'gun') continue;
 
-    // Mount position in world space
+    // Mount position in world space — spawn from barrel tip
     const mount = getHullSideMount(shape, i, totalSlots, sideSign);
     const cos = Math.cos(ship.heading);
     const sin = Math.sin(ship.heading);
-    const worldX = ship.x + mount.x * cos - mount.y * sin;
-    const worldY = ship.y + mount.x * sin + mount.y * cos;
+    const GUN_BARREL_LEN = 7.2;
+    const tipX = mount.x + mount.nx * GUN_BARREL_LEN;
+    const tipY = mount.y + mount.ny * GUN_BARREL_LEN;
+    const worldX = ship.x + tipX * cos - tipY * sin;
+    const worldY = ship.y + tipX * sin + tipY * cos;
 
-    // Aim toward target with spread
-    const aimAngle = toTargetAngle + (Math.random() - 0.5) * GUN_SPREAD;
+    // Fire 2-3 musket balls per gun mount in a spread pattern.
+    // Aim along broadside; balls have systematic angular offsets for visible spray.
+    const ballCount = Math.random() < 0.45 ? 3 : 2;
+    const spreadHalf = GUN_SPREAD * 1.4; // total cone half-width
+    const baseDmg = (ship.bulletDamage || 9) * 0.65; // per-ball damage (tuned so total ≈ 1.3× single)
     const speed = (ship.bulletSpeed || 6) + BULLET_SPEED_GUN_BONUS;
 
-    spawnBullet({
-      x: worldX,
-      y: worldY,
-      vx: Math.cos(aimAngle) * speed,
-      vy: Math.sin(aimAngle) * speed,
-      dmg: ship.bulletDamage || 9,
-      heavy: false,
-      ownerId: ship.id,
-      ownerIsNpc: ship.isNpc,
-      travel: 0,
-      maxRange: gunRange
-    });
+    for (let b = 0; b < ballCount; b++) {
+      // Spread balls evenly across the cone + small random jitter
+      const t = ballCount === 1 ? 0 : (b / (ballCount - 1)) - 0.5;
+      const jitter = (Math.random() - 0.5) * GUN_SPREAD * 0.3;
+      const aimAngle = broadsideAngle + t * spreadHalf * 2 + jitter;
+      const ballSpeed = speed * (0.92 + Math.random() * 0.16);
+      spawnBullet({
+        x: worldX, y: worldY,
+        vx: Math.cos(aimAngle) * ballSpeed,
+        vy: Math.sin(aimAngle) * ballSpeed,
+        dmg: baseDmg,
+        heavy: false,
+        ownerId: ship.id,
+        ownerIsNpc: ship.isNpc,
+        travel: 0,
+        maxRange: gunRange
+      });
+    }
     firedAny = true;
   }
 
   if (firedAny) {
     ship.gunTimer = 0;
   }
+}
+
+// ─── Cannon auto-fire (server-side, all ships including player) ───
+
+/**
+ * Scan for the nearest enemy within cannon range on either broadside.
+ * Fires automatically when reloaded. Returns { side, dx, dy, fired } or null.
+ *
+ * @param {object}   ship        - Firing ship
+ * @param {Array}    targets     - Array of { ship, id }
+ * @param {number}   dt          - Delta time
+ * @param {function} spawnBullet - callback(bullet)
+ */
+export function tickCannonAutoFire(ship, targets, dt, spawnBullet) {
+  if (!ship.alive) return null;
+
+  // Advance cannon reload timer
+  ship.cannonTimer = (ship.cannonTimer || 0) + dt;
+  if (ship.cannonVolleyTimer > 0) ship.cannonVolleyTimer = Math.max(0, ship.cannonVolleyTimer - dt);
+
+  const layout = ship.weaponLayout || { port: [], starboard: [] };
+  const hasCannons = (layout.port || []).some(s => s === 'cannon') ||
+                     (layout.starboard || []).some(s => s === 'cannon');
+  if (!hasCannons) return null;
+
+  const cannonRange = getCannonRange(ship);
+  const fwd = forwardVector(ship.heading);
+  const right = { x: -fwd.y, y: fwd.x };
+
+  let bestTarget = null, bestDist = Infinity, bestSide = null, bestAimAngle = 0;
+
+  for (const sideKey of ['starboard', 'port']) {
+    const sideSign = sideKey === 'starboard' ? 1 : -1;
+    const broadX = right.x * sideSign;
+    const broadY = right.y * sideSign;
+    const broadsideAngle = Math.atan2(broadY, broadX);
+    const pivotRad = (ship.cannonPivot || 0) * (Math.PI / 180) + GUN_PIVOT_RAD + 0.15;
+
+    for (const t of targets) {
+      if (!t.ship.alive) continue;
+      const dx = t.ship.x - ship.x;
+      const dy = t.ship.y - ship.y;
+      const d = Math.hypot(dx, dy);
+      if (d > cannonRange || d >= bestDist) continue;
+      const toAngle = Math.atan2(dy, dx);
+      if (Math.abs(angleDiff(toAngle, broadsideAngle)) > pivotRad) continue;
+      bestDist = d;
+      bestTarget = t;
+      bestSide = sideKey;
+      bestAimAngle = toAngle;
+    }
+  }
+
+  if (!bestTarget) return null;
+
+  const fired = fireCannonBroadside(ship, bestSide, bestAimAngle, spawnBullet);
+  if (!fired) return null;
+
+  const sideSign = bestSide === 'starboard' ? 1 : -1;
+  return {
+    side: bestSide,
+    dx: -Math.sin(ship.heading) * sideSign,
+    dy:  Math.cos(ship.heading) * sideSign,
+    fired
+  };
 }
 
 // ─── Cannon fire (manual for players, auto for NPCs) ───
@@ -180,10 +257,13 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
     const mount = getHullSideMount(shape, i, totalSlots, sideSign);
     const cos = Math.cos(ship.heading);
     const sin = Math.sin(ship.heading);
-    const worldX = ship.x + mount.x * cos - mount.y * sin;
-    const worldY = ship.y + mount.x * sin + mount.y * cos;
+    const CANNON_BARREL_LEN = 11.0;
+    const tipX = mount.x + mount.nx * CANNON_BARREL_LEN;
+    const tipY = mount.y + mount.ny * CANNON_BARREL_LEN;
+    const worldX = ship.x + tipX * cos - tipY * sin;
+    const worldY = ship.y + tipX * sin + tipY * cos;
 
-    const spread = (Math.random() - 0.5) * CANNON_SPREAD;
+    const spread = (Math.random() - 0.5) * CANNON_SPREAD * (1 - Math.min(0.8, ship.cannonAccuracyBonus || 0));
     const finalAngle = aimAngle + spread;
     const speed = (ship.bulletSpeed || 6) + BULLET_SPEED_CANNON_BONUS;
 
@@ -224,6 +304,27 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
 export function tickBullets(bullets, ships, world, dt, onHit) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
+
+    // ── Pre-move hit check (catches bullets spawned inside enemy hull at close range) ──
+    let hit = false;
+    for (const t of ships) {
+      const s = t.ship;
+      if (s.id === b.ownerId || !s.alive) continue;
+      if ((s.invulnTimer || 0) > 0) continue;
+      const d = Math.hypot(s.x - b.x, s.y - b.y);
+      const hitRadius = (s.size || 16) * 0.78 + 4;
+      if (d < hitRadius) {
+        const scale = b.heavy ? INCOMING_DMG_SCALE_CANNON : INCOMING_DMG_SCALE_GUN;
+        onHit(b, s, b.dmg * scale);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) { bullets.splice(i, 1); continue; }
+
+    // Move — keep previous position for swept building collision in simulation
+    b.prevX = b.x;
+    b.prevY = b.y;
     const stepX = b.vx * dt * 60;
     const stepY = b.vy * dt * 60;
     b.x += stepX;
@@ -236,16 +337,14 @@ export function tickBullets(bullets, ships, world, dt, onHit) {
       continue;
     }
 
-    // Hit detection vs ships
-    let hit = false;
+    // Post-move hit detection vs ships
+    hit = false;
     for (const t of ships) {
       const s = t.ship;
       if (s.id === b.ownerId || !s.alive) continue;
       if ((s.invulnTimer || 0) > 0) continue;
-
       const d = Math.hypot(s.x - b.x, s.y - b.y);
       const hitRadius = (s.size || 16) * 0.78 + 4;
-
       if (d < hitRadius) {
         const scale = b.heavy ? INCOMING_DMG_SCALE_CANNON : INCOMING_DMG_SCALE_GUN;
         const dmg = b.dmg * scale;

@@ -29,14 +29,27 @@ export function createWorldState(seed) {
  * @param {object} bullet     - { x, y, heavy, dmg }
  * @returns {Array} - Array of { x, y, value } gold drops from destroyed buildings
  */
-export function damageBuildingAtPoint(worldState, bx, by, dmg, isHeavy) {
+// Minimum distance from point P to line segment AB
+function pointToSegmentDist(px, py, ax, ay, bx2, by2) {
+  const dx = bx2 - ax, dy = by2 - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 0.0001) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+export function damageBuildingAtPoint(worldState, bx, by, dmg, isHeavy, prevBx, prevBy) {
   const drops = [];
+  const swept = prevBx !== undefined && prevBy !== undefined;
 
   for (const island of worldState.islands) {
     for (const b of island.buildings) {
       if (b.destroyed) continue;
 
-      const d = Math.hypot(b.x - bx, b.y - by);
+      // Swept segment-circle test (catches fast cannonballs that tunnel through)
+      const d = swept
+        ? pointToSegmentDist(b.x, b.y, prevBx, prevBy, bx, by)
+        : Math.hypot(b.x - bx, b.y - by);
       if (d > b.size + 6) continue;
 
       // Apply damage with weapon-type scaling

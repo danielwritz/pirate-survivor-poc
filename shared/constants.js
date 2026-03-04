@@ -36,7 +36,7 @@ export const ENEMY_ROW_ACCEL_BASE = 0.12;
 export const ENEMY_ROW_ACCEL_PER_ROWER = 0.06;
 export const SAIL_PUSH_BASE = 0.11;
 export const SAIL_PUSH_SIZE_FACTOR = 0.0018;
-export const TURN_BASE = 0.012;
+export const TURN_BASE = 0.036;
 export const TURN_RUDDER = 0.006;
 export const TURN_ROWER = 0.002;
 export const BRAKE_DRAG = 0.06;
@@ -117,9 +117,9 @@ export const GOLD_MAGNET_PULL_FACTOR = 0.95;
 export const GOLD_MAGNET_BASE_SPEED = 2.1;
 
 // ─── XP / Levels ───
-export const XP_START = 10;
-export const XP_SCALE = 1.3;
-export const XP_ADD = 5;
+export const XP_START = 8;
+export const XP_SCALE = 1.18;
+export const XP_ADD = 3;
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
 // ─── NPC ───

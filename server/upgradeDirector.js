@@ -99,14 +99,27 @@ export function awardXp(ship, amount) {
 }
 
 /**
+ * Initialize the starting upgrade offer sequence for a newly joined ship.
+ * Sets ship.startingPicksRemaining = 3 and populates the first offer.
+ * @returns {Array} the first offer array
+ */
+export function initStartingUpgradeOffer(ship) {
+  if (!catalog) return null;
+  ship.startingPicksRemaining = 3;
+  const offer = rollUpgradeOffer('standard', 3, catalog);
+  ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+  return ship.upgradeOffer;
+}
+
+/**
  * Player selected an upgrade from the offer.
  * @param {object} ship
  * @param {number} choiceIndex - 0, 1, or 2
- * @returns {{ applied: boolean, upgradeId: string|null }}
+ * @returns {{ applied: boolean, upgradeId: string|null, nextOffer: Array|null, startingPicksRemaining: number }}
  */
 export function selectUpgrade(ship, choiceIndex) {
-  if (!ship.upgradeOffer || !catalog) return { applied: false, upgradeId: null };
-  if (choiceIndex < 0 || choiceIndex >= ship.upgradeOffer.length) return { applied: false, upgradeId: null };
+  if (!ship.upgradeOffer || !catalog) return { applied: false, upgradeId: null, nextOffer: null, startingPicksRemaining: 0 };
+  if (choiceIndex < 0 || choiceIndex >= ship.upgradeOffer.length) return { applied: false, upgradeId: null, nextOffer: null, startingPicksRemaining: 0 };
 
   const choice = ship.upgradeOffer[choiceIndex];
   const result = applyUpgrade(ship, choice.id, catalog);
@@ -114,7 +127,20 @@ export function selectUpgrade(ship, choiceIndex) {
   // Clear offer
   ship.upgradeOffer = null;
 
-  return { applied: result.success, upgradeId: choice.id };
+  // Handle starting picks sequence
+  let nextOffer = null;
+  let startingPicksRemaining = 0;
+  if (typeof ship.startingPicksRemaining === 'number' && ship.startingPicksRemaining > 0) {
+    ship.startingPicksRemaining -= 1;
+    startingPicksRemaining = ship.startingPicksRemaining;
+    if (ship.startingPicksRemaining > 0) {
+      const offer = rollUpgradeOffer('standard', 3, catalog);
+      ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+      nextOffer = ship.upgradeOffer;
+    }
+  }
+
+  return { applied: result.success, upgradeId: choice.id, nextOffer, startingPicksRemaining };
 }
 
 /**

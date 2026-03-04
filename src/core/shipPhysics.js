@@ -70,7 +70,7 @@ export function stepShipPhysics(ship, input, wind, world, dt) {
   }
 
   // Steering
-  const steerAuthorityBase = 0.012 + (ship.rudder || 0) * 0.006 + (ship.rowers || 0) * 0.002;
+  const steerAuthorityBase = 0.036 + (ship.rudder || 0) * 0.006 + (ship.rowers || 0) * 0.002;
   const steerAuthority = steerAuthorityBase
     / (1 + Math.max(0, ((ship.mass || 28) - 28) / 40))
     * (1 - (ship.maneuverPenalty || 0));

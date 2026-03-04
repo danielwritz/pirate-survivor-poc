@@ -10,10 +10,32 @@
  */
 
 import { createServer } from 'http';
-import { readFile } from 'fs/promises';
+import { readFile, appendFile } from 'fs/promises';
 import { extname, join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+
+// ─── Logging ───
+const LOG_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', 'server.log');
+const _ts = () => new Date().toISOString();
+function log(...args) {
+  const line = `[${_ts()}] ${args.join(' ')}`;
+  console.log(line);
+  appendFile(LOG_FILE, line + '\n').catch(() => {});
+}
+function logErr(...args) {
+  const line = `[${_ts()}] ERROR: ${args.join(' ')}`;
+  console.error(line);
+  appendFile(LOG_FILE, line + '\n').catch(() => {});
+}
+
+// ─── Global crash guards ───
+process.on('uncaughtException', (err) => {
+  logErr('uncaughtException:', err?.stack || err);
+});
+process.on('unhandledRejection', (reason) => {
+  logErr('unhandledRejection:', reason?.stack || reason);
+});
 
 import {
   createSimulation,
@@ -64,7 +86,8 @@ const httpServer = createServer(async (req, res) => {
     const ext = extname(filePath);
     res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
     res.end(data);
-  } catch {
+  } catch (err) {
+    log(`404 ${req.url}`);
     res.writeHead(404);
     res.end('Not found');
   }
@@ -79,6 +102,10 @@ const socketToPlayer = new Map();
 
 wss.on('connection', (ws) => {
   let playerId = null;
+
+  ws.on('error', (err) => {
+    logErr(`WebSocket error (player ${playerId}):`, err?.message || err);
+  });
 
   ws.on('message', (raw) => {
     if (!sim) return; // Not ready yet
@@ -95,8 +122,11 @@ wss.on('connection', (ws) => {
         const name = (typeof msg.name === 'string' ? msg.name.trim().slice(0, 20) : '') || undefined;
         playerId = addPlayer(sim, name);
         socketToPlayer.set(ws, playerId);
-        ws.send(JSON.stringify({ type: 'joined', id: playerId, roundSeed: sim.roundSeed }));
-        console.log(`Player ${playerId} (${name || 'unnamed'}) joined. Total: ${sim.players.size}`);
+        const joinedPd = sim.players.get(playerId);
+        const startingOffer = joinedPd?.ship?.upgradeOffer ?? null;
+        const startingPicksRemaining = joinedPd?.ship?.startingPicksRemaining ?? 0;
+        ws.send(JSON.stringify({ type: 'joined', id: playerId, roundSeed: sim.roundSeed, startingOffer, startingPicksRemaining }));
+        log(`Player ${playerId} (${name || 'unnamed'}) joined. Total: ${sim.players.size}`);
         break;
       }
 
@@ -144,7 +174,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (playerId !== null) {
-      console.log(`Player ${playerId} disconnected. Remaining: ${sim.players.size - 1}`);
+      log(`Player ${playerId} disconnected. Remaining: ${sim.players.size - 1}`);
       removePlayer(sim, playerId);
       socketToPlayer.delete(ws);
     }
@@ -166,18 +196,22 @@ async function start() {
   console.log('Simulation initialized (upgrade catalog loaded).');
 
   setInterval(() => {
-    tick(sim);
-    broadcastState();
+    try {
+      tick(sim);
+      broadcastState();
+    } catch (err) {
+      logErr('Tick error:', err?.stack || err);
+    }
   }, TICK_INTERVAL * 1000);
 
   httpServer.listen(PORT, () => {
-    console.log(`Pirate Survivor server running on http://localhost:${PORT}`);
-    console.log(`Tick rate: ${TICK_RATE} Hz | Round: 10 min`);
-    console.log(`Open http://localhost:${PORT} in your browser to play.`);
+    log(`Pirate Survivor server running on http://localhost:${PORT}`);
+    log(`Tick rate: ${TICK_RATE} Hz | Round: 10 min`);
+    log(`Open http://localhost:${PORT} in your browser to play.`);
   });
 }
 
 start().catch(err => {
-  console.error('Failed to start server:', err);
+  logErr('Failed to start server:', err?.stack || err);
   process.exit(1);
 });

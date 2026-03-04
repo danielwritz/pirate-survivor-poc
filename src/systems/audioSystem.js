@@ -119,6 +119,9 @@ export function createGameAudioSystem(config) {
       const pan = clamp(sourcePan * 0.8 + dirPan * 0.2, -1, 1);
       const front = clamp(sourceFront * 0.65 + dirFront * 0.35, -1, 1);
       const distanceNorm = clamp(sourceDist / 920, 0, 1);
+      // Hard-cull sounds beyond hearing range — stops Web Audio node creation for distant events
+      if (sourceDist > 1400) return null;
+
       const distanceAtten = 1 / (1 + (sourceDist / 360) ** 2.15);
       const gain = clamp(0.012 + distanceAtten * 1.05, 0.008, 1.05);
       return {
@@ -192,6 +195,7 @@ export function createGameAudioSystem(config) {
         const dir = normalizeOr(dirX, dirY, 1, 0);
         const bass = bassFromSourceSize(sourceSize);
         const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+        if (!spatial) return;
         const now = audio.ctx.currentTime;
         const pops = clamp(1 + Math.floor(count * 0.33), 1, 4);
 
@@ -262,6 +266,7 @@ export function createGameAudioSystem(config) {
         const dir = normalizeOr(dirX, dirY, 1, 0);
         const bass = bassFromSourceSize(sourceSize);
         const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+        if (!spatial) return;
         const nearField = spatial.sourceDist < 120;
         const cannonGain = nearField ? Math.max(0.46, spatial.gain * 1.12) : spatial.gain;
         const now = audio.ctx.currentTime;
@@ -396,6 +401,7 @@ export function createGameAudioSystem(config) {
         const dir = normalizeOr(dirX, dirY, 1, 0);
         const bass = bassFromSourceSize(sourceSize);
         const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+        if (!spatial) return;
         const now = audio.ctx.currentTime;
         const out = createVoiceChain(spatial);
         const dur = 0.038 + Math.random() * 0.03;
@@ -450,6 +456,7 @@ export function createGameAudioSystem(config) {
         const dir = normalizeOr(dirX, dirY, 1, 0);
         const bass = bassFromSourceSize(sourceSize);
         const spatial = getSpatialMix(originX, originY, dir.x, dir.y);
+        if (!spatial) return;
         const now = audio.ctx.currentTime;
         const out = createVoiceChain(spatial);
         const dur = 0.18 + Math.random() * 0.11;

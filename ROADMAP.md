@@ -32,7 +32,7 @@ This is the canonical forward-looking roadmap for the project.
 
 ---
 
-## Status Update (2026-03-03)
+## Status Update (2026-03-04)
 - ✅ Multiplayer design docs consolidated and de-duplicated.
 - ✅ Core multiplayer decisions locked: equal starts, in-round upgrades, PvPvE, procedural maps, 20% doubloon drop on death, ramping NPCs, authoritative server.
 - ✅ Canonical roadmap consolidated in this file.
@@ -45,8 +45,10 @@ This is the canonical forward-looking roadmap for the project.
 - ✅ Phase 2 Steps 1–3 shipped: authoritative server, WebSocket sync, basic combat scaffold.
 - ✅ **Batch A–E (server-side) complete**: Shared module architecture, full combat, world gen, upgrades, NPCs — all running on server.
 - ✅ **Client updated**: Islands, NPC ships, cannon click-to-aim, upgrade picker UI, fire FX, level display, explosion FX, aim crosshair.
-- 🔄 Client visual polish (Batch F) not started — ships render with a simple hull polygon, not the full SP hull-shape system.
-- 🔄 Audio, fog-of-war, particles, and round results screen not yet ported to MP client.
+- ✅ **Batch F (partial) landed**: Fog-of-war cloud mask, muzzle blast + impact debris + explosion shards, building hit particles, spatial audio (guns/cannons/impacts) all wired. Hull shape, weapon mounts, armor plates confirmed working.
+- ✅ **Server stability**: Crash guards (`uncaughtException`, `unhandledRejection`, tick try/catch), file logging to `server.log`, NPC `sim` scope bug fixed (was crashing every tick).
+- 🔄 Batch F remainder: aim range circles, cannon barrel pivot, reload bars in HUD.
+- ⬜ Batch G (results screen, auto-rank, spectator) not started.
 
 ---
 
@@ -237,29 +239,29 @@ Each feature below maps to a system module. Status key:
 | 24 | Upgrade UI: non-intrusive top-of-screen 3-choice cards | `mp.html` | ✅ | 3 cards at top of screen. Click or press 1/2/3. Game keeps playing. |
 | 25 | Remove salvage-skiffs from MP upgrade pool | `shared/upgradeRegistry.js` | ✅ | Filtered in `buildMpCatalog()`. |
 | **Visuals (upgrade-driven)** | | | | |
-| 26 | Hull armor tiers (color progression, plate lines at T4) | `mp.html` | 🔄 | Server sends `hullArmorTier` + colors. Client renders hull color but not plate-line detail. |
-| 27 | Hull shape changes from upgrades (length, beam, bow, stern) | `mp.html` | 🔄 | Ship JSON has shape fields; client hull is simple polygon (not using `getHullShape()`). |
+| 26 | Hull armor tiers (color progression, plate lines at T4) | `mp.html` | ✅ | Hull color + armor plate lines rendered from `hullArmorTier`. |
+| 27 | Hull shape changes from upgrades (length, beam, bow, stern) | `mp.html` | ✅ | `getHullShape()` used for all hull polygons; shape fields from snapshot. |
 | 28 | Sail color / mast scale changes (e.g. Crimson Sails) | `mp.html` | ✅ | Client reads `sailColor` and `mastScale` from ship snapshot. |
-| 29 | Weapon mount visuals (gun/cannon dots on hull perimeter) | `mp.html` | ⬜ | Data is sent (`weaponLayout`); rendering not yet implemented. |
+| 29 | Weapon mount visuals (gun/cannon dots on hull perimeter) | `mp.html` | ✅ | Gun and cannon port rectangles rendered per slot via `getHullSideMount()`. |
 | 30 | Ship fire overlay (flame triangles on burning ships) | `mp.html` | ✅ | Animated flame particles over hull when `onFire` is true. |
 | **Effects** | | | | |
-| 31 | Muzzle blast particles (smoke puffs, embers) | — | ⬜ | |
-| 32 | Impact debris (hull splinters, water settle) | — | ⬜ | |
-| 33 | Vessel wake (speed-scaled stern bands + bow splash) | — | ⬜ | |
-| 34 | Ship explosion (colored shards on death) | `mp.html` | 🔄 | Simple expanding circle on NPC death. Not full SP shard system. |
-| 35 | Building fire/damage FX | — | ⬜ | Buildings show HP bar but no fire particles. |
-| 36 | Cloud overlay (wind-driven drift) | — | ⬜ | |
+| 31 | Muzzle blast particles (smoke puffs, embers) | `mp.html` | ✅ | `createMuzzleBlastParticles` spawned on `cannonFire`/`gunFire` events. |
+| 32 | Impact debris (hull splinters, water settle) | `mp.html` | ✅ | `createImpactDebrisParticles` + `createDeckBurstParticles` on `hit` events. |
+| 33 | Vessel wake (speed-scaled stern bands + bow splash) | `mp.html` | ✅ | `spawnWakeParticles` runs each frame for all moving ships. |
+| 34 | Ship explosion (colored shards on death) | `mp.html` | ✅ | Full SP shard system: 20–34 shards, hull/trim palette, wind drift. Player deaths also trigger explosion event. |
+| 35 | Building fire/damage FX | `mp.html` | ✅ | Wood/dust puff particles on `buildingHit` events. |
+| 36 | Cloud overlay (wind-driven drift) | `mp.html` | ✅ | Procedural tiled fog-cloud mask (ported from SP `drawVisionCloudMask`). |
 | **Audio** | | | | |
-| 37 | Gun volley SFX (procedural, spatial) | — | ⬜ | SP `audioSystem.js` exists but not wired to MP client. |
-| 38 | Cannon volley SFX (bass boom, spatial) | — | ⬜ | |
-| 39 | Impact SFX (gun crack, cannon thud) | — | ⬜ | |
+| 37 | Gun volley SFX (procedural, spatial) | `mp.html` | ✅ | `playGunVolleySfx` wired to `gunFire` events. |
+| 38 | Cannon volley SFX (bass boom, spatial) | `mp.html` | ✅ | `playCannonVolleySfx` wired to `cannonFire` + `explosion` events. |
+| 39 | Impact SFX (gun crack, cannon thud) | `mp.html` | ✅ | `playGunImpactSfx`/`playCannonImpactSfx` wired to `hit` events. |
 | **Navigation** | | | | |
 | 40 | Wind system (periodic shift, sail alignment) | `shared/physics.js` | ✅ | Full SP model: sail push with wind alignment, rower-based wind resistance. |
 | 41 | Rowing (crew-based acceleration) | `shared/physics.js` | ✅ | Rower count scaling, separate player/NPC accel bases. |
 | 42 | Anchor (toggle, speed=0) | `shared/physics.js` | ✅ | Full SP behavior. |
 | **HUD / Camera** | | | | |
-| 43 | Fog of war / vision mask (Crow's Nest range) | — | ⬜ | |
-| 44 | Camera zoom tied to Crow's Nest level | — | ⬜ | Fixed zoom=2 currently. |
+| 43 | Fog of war / vision mask (Crow's Nest range) | `mp.html` | ✅ | Evenodd punch-out fog + procedural cloud blob mask; vision radius from `getVisionRange()`. |
+| 44 | Camera zoom tied to Crow's Nest level | `mp.html` | ✅ | Dynamic zoom: `baseZoom - lookoutRangeBonus * 0.003`, clamped 1.3–2.5. |
 | 45 | Aim reticle + cannon range/gun range circles | `mp.html` | 🔄 | Crosshair + dashed aim line exist. Range circles not yet drawn. |
 | 46 | HP bar, reload bars, stats line | `mp.html` | 🔄 | HP bar + level + doubloons + K/D shown. No reload bars yet. |
 | **Round lifecycle** | | | | |
@@ -340,16 +342,17 @@ that lets batches compose cleanly.
 
 **Playtest gate**: ✅ *Playable* — NPCs roam, seek players, fight broadside, drop loot. Difficulty ramps.
 
-### Batch F: Visual Polish + Effects ⬜ (Next)
+### Batch F: Visual Polish + Effects 🔄 (In Progress)
 > Full SP-quality rendering for the multiplayer client.
 
-28. ⬜ Ship renderer: use `getHullShape()` for accurate hull polygon, weapon mount visuals, armor tier plate lines.
-29. ⬜ Particle system: muzzle blast, impact debris, wake, explosions, building fire.
-30. ⬜ Procedural audio: port SP `audioSystem.js` for gun/cannon volley, impact SFX, spatial positioning.
-31. ⬜ Fog of war / vision mask (Crow's Nest range).
-32. ⬜ Camera zoom tied to Crow's Nest level (currently fixed zoom=2).
-33. 🔄 Aim reticle + range indicator circles (crosshair exists; range circles not drawn).
-34. ⬜ Clouds, ambient water effects.
+28. ✅ Ship renderer: `getHullShape()` hull polygon, weapon mount visuals (gun/cannon ports), armor tier plate lines.
+29. ✅ Particle system: muzzle blast, impact debris + deck burst, wake, full shard explosions, building dust.
+30. ✅ Procedural audio: SP `audioSystem.js` wired — gun/cannon volley, impact SFX, spatial positioning, explosion boom.
+31. ✅ Fog of war: evenodd punch-out overlay + procedural tiled cloud mask dissolving at vision boundary.
+32. ✅ Camera zoom tied to Crow's Nest level (dynamic via `lookoutRangeBonus`).
+33. 🔄 Aim reticle + range indicator circles (crosshair exists; gun/cannon range circles not yet drawn).
+34. 🔄 Cannon barrel pivot toward aim target (static rectangles; no live rotation yet).
+35. ⬜ Reload bars in HUD.
 
 **Playtest gate**: Game looks and sounds like the SP version. *"Does it feel polished?"*
 

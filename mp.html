@@ -6,13 +6,13 @@
   <title>Pirate Survivor — Multiplayer</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #071521; color: #e8f5ff; font-family: system-ui, sans-serif; }
-    canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at 30% 30%, #0a2a3f, #071521 70%); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0e2a42; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at 30% 30%, #14547e, #0e2a42 70%); }
 
     .hud { position: fixed; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none; }
     .hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 16px; }
     .hud-left { display: flex; flex-direction: column; gap: 2px; }
-    .timer { font-size: 22px; font-weight: bold; color: #ffd887; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
+    .timer { font-size: 22px; font-weight: bold; color: #ffd887; text-shadow: 0 1px 4px rgba(0,0,0,0.7); position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 10; pointer-events: none; background: rgba(6,16,24,0.55); padding: 4px 18px; border-radius: 20px; border: 1px solid rgba(255,216,135,0.18); }
     .player-count { font-size: 13px; color: #9fc2d9; }
     .my-stats { font-size: 13px; color: #c8dce8; margin-top: 4px; }
     .my-stats span { margin-right: 12px; }
@@ -61,14 +61,28 @@
     .scoreboard tr.me td { color: #ffd887; font-weight: bold; }
 
     /* Upgrade offer cards */
-    .upgrade-bar { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; padding: 8px 14px; pointer-events: auto; }
+    .upgrade-bar { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 14px; pointer-events: auto; }
     .upgrade-bar.hidden { display: none; }
+    .upgrade-bar-cards { display: flex; gap: 10px; }
+    .upgrade-bar-title { font-size: 11px; color: #ffd887; letter-spacing: 1px; text-transform: uppercase; text-align: center; opacity: 0.85; }
+    .upgrade-bar-title.hidden { display: none; }
     .upgrade-card { width: 170px; padding: 10px 8px; background: rgba(12,34,51,0.94); border: 2px solid #2a6a8a; border-radius: 8px; cursor: pointer; text-align: center; transition: border-color 0.15s, transform 0.15s; }
     .upgrade-card:hover { border-color: #ffd887; transform: translateY(-3px); }
     .upgrade-card .key { display: inline-block; width: 22px; height: 22px; line-height: 22px; background: #1a3a52; border: 1px solid #4a7a9a; border-radius: 4px; font-size: 12px; font-weight: bold; color: #ffd887; }
     .upgrade-card .uname { font-size: 13px; font-weight: bold; color: #e8f5ff; margin: 6px 0 3px; }
     .upgrade-card .udesc { font-size: 11px; color: #9fc2d9; line-height: 1.3; }
     .level-badge { color: #88ccff; }
+
+    /* Leaderboard — right side, vertically centered */
+    .leaderboard { position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 10; pointer-events: none; min-width: 190px; }
+    .leaderboard-title { font-size: 10px; color: #7aa8c2; letter-spacing: 1px; text-transform: uppercase; text-align: right; margin-bottom: 5px; }
+    .leaderboard-row { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-bottom: 3px; padding: 4px 7px; background: rgba(6,16,24,0.62); border-radius: 5px; border: 1px solid rgba(42,74,98,0.5); }
+    .leaderboard-row.lb-me { background: rgba(20,50,76,0.80); border-color: rgba(79,156,200,0.45); }
+    .leaderboard-name { color: #d6ecff; font-size: 13px; font-weight: bold; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-rank { font-size: 11px; color: #7aa8c2; min-width: 14px; text-align: right; }
+    .lb-coins { color: #ffd887; font-size: 12px; }
+    .lb-k { color: #7fdb8a; font-size: 12px; }
+    .lb-d { color: #f59b80; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -79,7 +93,6 @@
 <div class="hud">
   <div class="hud-top">
     <div class="hud-left">
-      <div class="timer" id="timer">10:00</div>
       <div class="player-count" id="playerCount">0 players</div>
       <div class="my-stats" id="myStats">
         <span class="level-badge" id="myLevel">⚓ Lv 1</span>
@@ -91,8 +104,12 @@
   </div>
 </div>
 
-<!-- Kill feed -->
+<!-- Timer (bottom center) -->
+<div class="timer" id="timer">10:00</div>
 <div class="kill-feed" id="killFeed"></div>
+
+<!-- Leaderboard (top 3, right side, mid-screen) -->
+<div class="leaderboard" id="leaderboard"></div>
 
 <!-- Scoreboard -->
 <div class="scoreboard" id="scoreboard">
@@ -103,9 +120,12 @@
 
 <!-- Upgrade offer bar -->
 <div class="upgrade-bar hidden" id="upgradeBar">
-  <div class="upgrade-card" data-idx="0"><span class="key">1</span><div class="uname" id="ug0Name"></div><div class="udesc" id="ug0Desc"></div></div>
-  <div class="upgrade-card" data-idx="1"><span class="key">2</span><div class="uname" id="ug1Name"></div><div class="udesc" id="ug1Desc"></div></div>
-  <div class="upgrade-card" data-idx="2"><span class="key">3</span><div class="uname" id="ug2Name"></div><div class="udesc" id="ug2Desc"></div></div>
+  <div class="upgrade-bar-title hidden" id="upgradeBarTitle"></div>
+  <div class="upgrade-bar-cards">
+    <div class="upgrade-card" data-idx="0"><span class="key">1</span><div class="uname" id="ug0Name"></div><div class="udesc" id="ug0Desc"></div></div>
+    <div class="upgrade-card" data-idx="1"><span class="key">2</span><div class="uname" id="ug1Name"></div><div class="udesc" id="ug1Desc"></div></div>
+    <div class="upgrade-card" data-idx="2"><span class="key">3</span><div class="uname" id="ug2Name"></div><div class="udesc" id="ug2Desc"></div></div>
+  </div>
 </div>
 
 <!-- Chat -->
@@ -134,10 +154,11 @@
 
 <script type="module">
 import { generateWorld } from '/shared/world.js';
-import { getHullShape, getHullSideMount, hullHalfWidthAt, getHullUpperEdge, getReactiveSailParams } from '/src/core/shipMath.js';
+import { getHullShape, getHullSideMount, hullHalfWidthAt, getHullUpperEdge } from '/src/core/shipMath.js';
 import { createMuzzleBlastParticles, createImpactDebrisParticles, createDeckBurstParticles } from '/src/systems/particleEffects.js';
 import { createGameAudioSystem, normalizeOr } from '/src/systems/audioSystem.js';
 import { getGunRange, getCannonRange, getVisionRange } from '/shared/shipState.js';
+import { seeded01, clamp } from '/src/core/math.js';
 
 // ─── Config ───
 const WS_URL = `ws://${location.host}`;
@@ -151,6 +172,7 @@ const playerCountEl = document.getElementById('playerCount');
 const myDoubloonsEl = document.getElementById('myDoubloons');
 const myKillsEl = document.getElementById('myKills');
 const myDeathsEl = document.getElementById('myDeaths');
+const leaderboardEl = document.getElementById('leaderboard');
 const killFeedEl = document.getElementById('killFeed');
 const scoreboardEl = document.getElementById('scoreboard');
 const scoreBodyEl = document.getElementById('scoreBody');
@@ -162,6 +184,7 @@ const nameInput = document.getElementById('nameInput');
 const joinBtn = document.getElementById('joinBtn');
 const connStatus = document.getElementById('connStatus');
 const upgradeBar = document.getElementById('upgradeBar');
+const upgradeBarTitle = document.getElementById('upgradeBarTitle');
 const ugNames = [document.getElementById('ug0Name'), document.getElementById('ug1Name'), document.getElementById('ug2Name')];
 const ugDescs = [document.getElementById('ug0Desc'), document.getElementById('ug1Desc'), document.getElementById('ug2Desc')];
 const myLevelEl = document.getElementById('myLevel');
@@ -174,11 +197,13 @@ let connected = false;
 // Double-buffer for interpolation
 let prevState = null;
 let currState = null;
+let knownHeavyBullets = new Map(); // id → {x, y} — used to detect cannonball water splashes
 let stateTime = 0;
 const SERVER_TICK_MS = 50;
 let worldData = null;       // Client-side generated world (islands from seed)
 let currentSeed = null;
-let pendingOffer = null;    // Active upgrade offer or null
+let pendingOffer = null;       // Active upgrade offer or null
+let startingPicksRemaining = 0; // Countdown for the 3-pick starting bonus sequence
 
 // Input
 const input = { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
@@ -217,12 +242,46 @@ function connect() {
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
         joinOverlay.classList.add('hidden');
+        // Show starting bonus upgrade picks if the server sent them
+        if (msg.startingOffer && msg.startingPicksRemaining > 0) {
+          startingPicksRemaining = msg.startingPicksRemaining;
+          const pickNum = 4 - startingPicksRemaining; // 1
+          showUpgradeOffer(msg.startingOffer, `Starting Bonus — Pick ${pickNum} of 3`);
+        }
         break;
 
       case 'state':
         prevState = currState;
         currState = msg;
         stateTime = performance.now();
+        // ── Cannonball water-splash: detect heavy bullets that just vanished ──
+        if (msg.bullets) {
+          const newHeavyIds = new Set(msg.bullets.filter(b => b.heavy).map(b => b.id));
+          for (const [id, pos] of knownHeavyBullets) {
+            if (!newHeavyIds.has(id)) {
+              // Cannonball disappeared — spawn water splash at last position
+              const cnt = 10 + Math.floor(Math.random() * 6);
+              for (let i = 0; i < cnt; i++) {
+                const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
+                const spd = 0.6 + Math.random() * 2.2;
+                const life = 0.5 + Math.random() * 0.7;
+                particles.push({
+                  x: pos.x, y: pos.y,
+                  vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                  size: 1.0 + Math.random() * 2.0,
+                  rot: 0, spin: 0,
+                  life, maxLife: life,
+                  color: `rgba(${100 + Math.floor(Math.random()*60)},${170 + Math.floor(Math.random()*40)},${210 + Math.floor(Math.random()*45)},0.8)`,
+                  sides: 4, drag: 0.94, circle: true
+                });
+              }
+            }
+          }
+          knownHeavyBullets.clear();
+          for (const b of msg.bullets) {
+            if (b.heavy) knownHeavyBullets.set(b.id, { x: b.x, y: b.y });
+          }
+        }
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
           worldData = generateWorld(currentSeed);
@@ -235,37 +294,71 @@ function connect() {
             if (ev.type === 'upgradeOffer' && ev.playerId === myId) showUpgradeOffer(ev.offer);
             if (ev.type === 'explosion') {
               addExplosion(ev.x, ev.y, ev.size);
-              // Explosion shard particles
-              for (let i = 0; i < 10; i++) {
+              if (audioSys) audioSys.playCannonVolleySfx(ev.x, ev.y, 0, 0, 3, ev.size || 16);
+              // Full SP shard system — hull-palette debris with wind drift
+              const wind = currState?.wind || { x: 0, y: 0 };
+              const isBoss = (ev.size || 16) >= 28;
+              const debrisPalette = [
+                ev.hullColor || '#5f4630', ev.trimColor || '#d9b78d',
+                '#ffcc7d', '#f38a53', '#de513f'
+              ];
+              const shards = isBoss ? 34 : 20;
+              for (let i = 0; i < shards; i++) {
                 const ang = Math.random() * Math.PI * 2;
-                const spd = 1.5 + Math.random() * 2.5;
+                const spd = (0.85 + Math.random() * (isBoss ? 4.6 : 3.2)) * 0.62;
+                const life = 1.6 + Math.random() * (isBoss ? 2.2 : 1.5);
+                const push = 0.16 + Math.random() * 0.34;
                 particles.push({
                   x: ev.x, y: ev.y,
                   vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
-                  size: 1 + Math.random() * 2, life: 0.4 + Math.random() * 0.5, maxLife: 0.9,
-                  color: ['#ffcc00','#ff9933','#ff5500','#cc3300'][Math.floor(Math.random()*4)],
-                  sides: Math.random() < 0.5 ? 3 : 4, drag: 0.96,
-                  rot: Math.random() * 6.28, spin: (Math.random()-0.5) * 0.6
+                  size: (1.6 + Math.random() * 4.8) * (isBoss ? 1.2 : 1),
+                  rot: Math.random() * Math.PI * 2,
+                  spin: (Math.random() - 0.5) * (isBoss ? 0.65 : 0.48),
+                  life, maxLife: life,
+                  color: debrisPalette[Math.floor(Math.random() * debrisPalette.length)],
+                  sides: Math.random() < 0.55 ? 3 : 4,
+                  drag: 0.982 + Math.random() * 0.01,
+                  currentX: wind.x * push, currentY: wind.y * push
                 });
               }
             }
-            if (ev.type === 'cannonFire' && audioSys) {
-              audioSys.playCannonVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
-              const ps = createMuzzleBlastParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, true);
-              particles.push(...ps);
+            if (ev.type === 'cannonFire') {
+              if (audioSys) audioSys.playCannonVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
+              particles.push(...createMuzzleBlastParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, true));
             }
-            if (ev.type === 'gunFire' && audioSys) {
-              audioSys.playGunVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
-              const ps = createMuzzleBlastParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, false);
-              particles.push(...ps);
+            if (ev.type === 'gunFire') {
+              if (audioSys) audioSys.playGunVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
+              particles.push(...createMuzzleBlastParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, false));
             }
             if (ev.type === 'hit') {
               const heavy = !!ev.heavy;
-              const ps = createImpactDebrisParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, heavy);
-              particles.push(...ps);
+              particles.push(...createImpactDebrisParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, heavy));
+              particles.push(...createDeckBurstParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, heavy));
               if (audioSys) {
                 if (heavy) audioSys.playCannonImpactSfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.size || 16);
                 else audioSys.playGunImpactSfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.size || 16);
+              }
+            }
+            if (ev.type === 'buildingHit') {
+              // Wood + stone dust puff
+              const dustColors = ['#a89070', '#c4a878', '#8a7055', '#d4bc94'];
+              const cnt = 8 + Math.floor(Math.random() * 6);
+              for (let i = 0; i < cnt; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 0.4 + Math.random() * 1.4;
+                const life = 0.8 + Math.random() * 0.9;
+                particles.push({
+                  x: ev.x + (Math.random() - 0.5) * 6,
+                  y: ev.y + (Math.random() - 0.5) * 6,
+                  vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                  size: 1.2 + Math.random() * 2.4,
+                  rot: Math.random() * Math.PI * 2,
+                  spin: (Math.random() - 0.5) * 0.4,
+                  life, maxLife: life,
+                  color: dustColors[Math.floor(Math.random() * dustColors.length)],
+                  sides: 4, drag: 0.975,
+                  circle: Math.random() < 0.4
+                });
               }
             }
           }
@@ -273,7 +366,14 @@ function connect() {
         break;
 
       case 'upgradeApplied':
-        hideUpgradeOffer();
+        if (msg.startingPicksRemaining > 0 && msg.nextOffer) {
+          // Still in starting bonus sequence — show the next offer
+          startingPicksRemaining = msg.startingPicksRemaining;
+          const pickNum = 4 - startingPicksRemaining;
+          showUpgradeOffer(msg.nextOffer, `Starting Bonus — Pick ${pickNum} of 3`);
+        } else {
+          hideUpgradeOffer();
+        }
         break;
 
       case 'chat':
@@ -349,6 +449,9 @@ function sendInput() {
 
 // ─── Cannon fire (click to aim) ───
 let mouseX = 0, mouseY = 0;
+let autoFireEnabled = false, autoFireTimer = 0;
+// ─── FPS counter ───
+let _fps = 0, _fpsFrames = 0, _fpsNext = 0;
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -359,7 +462,9 @@ canvas.addEventListener('mousedown', (e) => {
   if (!ws || ws.readyState !== 1 || myId === null || !currState) return;
   const me = currState.players[myId];
   if (!me || !me.alive) return;
-  const zoom = 2.0;
+  const baseZoom = 2.4;
+  const bonusZoom = (me.lookoutRangeBonus || 0) * -0.003;
+  const zoom = Math.max(1.3, Math.min(3.0, baseZoom + bonusZoom));
   const cam = { x: me.x - canvas.width / (2 * zoom), y: me.y - canvas.height / (2 * zoom) };
   const rect = canvas.getBoundingClientRect();
   const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -370,24 +475,45 @@ canvas.addEventListener('mousedown', (e) => {
   ws.send(JSON.stringify({ type: 'cannonFire', angle }));
 });
 
+// ─── Auto-fire toggle (F key) ───
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'f' || e.key === 'F') {
+    autoFireEnabled = !autoFireEnabled;
+    autoFireTimer = 0;
+  }
+});
+
 // ─── Upgrade UI ───
-function showUpgradeOffer(offer) {
+function showUpgradeOffer(offer, title) {
   if (!offer || offer.length < 3) return;
   pendingOffer = offer;
   for (let i = 0; i < 3; i++) {
     ugNames[i].textContent = offer[i].name;
     ugDescs[i].textContent = offer[i].desc;
   }
+  if (title) {
+    upgradeBarTitle.textContent = title;
+    upgradeBarTitle.classList.remove('hidden');
+  } else {
+    upgradeBarTitle.classList.add('hidden');
+  }
   upgradeBar.classList.remove('hidden');
+  // Play a little reward chime each time an offer appears
+  if (audioSys) audioSys.playUiChirp();
 }
 function hideUpgradeOffer() {
   pendingOffer = null;
+  startingPicksRemaining = 0;
   upgradeBar.classList.add('hidden');
 }
 function selectUpgrade(idx) {
   if (!pendingOffer || !ws || ws.readyState !== 1) return;
   ws.send(JSON.stringify({ type: 'selectUpgrade', index: idx }));
-  hideUpgradeOffer();
+  // During the starting bonus sequence, wait for the server to send the next offer
+  // (don't hide — the 'upgradeApplied' response will drive it).
+  // For normal mid-game offers, optimistically hide immediately.
+  if (startingPicksRemaining === 0) hideUpgradeOffer();
+  else pendingOffer = null; // prevent double-send while waiting
 }
 document.querySelectorAll('.upgrade-card').forEach(card => {
   card.addEventListener('click', () => selectUpgrade(parseInt(card.dataset.idx)));
@@ -521,40 +647,123 @@ function spawnFireParticles(ship) {
   });
 }
 
-// ─── Clouds ───
-const clouds = [];
-function initClouds(w, h) {
-  clouds.length = 0;
-  for (let i = 0; i < 18; i++) {
-    clouds.push({
-      x: Math.random() * w, y: Math.random() * h,
-      size: 70 + Math.random() * 110,
-      dx: 0.25 + Math.random() * 0.35,
-      opacity: 0.05 + Math.random() * 0.05,
-      seed: Math.random() * 100
-    });
-  }
-}
-function drawClouds(cam, zoom, time, worldW) {
-  for (const c of clouds) {
-    const cx = (c.x + time * c.dx * 10) % (worldW || 4000);
-    const sp = toScreen(cx, c.y, cam, zoom);
-    const r = c.size * zoom;
-    if (sp.x + r < -100 || sp.x - r > canvas.width + 100 || sp.y + r < -100 || sp.y - r > canvas.height + 100) continue;
-    ctx.globalAlpha = c.opacity;
-    ctx.fillStyle = '#c8d8e8';
-    const blobs = 3 + Math.floor(c.seed) % 3;
-    for (let b = 0; b < blobs; b++) {
-      const bx = sp.x + Math.cos(c.seed + b * 2.1) * r * 0.3;
-      const by = sp.y + Math.sin(c.seed + b * 1.7) * r * 0.15;
-      const br = r * (0.35 + ((c.seed * 10 + b) % 10) / 10 * 0.25);
-      ctx.beginPath();
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fill();
+// ─── Fog of war + procedural cloud mask ───
+// Ported from SP drawVisionCloudMask. Uses evenodd fill so game pixels are
+// never erased — only the fog overlay itself is shaped.
+function drawFogLayer(me, cam, zoom, time) {
+  const visionPx = getVisionRange(me) * zoom;
+  const sp = toScreen(me.x, me.y, cam, zoom);
+
+  // ── Hard fog ring — evenodd punch-out (never touches drawn game content) ──
+  const baseRadius = Math.max(140, visionPx * 0.98);
+  const dissolveOuter = baseRadius * 1.18;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.arc(sp.x, sp.y, dissolveOuter, 0, Math.PI * 2, true); // CCW = hole
+  ctx.fillStyle = 'rgba(4,12,20,0.82)';
+  ctx.fill('evenodd');
+
+  // Soft gradient at vision edge
+  const edgeGrad = ctx.createRadialGradient(sp.x, sp.y, baseRadius * 0.85, sp.x, sp.y, dissolveOuter);
+  edgeGrad.addColorStop(0, 'rgba(4,12,20,0)');
+  edgeGrad.addColorStop(1, 'rgba(4,12,20,0.82)');
+  ctx.beginPath();
+  ctx.arc(sp.x, sp.y, dissolveOuter, 0, Math.PI * 2);
+  ctx.fillStyle = edgeGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Procedural tiled cloud blobs — dissolve at vision edge ──
+  const dissolveBand = Math.max(90, visionPx * 0.28);
+
+  const fieldRadiusAt = (angle) => {
+    const wobbleA = Math.sin(angle * 3 + time * 0.19) * 0.08;
+    const wobbleB = Math.sin(angle * 5 - time * 0.27) * 0.05;
+    const wobbleC = Math.sin(angle * 8 + time * 0.11) * 0.03;
+    return baseRadius * (1 + wobbleA + wobbleB + wobbleC);
+  };
+
+  const cloudOutsideFactor = (px, py) => {
+    const dx = px - sp.x;
+    const dy = py - sp.y;
+    const dist = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx);
+    const edge = fieldRadiusAt(angle);
+    return clamp((dist - edge) / dissolveBand, 0, 1);
+  };
+
+  const drawFogCloudBlob = (x, y, scale, alphaBase) => {
+    const w = 154 * scale;
+    const h = 52 * scale;
+    ctx.fillStyle = `rgba(198,216,231,${(alphaBase * 0.78).toFixed(3)})`;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x + w * 0.18, y - h * 0.34, w * 0.64, h * 0.46);
+    ctx.fillRect(x + w * 0.14, y + h * 0.6, w * 0.52, h * 0.32);
+    ctx.fillStyle = `rgba(156,178,197,${(alphaBase * 0.68).toFixed(3)})`;
+    ctx.fillRect(x + w * 0.06, y + h * 0.18, w * 0.88, h * 0.52);
+    ctx.fillStyle = `rgba(108,132,154,${(alphaBase * 0.58).toFixed(3)})`;
+    ctx.fillRect(x + w * 0.24, y - h * 0.06, w * 0.46, h * 0.72);
+  };
+
+  const layers = [
+    { sx: 154, sy: 104, ox: 0,  oy: 0,  scale: 1.22, driftMul: 1,    alphaMul: 1    },
+    { sx: 148, sy: 98,  ox: 58, oy: 30, scale: 1.14, driftMul: 0.8,  alphaMul: 0.92 },
+    { sx: 142, sy: 94,  ox: 28, oy: 58, scale: 1.08, driftMul: 1.24, alphaMul: 0.86 },
+    { sx: 136, sy: 90,  ox: 74, oy: 14, scale: 1.02, driftMul: 0.66, alphaMul: 0.82 }
+  ];
+
+  const wind = currState?.wind || { x: 0, y: 0 };
+  for (let l = 0; l < layers.length; l++) {
+    const layer = layers[l];
+    const driftX = (time * (11 + l * 1.6) + wind.x * 110 * layer.driftMul) % layer.sx;
+    const driftY = (time * (7  + l * 1.2) + wind.y * 90  * layer.driftMul) % layer.sy;
+
+    for (let y = -220; y < canvas.height + 220; y += layer.sy) {
+      for (let x = -280; x < canvas.width + 280; x += layer.sx) {
+        const cellX = Math.floor((x + 5000) / layer.sx);
+        const cellY = Math.floor((y + 5000) / layer.sy);
+        const seed  = cellX * 17.13 + cellY * 31.79 + l * 91.37;
+        const r1 = seeded01(seed + 0.11);
+        const r2 = seeded01(seed + 0.29);
+        const r3 = seeded01(seed + 0.47);
+        const r4 = seeded01(seed + 0.63);
+        const r5 = seeded01(seed + 0.83);
+
+        const jitterX     = (r1 * 2 - 1) * 26;
+        const jitterY     = (r2 * 2 - 1) * 20;
+        const scaleJitter = 0.86 + r3 * 0.42;
+        const alphaJitter = 0.7  + r4 * 0.56;
+
+        const baseX = x + driftX + layer.ox + jitterX;
+        const baseY = y + driftY + layer.oy + jitterY;
+
+        // probe center of blob to decide visibility
+        const probeX = baseX + 94 * layer.scale;
+        const probeY = baseY + 32 * layer.scale;
+        const outside = cloudOutsideFactor(probeX, probeY);
+        if (outside <= 0.01) continue;
+
+        const alpha     = (0.2 + Math.pow(outside, 0.74) * 0.72) * layer.alphaMul * alphaJitter;
+        const mainScale = layer.scale * scaleJitter;
+        drawFogCloudBlob(baseX, baseY, mainScale, alpha);
+
+        if (r5 > 0.34) {
+          const subX = baseX + (r2 * 2 - 1) * 34;
+          const subY = baseY + (r1 * 2 - 1) * 26;
+          drawFogCloudBlob(subX, subY, mainScale * (0.72 + r4 * 0.28), alpha * 0.78);
+        }
+      }
     }
   }
-  ctx.globalAlpha = 1;
+
+  // Subtle ambient dark tint over whole screen
+  ctx.fillStyle = 'rgba(9,15,22,0.22)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
+
+function initClouds() {} // no-op — clouds are now fully procedural in drawFogLayer
 
 // ─── Audio system ───
 let audioSys = null;
@@ -820,9 +1029,9 @@ function draw() {
   const time = performance.now() / 1000;
 
   // Dynamic zoom (zoom out as lookout range increases)
-  const baseZoom = 2.0;
+  const baseZoom = 2.4;
   const bonusZoom = (me.lookoutRangeBonus || 0) * -0.003;
-  const zoom = Math.max(1.3, Math.min(2.5, baseZoom + bonusZoom));
+  const zoom = Math.max(1.3, Math.min(3.0, baseZoom + bonusZoom));
   const cam = {
     x: me.x - canvas.width / (2 * zoom),
     y: me.y - canvas.height / (2 * zoom)
@@ -904,13 +1113,30 @@ function draw() {
   if (st.bullets) {
     for (const b of st.bullets) {
       const bp = toScreen(b.x, b.y, cam, zoom);
-      const isOwn = (b.ownerId === myId);
-      ctx.fillStyle = b.heavy
-        ? (isOwn ? '#f1b05f' : '#f59b80')
-        : (isOwn ? '#ffd887' : '#f8baa5');
-      ctx.beginPath();
-      ctx.arc(bp.x, bp.y, (b.heavy ? 3.4 : 2.2) * zoom, 0, Math.PI * 2);
-      ctx.fill();
+      if (b.heavy) {
+        // Cannonball — black circle with slight sheen
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(bp.x, bp.y, 3.4 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.arc(bp.x - 0.8 * zoom, bp.y - 0.8 * zoom, 1.1 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Musket ball — tiny silver circle, 10% the radius of a cannonball
+        const r = Math.max(1, 0.34 * zoom);
+        ctx.beginPath();
+        ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#c8ccd0';
+        ctx.fill();
+        if (r > 1.2) {
+          ctx.beginPath();
+          ctx.arc(bp.x - r * 0.3, bp.y - r * 0.3, r * 0.35, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.fill();
+        }
+      }
     }
   }
 
@@ -920,26 +1146,8 @@ function draw() {
   // Explosions
   drawExplosions(cam, zoom, dt);
 
-  // Fog of war
-  {
-    const visionR = getVisionRange(me) * zoom;
-    const sp = toScreen(me.x, me.y, cam, zoom);
-    ctx.save();
-    ctx.fillStyle = 'rgba(4,12,20,0.5)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalCompositeOperation = 'destination-out';
-    const grad = ctx.createRadialGradient(sp.x, sp.y, visionR * 0.65, sp.x, sp.y, visionR);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(sp.x, sp.y, visionR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Clouds
-  if (st.world) drawClouds(cam, zoom, time, st.world.width);
+  // Fog of war + procedural cloud mask
+  drawFogLayer(me, cam, zoom, time);
 
   // Range rings (own ship)
   if (me && me.alive) {
@@ -985,6 +1193,39 @@ function draw() {
     ctx.stroke();
   }
 
+  // Auto-fire tick
+  if (autoFireEnabled && me.alive && ws && ws.readyState === 1) {
+    autoFireTimer += dt;
+    const autoReload = 3.5;
+    if (autoFireTimer >= autoReload) {
+      let bestDist = Infinity, bestAngle = 0, gotTarget = false;
+      const checkTarget = (p) => {
+        if (!p || !p.alive || p.id === myId) return;
+        const dx = p.x - me.x, dy = p.y - me.y;
+        const d = Math.hypot(dx, dy);
+        if (d < bestDist) { bestDist = d; bestAngle = Math.atan2(dy, dx); gotTarget = true; }
+      };
+      for (const id of Object.keys(st.players)) checkTarget(st.players[id]);
+      if (st.npcs) for (const id of Object.keys(st.npcs)) checkTarget(st.npcs[id]);
+      if (gotTarget) {
+        ws.send(JSON.stringify({ type: 'cannonFire', angle: bestAngle }));
+        autoFireTimer = 0;
+      }
+    }
+  }
+
+  // FPS counter + auto-fire badge
+  ctx.save();
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(6, 6, 104, 36);
+  ctx.fillStyle = '#a8d8a8';
+  ctx.fillText(`${_fps} FPS`, 10, 20);
+  ctx.fillStyle = autoFireEnabled ? '#ffcc44' : '#6a8898';
+  ctx.fillText(`[F] ${autoFireEnabled ? 'AUTO FIRE ●' : 'manual fire'}`, 10, 34);
+  ctx.restore();
+
   // Scoreboard
   if (tabHeld) {
     scoreboardEl.classList.add('visible');
@@ -1011,12 +1252,12 @@ function drawWaterGrid(cam, zoom) {
       const sw = tileSize * zoom + 1;
       const sh = tileSize * zoom + 1;
       const even = (tx + ty) % 2 === 0;
-      ctx.fillStyle = even ? '#0b2638' : '#0d2c40';
+      ctx.fillStyle = even ? '#164c70' : '#1a5880';
       ctx.fillRect(sx, sy, sw, sh);
       const wavePh = Math.sin(time * 1.1 + tx * 0.7 + ty * 0.5);
       if (wavePh > 0.35) {
         ctx.globalAlpha = (wavePh - 0.35) * 0.07;
-        ctx.fillStyle = '#3a7aaa';
+        ctx.fillStyle = '#5090c0';
         ctx.fillRect(sx, sy, sw, sh);
         ctx.globalAlpha = 1;
       }
@@ -1070,6 +1311,25 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     ctx.globalAlpha = 1;
   }
 
+  // Ram bow — dark steel triangle, drawn BEFORE hull so the base is buried inside (only tip protrudes)
+  // ~20% of total ship visual length, tip sticks past the bow, body embedded in hull
+  if (p.ram) {
+    const rLen = shape.len * 0.45 * z;   // ~20% of total visual ship length
+    const halfW = rLen * 0.36;            // width of base
+    const tipX   =  shape.bowX * z + rLen * 0.35;  // tip: protrudes forward of bow
+    const baseX  =  shape.bowX * z - rLen * 0.65;  // base: inside hull, will be covered
+    ctx.fillStyle = '#38383f';
+    ctx.beginPath();
+    ctx.moveTo(tipX, 0);
+    ctx.lineTo(baseX, -halfW);
+    ctx.lineTo(baseX,  halfW);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#888896';
+    ctx.lineWidth = Math.max(0.5, z * 0.5);
+    ctx.stroke();
+  }
+
   // Hull fill
   drawHullPolygon(shape, z);
   ctx.fillStyle = p.hullColor || '#5f4630';
@@ -1077,7 +1337,7 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
 
   // Trim stroke
   ctx.strokeStyle = p.trimColor || '#d9b78d';
-  ctx.lineWidth = Math.max(1, z * 0.8);
+  ctx.lineWidth = Math.max(2, z * 1.8);
   ctx.stroke();
 
   // Armor plate lines
@@ -1097,19 +1357,21 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     }
   }
 
-  // Ram bow
+  // Ram bow — lighter top cap drawn over hull, only the protruding tip portion
   if (p.ram) {
-    const rLen = 4 * z;
-    const rW = 3 * z;
-    ctx.fillStyle = '#888';
+    const rLen = shape.len * 0.45 * z;
+    const halfW = rLen * 0.22;
+    const tipX   = shape.bowX * z + rLen * 0.35;
+    const baseX  = shape.bowX * z;            // exposed part starts at bow edge
+    ctx.fillStyle = '#7a7a86';
     ctx.beginPath();
-    ctx.moveTo(shape.bowX * z + rLen, 0);
-    ctx.lineTo(shape.bowX * z, -rW * 0.5);
-    ctx.lineTo(shape.bowX * z, rW * 0.5);
+    ctx.moveTo(tipX, 0);
+    ctx.lineTo(baseX, -halfW);
+    ctx.lineTo(baseX,  halfW);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = '#aaaabc';
+    ctx.lineWidth = Math.max(0.5, z * 0.6);
     ctx.stroke();
   }
 
@@ -1129,40 +1391,40 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
       ctx.translate(mx, my);
       ctx.rotate(angle);
       if (type === 'cannon') {
-        ctx.fillStyle = '#3a3a3a';
-        ctx.fillRect(0, -1.2 * z, 5.5 * z, 2.4 * z);
-        ctx.strokeStyle = '#222';
+        ctx.fillStyle = '#7a7a7a';
+        ctx.fillRect(0, -1.2 * z, 11.0 * z, 2.4 * z);
+        ctx.strokeStyle = '#4a4a4a';
         ctx.lineWidth = 0.5;
-        ctx.strokeRect(0, -1.2 * z, 5.5 * z, 2.4 * z);
+        ctx.strokeRect(0, -1.2 * z, 11.0 * z, 2.4 * z);
       } else if (type === 'gun') {
-        ctx.fillStyle = '#5a4a3a';
-        ctx.fillRect(0, -0.8 * z, 3.6 * z, 1.6 * z);
+        ctx.fillStyle = '#b8c0c8';
+        ctx.fillRect(0, -0.8 * z, 7.2 * z, 1.6 * z);
+        ctx.strokeStyle = '#8898a8';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(0, -0.8 * z, 7.2 * z, 1.6 * z);
       }
       ctx.restore();
     }
   }
 
-  // Reactive sail
+  // Square sail — thin horizontal rectangle, rotates to always face the wind
   if (p.sailOpen && currState && currState.wind) {
-    const time = performance.now() / 1000;
-    const sailP = getReactiveSailParams(p, size, currState.wind, time, !!p.isNpc);
+    const wind = currState.wind;
     const mastPosX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
-    const halfChord = (size * (p.isNpc ? 0.9 : 1.08) * 0.5) * z;
+    // Wind direction relative to ship heading → yard angle (perpendicular to wind = broad face catches wind)
+    const windAngle = Math.atan2(wind.y, wind.x);
+    const yardAngle = windAngle - p.heading + Math.PI / 2;
+    const sailW = size * 2.0 * z;   // wider than hull beam
+    const sailH = Math.max(2.5, z * 2.5); // thin flat rectangle
     ctx.save();
     ctx.translate(mastPosX, 0);
+    ctx.rotate(yardAngle);
     ctx.fillStyle = p.sailColor || '#f0f7ff';
-    ctx.globalAlpha = 0.82;
-    const lx = sailP.leechX * z;
-    const b = sailP.bend * z * 2;
-    ctx.beginPath();
-    ctx.moveTo(0, -halfChord);
-    ctx.quadraticCurveTo(lx * 0.6, -halfChord * 0.3 + b, lx, b);
-    ctx.quadraticCurveTo(lx * 0.6, halfChord * 0.3 + b, 0, halfChord);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(180,190,200,0.25)';
-    ctx.lineWidth = Math.max(0.5, z * 0.3);
-    ctx.stroke();
+    ctx.globalAlpha = 0.88;
+    ctx.fillRect(-sailW / 2, -sailH / 2, sailW, sailH);
+    ctx.strokeStyle = 'rgba(130,150,170,0.5)';
+    ctx.lineWidth = Math.max(0.5, z * 0.4);
+    ctx.strokeRect(-sailW / 2, -sailH / 2, sailW, sailH);
     ctx.globalAlpha = 1;
     ctx.restore();
   }
@@ -1336,6 +1598,23 @@ function updateHud(st) {
     myKillsEl.textContent = `☠ ${me.kills}`;
     myDeathsEl.textContent = `💀 ${me.deaths}`;
   }
+
+  // ── Leaderboard: top 3 players by doubloons ──
+  const rows = Object.entries(st.players)
+    .sort(([, a], [, b]) => b.doubloons - a.doubloons)
+    .slice(0, 3);
+  const rankSymbol = ['🥇', '🥈', '🥉'];
+  leaderboardEl.innerHTML = `<div class="leaderboard-title">Top Captains</div>` +
+    rows.map(([id, p], i) => {
+      const isMe = parseInt(id) === myId;
+      return `<div class="leaderboard-row${isMe ? ' lb-me' : ''}">
+        <span class="lb-rank">${rankSymbol[i]}</span>
+        <span class="leaderboard-name">${esc(p.name)}</span>
+        <span class="lb-k">☠${p.kills}</span>
+        <span class="lb-d">💀${p.deaths}</span>
+        <span class="lb-coins">🪙${p.doubloons}</span>
+      </div>`;
+    }).join('');
 }
 
 function updateScoreboard(st) {
@@ -1357,6 +1636,9 @@ function updateScoreboard(st) {
 
 // ─── Loop ───
 function loop() {
+  _fpsFrames++;
+  const now = performance.now();
+  if (now >= _fpsNext) { _fps = _fpsFrames; _fpsFrames = 0; _fpsNext = now + 1000; }
   draw();
   requestAnimationFrame(loop);
 }
