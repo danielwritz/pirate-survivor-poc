@@ -2686,3 +2686,15 @@
 [2026-03-05T14:16:25.579Z] Pirate Survivor server running on http://localhost:3000
 [2026-03-05T14:16:25.580Z] Open http://localhost:3000 in your browser to play.
 [2026-03-05T14:16:25.580Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T15:28:08.002Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T15:28:08.006Z] ERROR: uncaughtException: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1740:16)
+    at listenInCluster (node:net:1788:12)
+    at Server.listen (node:net:1876:7)
+    at start (file:///C:/Users/danie/source/repos/pirate-survivor-poc/server/index.js:261:14)
+[2026-03-05T15:28:38.365Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T15:28:38.369Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T15:28:38.370Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T15:28:38.370Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T15:31:06.075Z] Player 1 (test) joined. Total: 1
+[2026-03-05T15:31:06.084Z] 404 /favicon.ico

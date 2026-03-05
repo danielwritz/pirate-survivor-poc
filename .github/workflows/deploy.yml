@@ -28,8 +28,12 @@ jobs:
       - name: Runtime parity preflight
         run: CI_NODE_VERSION=${{ env.NODE_VERSION }} npm run check:runtime
 
-      - name: Install dependencies
-        run: npm ci --omit=dev
+      - name: Assert no node_modules artifact
+        run: |
+          if [ -d node_modules ]; then
+            echo "node_modules must not be deployed";
+            exit 1;
+          fi
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3

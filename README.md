@@ -54,9 +54,38 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 - Set app settings:
 	- `PORT=3000` (or leave platform default if already set by your runtime)
 	- `LEADERBOARD_DB_PATH=/home/data/leaderboard.sqlite` (Linux example)
+	- `SCM_DO_BUILD_DURING_DEPLOYMENT=true`
+	- `ENABLE_ORYX_BUILD=true`
 - Set App Service runtime stack to Node 22 (Linux `linuxFxVersion`: `NODE|22-lts`).
+- Deploy source only from CI (exclude `node_modules`) so native modules compile on the App Service runtime.
+- GitHub workflow includes a guard step to fail deploys if `node_modules` appears in the artifact workspace.
 - Keep startup command as `npm start` (runs `node server/index.js`).
 - Verify after deploy by checking app logs for `Leaderboard DB path:` and confirming it points to `/home` (Linux) or `D:\\home` (Windows).
+
+#### Azure CLI quick setup (Linux App Service)
+```bash
+RG="<resource-group>"
+APP="pirate-game-9000"
+
+# Runtime parity (Node 22)
+az webapp config set \
+	--resource-group "$RG" \
+	--name "$APP" \
+	--linux-fx-version "NODE|22-lts"
+
+# Build native modules on-target during deploy (no prebuilt node_modules from CI)
+az webapp config appsettings set \
+	--resource-group "$RG" \
+	--name "$APP" \
+	--settings \
+		SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+		ENABLE_ORYX_BUILD=true \
+		LEADERBOARD_DB_PATH=/home/data/leaderboard.sqlite
+
+# Optional: verify active settings
+az webapp config show --resource-group "$RG" --name "$APP" --query linuxFxVersion
+az webapp config appsettings list --resource-group "$RG" --name "$APP" --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT'||name=='ENABLE_ORYX_BUILD'||name=='LEADERBOARD_DB_PATH']"
+```
 
 ### Single-player (sandbox)
 Serve the workspace root with a local HTTP server, then open `index.html`:
