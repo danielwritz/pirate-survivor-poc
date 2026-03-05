@@ -1,14 +1,20 @@
-import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
 const DEFAULT_DB_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'leaderboard.sqlite');
 
 export function createLeaderboardStore(dbPath = DEFAULT_DB_PATH) {
+  function normalizeScore(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.round(n * 1000) / 1000);
+  }
+
   mkdirSync(dirname(dbPath), { recursive: true });
 
-  const db = new DatabaseSync(dbPath);
+  const db = new Database(dbPath);
   db.exec(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS player_scores (
@@ -51,13 +57,8 @@ export function createLeaderboardStore(dbPath = DEFAULT_DB_PATH) {
     LIMIT ?
   `);
 
-  function normalizeScore(v) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.round(n * 1000) / 1000);
-  }
-
   return {
+    dbPath,
     saveRoundSummary(summary, limit = 10) {
       if (!summary || !Array.isArray(summary.players) || summary.players.length === 0) {
         return this.getTopScores(limit);

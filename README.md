@@ -38,6 +38,22 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 2. `node server/index.js`
 3. Open `http://localhost:3000` in one or more browser tabs
 
+#### Multiplayer persistent leaderboard (SQLite)
+- Leaderboard storage uses SQLite on-disk (no in-memory fallback).
+- Optional env var: `LEADERBOARD_DB_PATH` (absolute or relative file path).
+- Default path: `data/leaderboard.sqlite`.
+
+### Azure App Service notes (SQLite)
+- SQLite is file-based and only safe for a **single App Service instance**. Disable horizontal scale-out.
+- Use a persistent App Service path for the DB file:
+	- Linux App Service: `/home/data/leaderboard.sqlite`
+	- Windows App Service: `D:\\home\\data\\leaderboard.sqlite`
+- Set app settings:
+	- `PORT=3000` (or leave platform default if already set by your runtime)
+	- `LEADERBOARD_DB_PATH=/home/data/leaderboard.sqlite` (Linux example)
+- Keep startup command as `npm start` (runs `node server/index.js`).
+- Verify after deploy by checking app logs for `Leaderboard DB path:` and confirming it points to `/home` (Linux) or `D:\\home` (Windows).
+
 ### Single-player (sandbox)
 Serve the workspace root with a local HTTP server, then open `index.html`:
 - `npx serve . -l 4173`

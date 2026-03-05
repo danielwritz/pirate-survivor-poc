@@ -55,6 +55,7 @@ import { createLeaderboardStore } from './leaderboardStore.js';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ACTIVE_PLAYER_LIMIT = 10;
 const GLOBAL_LEADERBOARD_LIMIT = 100;
+const LEADERBOARD_DB_PATH = (process.env.LEADERBOARD_DB_PATH || '').trim() || undefined;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
@@ -240,12 +241,13 @@ function broadcastState() {
 
 // --- Start (async — loads catalogs before beginning tick loop) ---
 async function start() {
-  leaderboardStore = createLeaderboardStore();
+  leaderboardStore = createLeaderboardStore(LEADERBOARD_DB_PATH);
   sim = await createSimulation();
   sim.activePlayerLimit = ACTIVE_PLAYER_LIMIT;
   sim.persistentLeaderboard = leaderboardStore.getTopScores(GLOBAL_LEADERBOARD_LIMIT);
   sim.onRoundEnded = (roundSummary) => leaderboardStore.saveRoundSummary(roundSummary, GLOBAL_LEADERBOARD_LIMIT);
   console.log('Simulation initialized (upgrade catalog loaded).');
+  log(`Leaderboard DB path: ${leaderboardStore.dbPath}`);
 
   setInterval(() => {
     try {
