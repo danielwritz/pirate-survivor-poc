@@ -95,6 +95,9 @@
     .join-box input { padding: 10px 14px; font-size: 16px; border: 1px solid #2a4a62; background: #0c2233; color: #e8f5ff; border-radius: 6px; width: 220px; text-align: center; }
     .join-box button { display: block; margin: 14px auto 0; padding: 10px 28px; font-size: 16px; background: #1a5a3a; color: #e8f5ff; border: 1px solid #2a8a5a; border-radius: 6px; cursor: pointer; }
     .join-box button:hover { background: #237a4a; }
+    .join-box .solo-btn { background: transparent; border-color: #2a4a62; color: #9fc2d9; font-size: 13px; padding: 7px 20px; margin-top: 8px; }
+    .join-box .solo-btn:hover { background: rgba(42,74,98,0.35); border-color: #4f9cc8; color: #d6ecff; }
+    .join-box .divider { margin: 10px auto 0; font-size: 11px; color: #3a6a82; letter-spacing: 1px; text-transform: uppercase; }
     .join-box .status { margin-top: 12px; font-size: 14px; color: #9fc2d9; }
 
     .hint { position: fixed; right: 14px; bottom: 12px; z-index: 10; color: #5a8aa6; font-size: 12px; text-align: right; pointer-events: none; }
@@ -262,7 +265,9 @@
   <div class="join-box">
     <h1>⚓ Pirate Survivor</h1>
     <input id="nameInput" type="text" placeholder="Your name" maxlength="20" autofocus />
-    <button id="joinBtn">Set Sail</button>
+    <button id="joinBtn">⚔ Set Sail (Multiplayer)</button>
+    <div class="divider">or</div>
+    <button class="solo-btn" id="soloBtn">🏴‍☠️ Solo Adventure</button>
     <div class="status" id="connStatus">Connecting…</div>
   </div>
 </div>
@@ -609,6 +614,11 @@ function doJoin() {
 }
 joinBtn.addEventListener('click', doJoin);
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
+
+// ─── Solo ───
+document.getElementById('soloBtn').addEventListener('click', () => {
+  location.href = '/index.html';
+});
 
 // ─── Input ───
 const KEY_MAP = {
