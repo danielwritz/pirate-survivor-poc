@@ -2771,3 +2771,9 @@
 [2026-03-05T18:19:49.196Z] 404 /favicon.ico
 [2026-03-05T18:21:05.899Z] Player 3 (T) joined. Total: 3
 [2026-03-05T18:21:06.014Z] 404 /favicon.ico
+[2026-03-05T20:43:56.407Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T20:43:56.415Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T20:43:56.416Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T20:43:56.416Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T20:44:52.927Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-05T20:44:52.941Z] 404 /favicon.ico

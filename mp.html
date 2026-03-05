@@ -310,6 +310,7 @@ import { createMuzzleBlastParticles, createImpactDebrisParticles, createDeckBurs
 import { createGameAudioSystem, normalizeOr } from '/src/systems/audioSystem.js';
 import { getGunRange, getCannonRange, getVisionRange } from '/shared/shipState.js';
 import { seeded01, clamp } from '/src/core/math.js';
+import { drawShipRenderer } from '/src/rendering/shipRenderer.js';
 
 // ─── Config ───
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
@@ -1751,7 +1752,7 @@ function draw() {
     if (!p || !p.alive) continue;
     const isMe = (nid === myId);
     const sp = toScreen(p.x, p.y, cam, zoom);
-    drawShipAt(sp.x, sp.y, p, zoom, isMe);
+    drawShipAt(sp.x, sp.y, p, zoom, isMe, cam);
   }
 
   // NPC ships
@@ -1760,7 +1761,7 @@ function draw() {
       const p = getInterpolatedNpc(parseInt(id));
       if (!p || !p.alive) continue;
       const sp = toScreen(p.x, p.y, cam, zoom);
-      drawShipAt(sp.x, sp.y, p, zoom, false);
+      drawShipAt(sp.x, sp.y, p, zoom, false, cam);
     }
   }
 
@@ -2142,214 +2143,73 @@ function drawShipBurningOverlay(p, shape, z) {
   }
 }
 
-function drawShipAt(sx, sy, p, zoom, isMe) {
+function rendererMountLayoutStrategy(ship) {
+  const layout = ship?.weaponLayout;
+  if (Array.isArray(layout?.port) && Array.isArray(layout?.starboard)) {
+    return {
+      port: layout.port.map((slot) => slot || 'empty'),
+      starboard: layout.starboard.map((slot) => slot || 'empty')
+    };
+  }
+
+  // Fallback for legacy/count-based ships. Keeping this hook makes future layout
+  // augmentation easy without modifying renderer internals.
+  const slotCount = Math.max(1, Number(ship?.cannons || 0), Number(ship?.gunners || 0));
+  const port = new Array(slotCount).fill('empty');
+  const starboard = new Array(slotCount).fill('empty');
+  const cannonCount = Math.max(0, Math.min(slotCount, Number(ship?.cannons || 0)));
+  const gunCount = Math.max(0, Math.min(slotCount - cannonCount, Number(ship?.gunners || 0)));
+
+  for (let i = 0; i < cannonCount; i++) {
+    port[i] = 'cannon';
+    starboard[i] = 'cannon';
+  }
+  for (let i = 0; i < gunCount; i++) {
+    const idx = cannonCount + i;
+    port[idx] = 'gun';
+    starboard[idx] = 'gun';
+  }
+
+  return { port, starboard };
+}
+
+function drawShipAt(sx, sy, p, zoom, isMe, cam) {
   const size = p.size || 16;
   const heading = p.heading || 0;
-  const shape = getHullShape(p);
   const z = zoom;
 
-  ctx.save();
-  ctx.translate(sx, sy);
-  ctx.rotate(heading);
-
-  // Invulnerability glow
-  if (p.invuln) {
-    ctx.globalAlpha = 0.3 + Math.sin(performance.now() * 0.008) * 0.15;
-    ctx.fillStyle = '#88ccff';
-    ctx.beginPath();
-    ctx.arc(0, 0, shape.len * z * 1.25, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+  let aimWorldAngle = null;
+  let aimSideSign = 0;
+  if (isMe && cam) {
+    const wx = mouseX / z + cam.x;
+    const wy = mouseY / z + cam.y;
+    aimWorldAngle = Math.atan2(wy - p.y, wx - p.x);
+    const localAim = aimWorldAngle - heading;
+    aimSideSign = Math.sin(localAim) >= 0 ? 1 : -1;
   }
 
-  // Ram bow — dark steel triangle, drawn BEFORE hull so the base is buried inside (only tip protrudes)
-  // ~20% of total ship visual length, tip sticks past the bow, body embedded in hull
-  if (p.ram) {
-    const rLen = shape.len * 0.45 * z;   // ~20% of total visual ship length
-    const halfW = rLen * 0.36;            // width of base
-    const tipX   =  shape.bowX * z + rLen * 0.35;  // tip: protrudes forward of bow
-    const baseX  =  shape.bowX * z - rLen * 0.65;  // base: inside hull, will be covered
-    ctx.fillStyle = '#38383f';
-    ctx.beginPath();
-    ctx.moveTo(tipX, 0);
-    ctx.lineTo(baseX, -halfW);
-    ctx.lineTo(baseX,  halfW);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#888896';
-    ctx.lineWidth = Math.max(0.5, z * 0.5);
-    ctx.stroke();
-  }
-
-  // Hull fill
-  drawHullPolygon(shape, z);
-  ctx.fillStyle = p.hullColor || '#5f4630';
-  ctx.fill();
-
-  // Deck tint layer (adds visual variety, especially for NPC ships)
-  drawHullPolygon(shape, z);
-  ctx.save();
-  ctx.clip();
-  const deckColor = p.isNpc ? getNpcDeckColor(p) : (p.trimColor || '#d9b78d');
-  const minDeckX = shape.sternShoulderX * z;
-  const maxDeckX = shape.shoulderX * z;
-  const beam = shape.shoulderHalfBeam * z * 0.76;
-  ctx.fillStyle = deckColor;
-  ctx.globalAlpha = p.isNpc ? 0.34 : 0.22;
-  ctx.fillRect(minDeckX, -beam, Math.max(1, maxDeckX - minDeckX), beam * 2);
-  ctx.restore();
-  ctx.globalAlpha = 1;
-
-  // Trim stroke
-  ctx.strokeStyle = p.trimColor || '#d9b78d';
-  ctx.lineWidth = Math.max(2, z * 1.8);
-  ctx.stroke();
-
-  // Armor plate lines
-  if ((p.hullArmorTier || 0) > 0) {
-    const plateCount = 3 + p.hullArmorTier;
-    const deckLen = shape.shoulderX - shape.sternShoulderX;
-    ctx.strokeStyle = 'rgba(160,150,130,0.35)';
-    ctx.lineWidth = Math.max(0.5, z * 0.4);
-    for (let i = 0; i < plateCount; i++) {
-      const t = (i + 0.5) / plateCount;
-      const lx = shape.sternShoulderX + deckLen * t;
-      const hw = hullHalfWidthAt(shape, lx);
-      ctx.beginPath();
-      ctx.moveTo(lx * z, -hw * z);
-      ctx.lineTo(lx * z, hw * z);
-      ctx.stroke();
+  const { shape } = drawShipRenderer(ctx, sx, sy, p, {
+    zoom: z,
+    wind: currState?.wind || { x: 0, y: 0 },
+    time: performance.now() / 1000,
+    targetWorldAngle: aimWorldAngle,
+    targetSideSign: aimSideSign,
+    mountLayoutStrategy: rendererMountLayoutStrategy,
+    showInWorldCannonReload: true,
+    drawOverlays: ({ shape, z }) => {
+      drawDeckDamageMarks(p, shape, z);
+      drawDeckGoldPiles(p, shape, z);
+      drawShipBurningOverlay(p, shape, z);
     }
-  }
+  });
 
-  // Ram bow — lighter top cap drawn over hull, only the protruding tip portion
-  if (p.ram) {
-    const rLen = shape.len * 0.45 * z;
-    const halfW = rLen * 0.22;
-    const tipX   = shape.bowX * z + rLen * 0.35;
-    const baseX  = shape.bowX * z;            // exposed part starts at bow edge
-    ctx.fillStyle = '#7a7a86';
-    ctx.beginPath();
-    ctx.moveTo(tipX, 0);
-    ctx.lineTo(baseX, -halfW);
-    ctx.lineTo(baseX,  halfW);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#aaaabc';
-    ctx.lineWidth = Math.max(0.5, z * 0.6);
-    ctx.stroke();
-  }
-
-  // Weapon mounts
-  const layout = p.weaponLayout || { port: [], starboard: [] };
-  for (const [side, slots] of [['port', layout.port], ['starboard', layout.starboard]]) {
-    if (!slots || !slots.length) continue;
-    const sideSign = side === 'starboard' ? 1 : -1;
-    for (let i = 0; i < slots.length; i++) {
-      const type = slots[i];
-      if (type === 'empty') continue;
-      const mount = getHullSideMount(shape, i, slots.length, sideSign);
-      const mx = mount.x * z;
-      const my = mount.y * z;
-      const angle = Math.atan2(mount.ny, mount.nx);
-      ctx.save();
-      ctx.translate(mx, my);
-      ctx.rotate(angle);
-      if (type === 'cannon') {
-        ctx.fillStyle = '#7a7a7a';
-        ctx.fillRect(0, -1.2 * z, 11.0 * z, 2.4 * z);
-        ctx.strokeStyle = '#4a4a4a';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(0, -1.2 * z, 11.0 * z, 2.4 * z);
-      } else if (type === 'gun') {
-        ctx.fillStyle = '#b8c0c8';
-        ctx.fillRect(0, -0.8 * z, 7.2 * z, 1.6 * z);
-        ctx.strokeStyle = '#8898a8';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(0, -0.8 * z, 7.2 * z, 1.6 * z);
-      }
-      ctx.restore();
-    }
-  }
-
-  // Mast
   const mastX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
-  ctx.fillStyle = '#3a2a1a';
-  ctx.beginPath();
-  ctx.arc(mastX, 0, Math.max(1.5, z * 1.2), 0, Math.PI * 2);
-  ctx.fill();
-
-  drawDeckDamageMarks(p, shape, z);
-  drawDeckGoldPiles(p, shape, z);
-  drawShipBurningOverlay(p, shape, z);
-
-  // Square sail — draw above damage overlays
-  if (p.sailOpen && currState && currState.wind) {
-    const wind = currState.wind;
-    const mastPosX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
-    const heading = p.heading || 0;
-    const windForward = wind.x * Math.cos(heading) + wind.y * Math.sin(heading);
-    const windRight = wind.x * (-Math.sin(heading)) + wind.y * Math.cos(heading);
-    const windAngle = Math.atan2(wind.y, wind.x);
-    const yardAngle = windAngle - p.heading + Math.PI / 2;
-    const sailW = size * 2.0 * z;
-    const sailH = Math.max(3.2, z * 3.1);
-    const swayTime = performance.now() * 0.003 + (p.id || 0) * 0.73;
-    const backSwayOffset = Math.sin(swayTime) * Math.max(0.35, size * z * 0.05);
-    const backSwayRot = Math.sin(swayTime * 0.82) * 0.014;
-    const sailSwayOffset = Math.sin(swayTime + 1.1) * Math.max(0.28, size * z * 0.038);
-    const sailSwayRot = Math.sin(swayTime * 0.97 + 0.55) * 0.011;
-    const sailPushX = windForward * Math.max(0.8, size * z * 0.18);
-    const sailPushY = windRight * Math.max(0.7, size * z * 0.16);
-
-    // Translucent backing panel (subtle sway)
-    ctx.save();
-    ctx.translate(mastPosX + backSwayOffset + sailPushX * 0.7, sailPushY * 0.7);
-    ctx.rotate(yardAngle + backSwayRot);
-    const backW = sailW * 1.24;
-    const backH = sailH * 2.25;
-    ctx.fillStyle = 'rgba(195, 215, 230, 0.22)';
-    ctx.fillRect(-backW / 2, -backH / 2, backW, backH);
-    ctx.restore();
-
-    // Main sail (slightly different sway; not in sync with backing)
-    const sailCenterX = mastPosX + sailSwayOffset + sailPushX;
-    const sailCenterY = sailPushY;
-    const sailRot = yardAngle + sailSwayRot;
-
-    ctx.save();
-    ctx.translate(sailCenterX, sailCenterY);
-    ctx.rotate(sailRot);
-    ctx.fillStyle = p.sailColor || '#f0f7ff';
-    ctx.globalAlpha = 0.88;
-    ctx.fillRect(-sailW / 2, -sailH / 2, sailW, sailH);
-    ctx.strokeStyle = 'rgba(130,150,170,0.5)';
-    ctx.lineWidth = Math.max(0.7, z * 0.52);
-    ctx.strokeRect(-sailW / 2, -sailH / 2, sailW, sailH);
-    ctx.globalAlpha = 1;
-    ctx.restore();
-
-    // Rigging lines: sail yard ends back to mast head position
-    const cosR = Math.cos(sailRot);
-    const sinR = Math.sin(sailRot);
-    const leftX = sailCenterX + (-sailW / 2) * cosR;
-    const leftY = sailCenterY + (-sailW / 2) * sinR;
-    const rightX = sailCenterX + (sailW / 2) * cosR;
-    const rightY = sailCenterY + (sailW / 2) * sinR;
-    const mastY = -Math.max(2.5, z * 2.1);
-
-    ctx.strokeStyle = 'rgba(185,165,135,0.62)';
-    ctx.lineWidth = Math.max(0.5, z * 0.42);
-    ctx.beginPath();
-    ctx.moveTo(leftX, leftY);
-    ctx.lineTo(mastPosX, mastY);
-    ctx.moveTo(rightX, rightY);
-    ctx.lineTo(mastPosX, mastY);
-    ctx.stroke();
-  }
 
   // NPC flag / pennant
   if (p.isNpc && p.flagColor) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(heading);
     const fmx = mastX;
     const fH = size * 0.6 * z;
     const fW = size * 0.4 * z;
@@ -2374,9 +2234,8 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
       ctx.lineTo(fmx + fW * 0.85, -fH * 0.15);
       ctx.stroke();
     }
+    ctx.restore();
   }
-
-  ctx.restore();
 
   // HP bar (above ship)
   const hpRatio = Math.max(0, (p.hp || 0) / (p.maxHp || 20));
@@ -2392,22 +2251,6 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
   ctx.strokeStyle = 'rgba(255,255,255,0.2)';
   ctx.lineWidth = 0.5;
   ctx.strokeRect(barX, barY, barWidth, barHeight);
-
-  // Reload bars (own ship only)
-  if (isMe) {
-    const reloadY = barY + barHeight + 2;
-    const halfW = barWidth / 2 - 1;
-    const gunProg = 1 - Math.max(0, Math.min(1, (p.gunTimer || 0) / (p.gunReload || 1)));
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(barX, reloadY, halfW, 2);
-    ctx.fillStyle = gunProg >= 1 ? '#88ccff' : '#4488aa';
-    ctx.fillRect(barX, reloadY, halfW * gunProg, 2);
-    const canProg = 1 - Math.max(0, Math.min(1, (p.cannonTimer || 0) / (p.cannonReload || 1)));
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(barX + halfW + 2, reloadY, halfW, 2);
-    ctx.fillStyle = canProg >= 1 ? '#ffaa44' : '#aa7733';
-    ctx.fillRect(barX + halfW + 2, reloadY, halfW * canProg, 2);
-  }
 
   // Name + doubloons
   ctx.fillStyle = isMe ? '#ffd887' : '#a8d0e6';
