@@ -216,7 +216,7 @@ import { getGunRange, getCannonRange, getVisionRange } from '/shared/shipState.j
 import { seeded01, clamp } from '/src/core/math.js';
 
 // ─── Config ───
-const WS_URL = `ws://${location.host}`;
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
 const INTERP_BUFFER = 3; // Number of frames to buffer for interpolation
 
 // ─── DOM ───
