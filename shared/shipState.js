@@ -245,6 +245,7 @@ export function shipSnapshot(ship) {
 
     // Combat state
     onFire: ship.onFire,
+    anchorDropped: !!ship.anchorDropped,
     ram: ship.ram,
     ramDamage: ship.ramDamage,
     burnTime: r1(ship.fireTimer || 0),

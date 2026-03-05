@@ -55,6 +55,7 @@ import { createLeaderboardStore } from './leaderboardStore.js';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ACTIVE_PLAYER_LIMIT = 10;
 const GLOBAL_LEADERBOARD_LIMIT = 100;
+const CHAT_HISTORY_LIMIT = 200;
 const LEADERBOARD_DB_PATH = (process.env.LEADERBOARD_DB_PATH || '').trim() || undefined;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -101,6 +102,7 @@ const httpServer = createServer(async (req, res) => {
 const wss = new WebSocketServer({ server: httpServer });
 let sim = null; // Will be set after async init
 let leaderboardStore = null;
+const chatHistory = [];
 
 // Map WebSocket → playerId
 const socketToPlayer = new Map();
@@ -168,6 +170,12 @@ wss.on('connection', (ws) => {
           activePlayerLimit: ACTIVE_PLAYER_LIMIT,
           persistentLeaderboard: sim.persistentLeaderboard
         }));
+        if (chatHistory.length > 0) {
+          ws.send(JSON.stringify({
+            type: 'chatHistory',
+            messages: chatHistory
+          }));
+        }
         log(`Player ${playerId} (${name || 'unnamed'}) joined. Total: ${sim.players.size}`);
         break;
       }
@@ -206,11 +214,16 @@ wss.on('connection', (ws) => {
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 200) : '';
         if (!text) return;
         const pd = sim.players.get(playerId);
-        const chatMsg = JSON.stringify({
-          type: 'chat',
+        const historyEntry = {
           id: playerId,
           name: pd?.ship?.name || `Player ${playerId}`,
           text
+        };
+        chatHistory.push(historyEntry);
+        while (chatHistory.length > CHAT_HISTORY_LIMIT) chatHistory.shift();
+        const chatMsg = JSON.stringify({
+          type: 'chat',
+          ...historyEntry
         });
         for (const client of wss.clients) {
           if (client.readyState === 1) client.send(chatMsg);
