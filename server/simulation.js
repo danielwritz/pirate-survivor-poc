@@ -40,6 +40,21 @@ const SPAWN_CORNERS = [
 
 const ROUND_RESULTS_DURATION = 12;
 
+function roundToThousandths(value) {
+  return Math.round(value * 1000) / 1000;
+}
+
+export function calculateRoundPlayerScore(playerKills, deaths, doubloons) {
+  const safeKills = Math.max(0, Number(playerKills) || 0);
+  const safeDeaths = Math.max(0, Number(deaths) || 0);
+  const safeDoubloons = Math.max(0, Math.floor(Number(doubloons) || 0));
+  const completionBonus = safeDoubloons * 0.1;
+  const kdRatio = safeDeaths > 0 ? (safeKills / safeDeaths) : NaN;
+  const pvpBonus = Number.isFinite(kdRatio) && kdRatio > 0 ? (kdRatio * safeDoubloons) : 0;
+
+  return roundToThousandths(completionBonus + pvpBonus);
+}
+
 // ─── Simulation factory ───
 
 export async function createSimulation() {
@@ -425,8 +440,7 @@ function buildRoundSummary(sim) {
     const playerKills = ship.playerKills || 0;
     const deaths = ship.deaths || 0;
     const doubloons = Math.floor(ship.doubloons || 0);
-    const kd = deaths > 0 ? (playerKills / deaths) : playerKills;
-    const score = Math.round(kd * doubloons * 1000) / 1000;
+    const score = calculateRoundPlayerScore(playerKills, deaths, doubloons);
     players.push({
       id,
       name: ship.name || `Player ${id}`,
