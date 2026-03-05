@@ -2,7 +2,11 @@
   "name": "pirate-survivor-poc",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
+    "check:runtime": "node scripts/check-runtime-parity.mjs",
     "start": "node server/index.js",
     "server": "node server/index.js",
     "test": "vitest run",

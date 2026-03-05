@@ -35,8 +35,9 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 
 ### Multiplayer (primary)
 1. `npm install` (first time only)
-2. `node server/index.js`
-3. Open `http://localhost:3000` in one or more browser tabs
+2. `npm run check:runtime` (verifies local Node matches repo/runtime contract)
+3. `node server/index.js`
+4. Open `http://localhost:3000` in one or more browser tabs
 
 #### Multiplayer persistent leaderboard (SQLite)
 - Leaderboard storage uses SQLite on-disk (no in-memory fallback).
@@ -45,12 +46,15 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 
 ### Azure App Service notes (SQLite)
 - SQLite is file-based and only safe for a **single App Service instance**. Disable horizontal scale-out.
+- Keep Node major version aligned across local/CI/App Service to avoid native module ABI mismatch (`better-sqlite3`).
+- Repo baseline is Node 22 (`.nvmrc`, `package.json` engines, and GitHub Actions deploy workflow).
 - Use a persistent App Service path for the DB file:
 	- Linux App Service: `/home/data/leaderboard.sqlite`
 	- Windows App Service: `D:\\home\\data\\leaderboard.sqlite`
 - Set app settings:
 	- `PORT=3000` (or leave platform default if already set by your runtime)
 	- `LEADERBOARD_DB_PATH=/home/data/leaderboard.sqlite` (Linux example)
+- Set App Service runtime stack to Node 22 (Linux `linuxFxVersion`: `NODE|22-lts`).
 - Keep startup command as `npm start` (runs `node server/index.js`).
 - Verify after deploy by checking app logs for `Leaderboard DB path:` and confirming it points to `/home` (Linux) or `D:\\home` (Windows).
 
