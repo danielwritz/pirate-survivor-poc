@@ -2649,3 +2649,24 @@
     at process.processTimers (node:internal/timers:541:7)
 [2026-03-05T04:39:20.752Z] Player 13 (da) joined. Total: 12
 [2026-03-05T04:39:59.378Z] 404 /favicon.ico
+[2026-03-05T04:44:02.652Z] Player 11 disconnected. Remaining: 11
+[2026-03-05T04:44:05.909Z] Player 14 (TEST222) joined. Total: 12
+[2026-03-05T04:44:09.952Z] 404 /favicon.ico
+[2026-03-05T04:44:33.312Z] Player 8 disconnected. Remaining: 11
+[2026-03-05T04:44:33.323Z] Player 7 disconnected. Remaining: 10
+[2026-03-05T04:44:33.328Z] Player 3 disconnected. Remaining: 9
+[2026-03-05T04:44:33.332Z] Player 9 disconnected. Remaining: 8
+[2026-03-05T04:44:33.334Z] Player 5 disconnected. Remaining: 7
+[2026-03-05T04:44:33.340Z] Player 4 disconnected. Remaining: 6
+[2026-03-05T04:44:33.345Z] Player 2 disconnected. Remaining: 5
+[2026-03-05T04:44:33.347Z] Player 14 disconnected. Remaining: 4
+[2026-03-05T04:44:45.817Z] Player 6 disconnected. Remaining: 3
+[2026-03-05T04:44:49.574Z] 404 /favicon.ico
+[2026-03-05T04:44:50.058Z] Player 15 (daniel) joined. Total: 4
+[2026-03-05T04:45:41.040Z] Player 15 disconnected. Remaining: 3
+[2026-03-05T04:46:01.811Z] Player 13 disconnected. Remaining: 2
+[2026-03-05T04:46:04.107Z] Player 16 (test) joined. Total: 3
+[2026-03-05T04:46:04.134Z] 404 /favicon.ico
+[2026-03-05T04:48:50.993Z] Player 16 disconnected. Remaining: 2
+[2026-03-05T04:48:51.496Z] Player 12 disconnected. Remaining: 1
+[2026-03-05T04:48:52.038Z] Player 1 disconnected. Remaining: 0

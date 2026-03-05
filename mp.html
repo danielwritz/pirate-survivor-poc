@@ -102,9 +102,12 @@
     /* Scoreboard (Tab) */
     .scoreboard { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(6,16,24,0.82); pointer-events: none; }
     .scoreboard.visible { display: flex; }
-    .scoreboard table { border-collapse: collapse; font-size: 14px; min-width: 420px; }
-    .scoreboard th { color: #9fc2d9; padding: 4px 12px; text-align: left; border-bottom: 1px solid #2a4a62; }
-    .scoreboard td { padding: 4px 12px; color: #d6ecff; }
+    .scoreboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: min(1100px, calc(100vw - 40px)); }
+    .scoreboard-card { background: rgba(8,20,32,0.9); border: 1px solid rgba(42,74,98,0.75); border-radius: 8px; padding: 10px; }
+    .scoreboard-card h3 { color: #9fc2d9; font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+    .scoreboard table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .scoreboard th { color: #9fc2d9; padding: 4px 8px; text-align: left; border-bottom: 1px solid #2a4a62; }
+    .scoreboard td { padding: 4px 8px; color: #d6ecff; }
     .scoreboard tr.me td { color: #ffd887; font-weight: bold; }
 
     /* Upgrade offer cards */
@@ -219,9 +222,20 @@
 
 <!-- Scoreboard -->
 <div class="scoreboard" id="scoreboard">
-  <table><thead><tr>
-    <th>Player</th><th>Lv</th><th>K</th><th>D</th><th>🪙</th><th>HP</th>
-  </tr></thead><tbody id="scoreBody"></tbody></table>
+  <div class="scoreboard-grid">
+    <div class="scoreboard-card">
+      <h3>Current Game</h3>
+      <table><thead><tr>
+        <th>Player</th><th>Lv</th><th>K</th><th>D</th><th>🪙</th><th>HP</th>
+      </tr></thead><tbody id="scoreBody"></tbody></table>
+    </div>
+    <div class="scoreboard-card">
+      <h3>Global Leaderboard</h3>
+      <table><thead><tr>
+        <th>#</th><th>Player</th><th>Score</th><th>Best</th><th>Rounds</th>
+      </tr></thead><tbody id="globalScoreBody"></tbody></table>
+    </div>
+  </div>
 </div>
 
 <!-- Upgrade offer bar -->
@@ -268,7 +282,7 @@
         </table>
       </div>
       <div class="phase-card">
-        <h3>Persistent High Scores</h3>
+        <h3>Global Leaderboard</h3>
         <table>
           <thead><tr><th>Player</th><th>Lifetime</th><th>Best</th><th>Rounds</th></tr></thead>
           <tbody id="persistentScoreBody"></tbody>
@@ -310,6 +324,7 @@ const leaderboardEl = document.getElementById('leaderboard');
 const killFeedEl = document.getElementById('killFeed');
 const scoreboardEl = document.getElementById('scoreboard');
 const scoreBodyEl = document.getElementById('scoreBody');
+const globalScoreBodyEl = document.getElementById('globalScoreBody');
 const chatLog = document.getElementById('chatLog');
 const chatInput = document.getElementById('chatInput');
 const chatSend = document.getElementById('chatSend');
@@ -1047,10 +1062,15 @@ function drawFogLayer(me, cam, zoom, time) {
   ];
 
   const wind = currState?.wind || { x: 0, y: 0 };
+  const windMag = Math.hypot(wind.x, wind.y);
+  const windNX = windMag > 0.0001 ? wind.x / windMag : 0;
+  const windNY = windMag > 0.0001 ? wind.y / windMag : 0;
+  const driftStrength = windMag > 0.0001 ? (18 + windMag * 90) : 0;
   for (let l = 0; l < layers.length; l++) {
     const layer = layers[l];
-    const driftX = (time * (11 + l * 1.6) + wind.x * 110 * layer.driftMul) % layer.sx;
-    const driftY = (time * (7  + l * 1.2) + wind.y * 90  * layer.driftMul) % layer.sy;
+    const driftSpeed = driftStrength * layer.driftMul;
+    const driftX = (time * driftSpeed * windNX) % layer.sx;
+    const driftY = (time * driftSpeed * windNY) % layer.sy;
 
     for (let y = -220; y < canvas.height + 220; y += layer.sy) {
       for (let x = -280; x < canvas.width + 280; x += layer.sx) {
@@ -1216,7 +1236,7 @@ function updatePhaseOverlay(st) {
 
   const persistentRows = Array.isArray(persistentLeaderboard) ? persistentLeaderboard : [];
   if (persistentRows.length === 0) {
-    persistentScoreBody.innerHTML = `<tr><td class="phase-empty" colspan="4">No persistent scores yet.</td></tr>`;
+    persistentScoreBody.innerHTML = `<tr><td class="phase-empty" colspan="4">No global scores yet.</td></tr>`;
   } else {
     persistentScoreBody.innerHTML = persistentRows.map((row) => {
       const isMe = String(row.name || '').toLowerCase() === String(currState?.players?.[myId]?.name || '').toLowerCase();
@@ -2248,6 +2268,9 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
   if (p.sailOpen && currState && currState.wind) {
     const wind = currState.wind;
     const mastPosX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
+    const heading = p.heading || 0;
+    const windForward = wind.x * Math.cos(heading) + wind.y * Math.sin(heading);
+    const windRight = wind.x * (-Math.sin(heading)) + wind.y * Math.cos(heading);
     const windAngle = Math.atan2(wind.y, wind.x);
     const yardAngle = windAngle - p.heading + Math.PI / 2;
     const sailW = size * 2.0 * z;
@@ -2257,10 +2280,12 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     const backSwayRot = Math.sin(swayTime * 0.82) * 0.014;
     const sailSwayOffset = Math.sin(swayTime + 1.1) * Math.max(0.28, size * z * 0.038);
     const sailSwayRot = Math.sin(swayTime * 0.97 + 0.55) * 0.011;
+    const sailPushX = windForward * Math.max(0.8, size * z * 0.18);
+    const sailPushY = windRight * Math.max(0.7, size * z * 0.16);
 
     // Translucent backing panel (subtle sway)
     ctx.save();
-    ctx.translate(mastPosX + backSwayOffset, 0);
+    ctx.translate(mastPosX + backSwayOffset + sailPushX * 0.7, sailPushY * 0.7);
     ctx.rotate(yardAngle + backSwayRot);
     const backW = sailW * 1.24;
     const backH = sailH * 2.25;
@@ -2269,9 +2294,13 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     ctx.restore();
 
     // Main sail (slightly different sway; not in sync with backing)
+    const sailCenterX = mastPosX + sailSwayOffset + sailPushX;
+    const sailCenterY = sailPushY;
+    const sailRot = yardAngle + sailSwayRot;
+
     ctx.save();
-    ctx.translate(mastPosX + sailSwayOffset, 0);
-    ctx.rotate(yardAngle + sailSwayRot);
+    ctx.translate(sailCenterX, sailCenterY);
+    ctx.rotate(sailRot);
     ctx.fillStyle = p.sailColor || '#f0f7ff';
     ctx.globalAlpha = 0.88;
     ctx.fillRect(-sailW / 2, -sailH / 2, sailW, sailH);
@@ -2280,6 +2309,24 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     ctx.strokeRect(-sailW / 2, -sailH / 2, sailW, sailH);
     ctx.globalAlpha = 1;
     ctx.restore();
+
+    // Rigging lines: sail yard ends back to mast head position
+    const cosR = Math.cos(sailRot);
+    const sinR = Math.sin(sailRot);
+    const leftX = sailCenterX + (-sailW / 2) * cosR;
+    const leftY = sailCenterY + (-sailW / 2) * sinR;
+    const rightX = sailCenterX + (sailW / 2) * cosR;
+    const rightY = sailCenterY + (sailW / 2) * sinR;
+    const mastY = -Math.max(2.5, z * 2.1);
+
+    ctx.strokeStyle = 'rgba(185,165,135,0.62)';
+    ctx.lineWidth = Math.max(0.5, z * 0.42);
+    ctx.beginPath();
+    ctx.moveTo(leftX, leftY);
+    ctx.lineTo(mastPosX, mastY);
+    ctx.moveTo(rightX, rightY);
+    ctx.lineTo(mastPosX, mastY);
+    ctx.stroke();
   }
 
   // NPC flag / pennant
@@ -2444,7 +2491,7 @@ function updateHud(st) {
     <div class="leaderboard-title">Leaderboard</div>
     <div class="leaderboard-section-title">Current Round</div>
     ${roundHtml || '<div class="phase-empty">No active players.</div>'}
-    <div class="leaderboard-section-title">Global (Persistent)</div>
+    <div class="leaderboard-section-title">Global Leaderboard</div>
     ${globalRows || '<div class="phase-empty">No global scores yet.</div>'}
   `;
 }
@@ -2464,6 +2511,18 @@ function updateScoreboard(st) {
       <td>${Math.round(p.hp)}/${Math.round(p.maxHp)}</td>
     </tr>`;
   }).join('');
+
+  const globalRows = (Array.isArray(persistentLeaderboard) ? persistentLeaderboard : []);
+  globalScoreBodyEl.innerHTML = globalRows.map((row, idx) => {
+    const isMe = String(row.name || '').toLowerCase() === String(st.players?.[myId]?.name || '').toLowerCase();
+    return `<tr class="${isMe ? 'me' : ''}">
+      <td>${idx + 1}</td>
+      <td>${fmtScore(row.lifetimeScore || 0)} · ${esc(row.name || 'Unknown')}</td>
+      <td>${fmtScore(row.lifetimeScore || 0)}</td>
+      <td>${fmtScore(row.bestRoundScore || 0)}</td>
+      <td>${Math.floor(row.roundsPlayed || 0)}</td>
+    </tr>`;
+  }).join('') || `<tr><td class="phase-empty" colspan="5">No global scores yet.</td></tr>`;
 }
 
 // ─── Loop ───
