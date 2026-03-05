@@ -2699,3 +2699,65 @@
 [2026-03-05T15:31:06.075Z] Player 1 (test) joined. Total: 1
 [2026-03-05T15:31:06.084Z] 404 /favicon.ico
 [2026-03-05T16:08:38.847Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T16:41:25.686Z] Player 2 (TEST) joined. Total: 1
+[2026-03-05T16:41:25.702Z] 404 /favicon.ico
+[2026-03-05T16:41:38.340Z] Player 3 (gunt) joined. Total: 2
+[2026-03-05T16:41:38.360Z] 404 /favicon.ico
+[2026-03-05T16:42:49.073Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T16:42:49.079Z] ERROR: uncaughtException: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1740:16)
+    at listenInCluster (node:net:1788:12)
+    at Server.listen (node:net:1876:7)
+    at start (file:///C:/Users/danie/source/repos/pirate-survivor-poc/server/index.js:274:14)
+[2026-03-05T16:43:34.873Z] Player 4 (A) joined. Total: 3
+[2026-03-05T16:43:35.394Z] Player 5 (B) joined. Total: 4
+[2026-03-05T16:43:36.411Z] Player 4 disconnected. Remaining: 3
+[2026-03-05T16:43:36.412Z] Player 5 disconnected. Remaining: 2
+[2026-03-05T16:44:08.745Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T16:44:08.751Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T16:44:08.751Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T16:44:08.751Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T16:44:47.365Z] Player 1 (A2) joined. Total: 1
+[2026-03-05T16:44:47.889Z] Player 2 (B2) joined. Total: 2
+[2026-03-05T16:44:48.910Z] Player 1 disconnected. Remaining: 1
+[2026-03-05T16:44:48.911Z] Player 2 disconnected. Remaining: 0
+[2026-03-05T16:46:59.832Z] Player 3 (TEST) joined. Total: 1
+[2026-03-05T16:47:06.821Z] Player 3 disconnected. Remaining: 0
+[2026-03-05T16:47:09.737Z] Player 4 (test2) joined. Total: 1
+[2026-03-05T16:47:09.786Z] 404 /favicon.ico
+[2026-03-05T16:47:27.304Z] Player 5 (gunt) joined. Total: 2
+[2026-03-05T16:47:42.466Z] Player 5 disconnected. Remaining: 1
+[2026-03-05T16:47:44.216Z] Player 6 (gunth) joined. Total: 2
+[2026-03-05T16:47:44.256Z] 404 /favicon.ico
+[2026-03-05T16:47:47.869Z] Player 6 disconnected. Remaining: 1
+[2026-03-05T16:47:50.103Z] Player 7 (gun) joined. Total: 2
+[2026-03-05T16:47:50.124Z] 404 /favicon.ico
+[2026-03-05T16:48:44.047Z] Player 7 disconnected. Remaining: 1
+[2026-03-05T16:51:08.554Z] Player 4 disconnected. Remaining: 0
+[2026-03-05T16:51:12.267Z] 404 /favicon.ico
+[2026-03-05T16:51:46.671Z] 404 /favicon.ico
+[2026-03-05T16:52:05.300Z] Player 8 (Pirate) joined. Total: 1
+[2026-03-05T16:52:05.345Z] 404 /favicon.ico
+[2026-03-05T16:55:16.630Z] Player 8 disconnected. Remaining: 0
+[2026-03-05T16:55:18.525Z] Player 9 (Pirate) joined. Total: 1
+[2026-03-05T16:55:18.563Z] 404 /favicon.ico
+[2026-03-05T16:55:51.995Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T16:55:52.001Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T16:55:52.002Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T16:55:52.002Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T16:56:30.647Z] Player 1 (Pirate) joined. Total: 1
+[2026-03-05T16:57:52.270Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T16:57:52.275Z] ERROR: uncaughtException: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1740:16)
+    at listenInCluster (node:net:1788:12)
+    at Server.listen (node:net:1876:7)
+    at start (file:///C:/Users/danie/source/repos/pirate-survivor-poc/server/index.js:274:14)
+[2026-03-05T16:58:29.128Z] Leaderboard DB path: C:\Users\danie\source\repos\pirate-survivor-poc\data\leaderboard.sqlite
+[2026-03-05T16:58:29.133Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T16:58:29.134Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T16:58:29.134Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T16:59:01.526Z] Player 1 (TEAT) joined. Total: 1
+[2026-03-05T16:59:01.558Z] 404 /favicon.ico
+[2026-03-05T17:32:50.337Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T17:32:51.614Z] Player 2 (Pirate) joined. Total: 1
+[2026-03-05T17:32:51.631Z] 404 /favicon.ico

@@ -13,9 +13,8 @@ import {
   TOWER_DMG_BASE, TOWER_DMG_PER_LEVEL
 } from './constants.js';
 
-// Village density tuning (applies to all islands)
-const MIN_VILLAGE_BUILDINGS_PER_ISLAND = 4;
-const VILLAGE_RANDOM_BONUS_BUILDINGS = 3;
+// Village toggle
+const ENABLE_VILLAGES = false;
 
 // ─── Seeded RNG (mulberry32) ───
 
@@ -86,11 +85,10 @@ function createIsland(id, x, y, radius, rng) {
     });
   }
 
-  // Buildings (configurable density, guaranteed on every island)
-  const buildingCount = Math.max(
-    MIN_VILLAGE_BUILDINGS_PER_ISLAND,
-    Math.floor(radius / 28) + Math.floor(rng() * VILLAGE_RANDOM_BONUS_BUILDINGS)
-  );
+  // Buildings (villages can be disabled globally)
+  const buildingCount = ENABLE_VILLAGES
+    ? Math.max(4, Math.floor(radius / 28) + Math.floor(rng() * 3))
+    : 0;
   const buildings = [];
   for (let i = 0; i < buildingCount; i++) {
     const bAngle = rng() * Math.PI * 2;
