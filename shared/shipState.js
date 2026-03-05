@@ -114,6 +114,7 @@ export function createShip(x = 0, y = 0, opts = {}) {
     // Economy (players only — ignored for NPCs)
     doubloons: 0,
     kills: 0,
+    playerKills: 0,
     deaths: 0,
     level: 1,
     xp: 0,
@@ -270,6 +271,7 @@ export function shipSnapshot(ship) {
     // Economy
     doubloons: Math.floor(ship.doubloons),
     kills: ship.kills,
+    playerKills: ship.playerKills || 0,
     deaths: ship.deaths,
     level: ship.level,
     xp: Math.floor(ship.xp || 0),

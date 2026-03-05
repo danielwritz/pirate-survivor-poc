@@ -38,6 +38,8 @@ const SPAWN_CORNERS = [
   { x: 900, y: 650 }, { x: 2700, y: 1950 }
 ];
 
+const ROUND_RESULTS_DURATION = 12;
+
 // ─── Simulation factory ───
 
 export async function createSimulation() {
@@ -49,6 +51,8 @@ export async function createSimulation() {
   return {
     time: 0,
     roundTimer: ROUND_DURATION,
+    roundPhase: 'playing',
+    resultsTimer: 0,
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     wind: { x: 0.35, y: -0.12, timer: 0 },
     players: new Map(),           // playerId → { ship, input }
@@ -61,6 +65,12 @@ export async function createSimulation() {
     // Directors
     npcDirector: createNpcDirector(),
     worldState: createWorldState(seed),
+
+    // Round summary / persistence hooks
+    roundSummary: null,
+    persistentLeaderboard: [],
+    onRoundEnded: null,
+    activePlayerLimit: 10,
 
     // Round seed (for client world gen sync)
     roundSeed: seed
@@ -82,6 +92,7 @@ export function addPlayer(sim, name) {
 
   sim.players.set(id, {
     ship,
+    spectator: false,
     input: { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false }
   });
   return id;
@@ -93,7 +104,7 @@ export function removePlayer(sim, id) {
 
 export function setPlayerInput(sim, id, input) {
   const pd = sim.players.get(id);
-  if (!pd) return;
+  if (!pd || pd.spectator) return;
   if (input.forward !== undefined) pd.input.forward = !!input.forward;
   if (input.brake !== undefined) pd.input.brake = !!input.brake;
   if (input.turnLeft !== undefined) pd.input.turnLeft = !!input.turnLeft;
@@ -107,7 +118,7 @@ export function setPlayerInput(sim, id, input) {
  */
 export function playerFireCannon(sim, playerId, aimAngle) {
   const pd = sim.players.get(playerId);
-  if (!pd || !pd.ship.alive) return;
+  if (!pd || pd.spectator || !pd.ship.alive) return;
 
   const ship = pd.ship;
   const fwd = forwardVector(ship.heading);
@@ -163,7 +174,7 @@ export function playerFireCannon(sim, playerId, aimAngle) {
  */
 export function playerSelectUpgrade(sim, playerId, choiceIndex) {
   const pd = sim.players.get(playerId);
-  if (!pd) return null;
+  if (!pd || pd.spectator) return null;
   return selectUpgrade(pd.ship, choiceIndex);
 }
 
@@ -171,6 +182,11 @@ export function playerSelectUpgrade(sim, playerId, choiceIndex) {
 
 export function tick(sim) {
   const dt = TICK_INTERVAL;
+  if (sim.roundPhase !== 'playing') {
+    tickIntermission(sim, dt);
+    return;
+  }
+
   sim.time += dt;
   sim.roundTimer -= dt;
 
@@ -190,6 +206,7 @@ export function tick(sim) {
 
   // ─── Player physics ───
   for (const [id, pd] of sim.players) {
+    if (pd.spectator) continue;
     if (!pd.ship.alive) continue;
     const ship = pd.ship;
 
@@ -354,6 +371,7 @@ export function tick(sim) {
 
   // ─── Passive doubloons + XP ───
   for (const [id, pd] of sim.players) {
+    if (pd.spectator) continue;
     if (!pd.ship.alive) continue;
     const passiveGain = dt * PASSIVE_DOUBLOON_RATE;
     pd.ship.doubloons += passiveGain;
@@ -365,8 +383,72 @@ export function tick(sim) {
 
   // ─── Round end ───
   if (sim.roundTimer <= 0) {
+    startRoundResults(sim);
+  }
+}
+
+function tickIntermission(sim, dt) {
+  sim.time += dt;
+  sim.resultsTimer -= dt;
+  if (sim.resultsTimer <= 0) {
     resetRound(sim);
   }
+}
+
+function startRoundResults(sim) {
+  if (sim.roundPhase !== 'playing') return;
+  sim.roundTimer = 0;
+  sim.roundPhase = 'results';
+  sim.resultsTimer = ROUND_RESULTS_DURATION;
+  sim.roundSummary = buildRoundSummary(sim);
+
+  if (typeof sim.onRoundEnded === 'function') {
+    const nextLeaderboard = sim.onRoundEnded(sim.roundSummary);
+    if (Array.isArray(nextLeaderboard)) {
+      sim.persistentLeaderboard = nextLeaderboard;
+    }
+  }
+
+  sim.events.push({
+    type: 'roundEnded',
+    duration: ROUND_RESULTS_DURATION,
+    summary: sim.roundSummary,
+    persistentLeaderboard: sim.persistentLeaderboard
+  });
+}
+
+function buildRoundSummary(sim) {
+  const players = [];
+
+  for (const [id, pd] of sim.players) {
+    const ship = pd.ship;
+    const playerKills = ship.playerKills || 0;
+    const deaths = ship.deaths || 0;
+    const doubloons = Math.floor(ship.doubloons || 0);
+    const kd = deaths > 0 ? (playerKills / deaths) : playerKills;
+    const score = Math.round(kd * doubloons * 1000) / 1000;
+    players.push({
+      id,
+      name: ship.name || `Player ${id}`,
+      playerKills,
+      kills: ship.kills || 0,
+      deaths,
+      doubloons,
+      score,
+      level: ship.level || 1
+    });
+  }
+
+  players.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.doubloons !== a.doubloons) return b.doubloons - a.doubloons;
+    return b.playerKills - a.playerKills;
+  });
+
+  return {
+    endedAt: Date.now(),
+    players
+  };
 }
 
 // ─── Death handling ───
@@ -382,6 +464,7 @@ function handleDeath(sim, victimId, victimShip, killerId) {
     const killerPd = sim.players.get(killerId);
     if (killerPd) {
       killerPd.ship.kills += 1;
+      killerPd.ship.playerKills = (killerPd.ship.playerKills || 0) + 1;
       killerName = killerPd.ship.name;
     }
     // Check NPC killer
@@ -584,6 +667,9 @@ export function resetRound(sim) {
   const seed = Date.now();
   sim.time = 0;
   sim.roundTimer = ROUND_DURATION;
+  sim.roundPhase = 'playing';
+  sim.resultsTimer = 0;
+  sim.roundSummary = null;
   sim.wind = { x: 0.35, y: -0.12, timer: 0 };
   sim.bullets = [];
   sim.drops = [];
@@ -611,6 +697,7 @@ export function resetRound(sim) {
     ship.fireTicks = 0;
     ship.doubloons = 0;
     ship.kills = 0;
+    ship.playerKills = 0;
     ship.deaths = 0;
     ship.level = 1;
     ship.xp = 0;
@@ -662,7 +749,10 @@ export function resetRound(sim) {
 
 export function getStateSnapshot(sim) {
   const players = {};
+  let activePlayerCount = 0;
   for (const [id, pd] of sim.players) {
+    if (pd.spectator) continue;
+    activePlayerCount++;
     players[id] = shipSnapshot(pd.ship);
   }
 
@@ -693,10 +783,18 @@ export function getStateSnapshot(sim) {
   const snapshot = {
     type: 'state',
     time: Math.round(sim.time * 100) / 100,
+    roundPhase: sim.roundPhase,
+    phaseTimer: Math.max(0, Math.round(sim.resultsTimer * 10) / 10),
     roundTimer: Math.round(sim.roundTimer * 10) / 10,
     wind: { x: Math.round(sim.wind.x * 1000) / 1000, y: Math.round(sim.wind.y * 1000) / 1000 },
     world: sim.world,
     roundSeed: sim.roundSeed,
+    roundSummary: sim.roundSummary,
+    persistentLeaderboard: sim.persistentLeaderboard,
+    lobbyPlayerCount: sim.players.size,
+    activePlayerCount,
+    spectatorCount: Math.max(0, sim.players.size - activePlayerCount),
+    activePlayerLimit: sim.activePlayerLimit,
     players,
     npcs,
     bullets,

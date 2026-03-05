@@ -2607,3 +2607,45 @@
 [2026-03-05T01:04:50.635Z] Player 4 (g) joined. Total: 1
 [2026-03-05T01:04:50.655Z] 404 /favicon.ico
 [2026-03-05T01:44:33.326Z] Player 4 disconnected. Remaining: 0
+[2026-03-05T04:26:09.949Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T04:26:09.950Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T04:26:09.950Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T04:26:50.779Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T04:26:50.780Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T04:26:50.781Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T04:28:03.353Z] Player 1 (test) joined. Total: 1
+[2026-03-05T04:28:03.363Z] 404 /favicon.ico
+[2026-03-05T04:28:22.534Z] Player 2 (2) joined. Total: 2
+[2026-03-05T04:28:22.553Z] 404 /favicon.ico
+[2026-03-05T04:28:27.170Z] Player 3 (3) joined. Total: 3
+[2026-03-05T04:28:27.182Z] 404 /favicon.ico
+[2026-03-05T04:28:34.600Z] Player 4 (4) joined. Total: 4
+[2026-03-05T04:28:34.613Z] 404 /favicon.ico
+[2026-03-05T04:28:40.868Z] Player 5 (5) joined. Total: 5
+[2026-03-05T04:28:40.883Z] 404 /favicon.ico
+[2026-03-05T04:28:48.013Z] 404 /favicon.ico
+[2026-03-05T04:28:48.126Z] Player 6 (6) joined. Total: 6
+[2026-03-05T04:28:55.463Z] 404 /favicon.ico
+[2026-03-05T04:28:55.532Z] Player 7 (8) joined. Total: 7
+[2026-03-05T04:29:00.046Z] Player 8 (9) joined. Total: 8
+[2026-03-05T04:29:00.063Z] 404 /favicon.ico
+[2026-03-05T04:29:05.796Z] 404 /favicon.ico
+[2026-03-05T04:29:07.135Z] Player 9 (11) joined. Total: 9
+[2026-03-05T04:29:12.665Z] 404 /15
+[2026-03-05T04:29:18.119Z] Player 10 (20) joined. Total: 10
+[2026-03-05T04:29:18.134Z] 404 /favicon.ico
+[2026-03-05T04:29:34.359Z] Player 11 (test2) joined. Total: 11
+[2026-03-05T04:29:34.383Z] 404 /favicon.ico
+[2026-03-05T04:31:37.603Z] Player 10 disconnected. Remaining: 10
+[2026-03-05T04:34:27.065Z] 404 /favicon.ico
+[2026-03-05T04:34:27.730Z] Player 12 (gun) joined. Total: 11
+[2026-03-05T04:39:08.855Z] ERROR: Tick error: TypeError: db.transaction is not a function
+    at Object.saveRoundSummary (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/leaderboardStore.js:67:21)
+    at sim.onRoundEnded (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/index.js:246:57)
+    at startRoundResults (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/simulation.js:406:33)
+    at tick (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/simulation.js:386:5)
+    at Timeout._onTimeout (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/index.js:251:7)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+[2026-03-05T04:39:20.752Z] Player 13 (da) joined. Total: 12
+[2026-03-05T04:39:59.378Z] 404 /favicon.ico

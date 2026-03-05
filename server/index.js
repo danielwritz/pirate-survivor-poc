@@ -49,9 +49,12 @@ import {
   TICK_RATE,
   TICK_INTERVAL
 } from './simulation.js';
+import { createLeaderboardStore } from './leaderboardStore.js';
 
 // --- Configuration ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
+const ACTIVE_PLAYER_LIMIT = 10;
+const GLOBAL_LEADERBOARD_LIMIT = 100;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
@@ -96,9 +99,37 @@ const httpServer = createServer(async (req, res) => {
 // --- WebSocket server ---
 const wss = new WebSocketServer({ server: httpServer });
 let sim = null; // Will be set after async init
+let leaderboardStore = null;
 
 // Map WebSocket → playerId
 const socketToPlayer = new Map();
+
+function getSocketByPlayerId(playerId) {
+  for (const [socket, id] of socketToPlayer) {
+    if (id === playerId) return socket;
+  }
+  return null;
+}
+
+function rebalanceActiveSlots() {
+  if (!sim) return;
+  let idx = 0;
+  for (const [playerId, pd] of sim.players) {
+    const shouldSpectate = idx >= ACTIVE_PLAYER_LIMIT;
+    const changed = pd.spectator !== shouldSpectate;
+    pd.spectator = shouldSpectate;
+    idx++;
+
+    if (!changed) continue;
+    const socket = getSocketByPlayerId(playerId);
+    if (!socket || socket.readyState !== 1) continue;
+    socket.send(JSON.stringify({
+      type: 'roleUpdate',
+      spectator: shouldSpectate,
+      activePlayerLimit: ACTIVE_PLAYER_LIMIT
+    }));
+  }
+}
 
 wss.on('connection', (ws) => {
   let playerId = null;
@@ -122,22 +153,36 @@ wss.on('connection', (ws) => {
         const name = (typeof msg.name === 'string' ? msg.name.trim().slice(0, 20) : '') || undefined;
         playerId = addPlayer(sim, name);
         socketToPlayer.set(ws, playerId);
+        rebalanceActiveSlots();
         const joinedPd = sim.players.get(playerId);
         const startingOffer = joinedPd?.ship?.upgradeOffer ?? null;
         const startingPicksRemaining = joinedPd?.ship?.startingPicksRemaining ?? 0;
-        ws.send(JSON.stringify({ type: 'joined', id: playerId, roundSeed: sim.roundSeed, startingOffer, startingPicksRemaining }));
+        ws.send(JSON.stringify({
+          type: 'joined',
+          id: playerId,
+          roundSeed: sim.roundSeed,
+          startingOffer,
+          startingPicksRemaining,
+          spectator: !!joinedPd?.spectator,
+          activePlayerLimit: ACTIVE_PLAYER_LIMIT,
+          persistentLeaderboard: sim.persistentLeaderboard
+        }));
         log(`Player ${playerId} (${name || 'unnamed'}) joined. Total: ${sim.players.size}`);
         break;
       }
 
       case 'input': {
         if (playerId === null) return;
+        const pd = sim.players.get(playerId);
+        if (!pd || pd.spectator) return;
         setPlayerInput(sim, playerId, msg);
         break;
       }
 
       case 'cannonFire': {
         if (playerId === null) return;
+        const pd = sim.players.get(playerId);
+        if (!pd || pd.spectator) return;
         const aim = typeof msg.angle === 'number' ? msg.angle : 0;
         playerFireCannon(sim, playerId, aim);
         break;
@@ -145,6 +190,8 @@ wss.on('connection', (ws) => {
 
       case 'selectUpgrade': {
         if (playerId === null) return;
+        const pd = sim.players.get(playerId);
+        if (!pd || pd.spectator) return;
         const idx = typeof msg.index === 'number' ? Math.floor(msg.index) : -1;
         const result = playerSelectUpgrade(sim, playerId, idx);
         if (result) {
@@ -177,6 +224,7 @@ wss.on('connection', (ws) => {
       log(`Player ${playerId} disconnected. Remaining: ${sim.players.size - 1}`);
       removePlayer(sim, playerId);
       socketToPlayer.delete(ws);
+      rebalanceActiveSlots();
     }
   });
 });
@@ -192,7 +240,11 @@ function broadcastState() {
 
 // --- Start (async — loads catalogs before beginning tick loop) ---
 async function start() {
+  leaderboardStore = createLeaderboardStore();
   sim = await createSimulation();
+  sim.activePlayerLimit = ACTIVE_PLAYER_LIMIT;
+  sim.persistentLeaderboard = leaderboardStore.getTopScores(GLOBAL_LEADERBOARD_LIMIT);
+  sim.onRoundEnded = (roundSummary) => leaderboardStore.saveRoundSummary(roundSummary, GLOBAL_LEADERBOARD_LIMIT);
   console.log('Simulation initialized (upgrade catalog loaded).');
 
   setInterval(() => {

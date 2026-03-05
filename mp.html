@@ -11,14 +11,15 @@
 
     .hud { position: fixed; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none; }
     .hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 16px; }
-    .hud-left { display: flex; flex-direction: column; gap: 2px; }
+    .hud-left { display: flex; flex-direction: column; gap: 3px; max-width: 460px; }
     .timer { font-size: 22px; font-weight: bold; color: #ffd887; text-shadow: 0 1px 4px rgba(0,0,0,0.7); position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 10; pointer-events: none; background: rgba(6,16,24,0.55); padding: 4px 18px; border-radius: 20px; border: 1px solid rgba(255,216,135,0.18); }
     .player-count { font-size: 13px; color: #9fc2d9; }
-    .my-stats { font-size: 13px; color: #c8dce8; margin-top: 4px; }
-    .my-stats span { margin-right: 12px; }
+    .my-stats { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; color: #c8dce8; margin-top: 4px; max-width: 440px; }
+    .my-stats span { margin-right: 0; }
     .doubloons { color: #ffd887; }
     .kills { color: #7fdb8a; }
     .deaths { color: #f59b80; }
+    .global-score { color: #88ccff; }
 
     .xp-track-wrap {
       position: fixed;
@@ -120,15 +121,65 @@
     .level-badge { color: #88ccff; }
 
     /* Leaderboard — right side, vertically centered */
-    .leaderboard { position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 10; pointer-events: none; min-width: 190px; }
+    .leaderboard { position: fixed; right: 14px; top: 50%; transform: translateY(-50%); z-index: 10; pointer-events: auto; width: 280px; max-height: 72vh; overflow-y: auto; padding: 6px; background: rgba(6,16,24,0.45); border: 1px solid rgba(42,74,98,0.55); border-radius: 8px; }
     .leaderboard-title { font-size: 10px; color: #7aa8c2; letter-spacing: 1px; text-transform: uppercase; text-align: right; margin-bottom: 5px; }
-    .leaderboard-row { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-bottom: 3px; padding: 4px 7px; background: rgba(6,16,24,0.62); border-radius: 5px; border: 1px solid rgba(42,74,98,0.5); }
+    .leaderboard-row { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-bottom: 3px; padding: 3px 6px; background: rgba(6,16,24,0.62); border-radius: 5px; border: 1px solid rgba(42,74,98,0.5); }
     .leaderboard-row.lb-me { background: rgba(20,50,76,0.80); border-color: rgba(79,156,200,0.45); }
-    .leaderboard-name { color: #d6ecff; font-size: 13px; font-weight: bold; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .leaderboard-name { color: #d6ecff; font-size: 12px; font-weight: bold; max-width: 152px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .lb-rank { font-size: 11px; color: #7aa8c2; min-width: 14px; text-align: right; }
-    .lb-coins { color: #ffd887; font-size: 12px; }
+    .lb-coins { color: #ffd887; font-size: 11px; }
     .lb-k { color: #7fdb8a; font-size: 12px; }
     .lb-d { color: #f59b80; font-size: 12px; }
+    .lb-global { color: #88ccff; font-size: 11px; min-width: 72px; text-align: right; }
+    .leaderboard-section-title { font-size: 10px; color: #9fc2d9; letter-spacing: 0.8px; text-transform: uppercase; text-align: right; margin: 6px 2px 4px; }
+
+    .spectator-banner {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 52;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,216,135,0.35);
+      background: rgba(6,16,24,0.86);
+      color: #ffd887;
+      font-size: 13px;
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .spectator-banner.hidden { display: none; }
+
+    .phase-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(6,16,24,0.7);
+      pointer-events: none;
+    }
+    .phase-overlay.hidden { display: none; }
+    .phase-panel {
+      width: min(980px, calc(100vw - 40px));
+      max-height: calc(100vh - 80px);
+      overflow: auto;
+      background: rgba(9,22,34,0.94);
+      border: 1px solid rgba(79,156,200,0.36);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .phase-title { font-size: 22px; color: #ffd887; margin-bottom: 4px; }
+    .phase-sub { font-size: 13px; color: #9fc2d9; margin-bottom: 12px; }
+    .phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .phase-card { background: rgba(6,16,24,0.62); border: 1px solid rgba(42,74,98,0.65); border-radius: 8px; padding: 10px; }
+    .phase-card h3 { font-size: 13px; color: #9fc2d9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.6px; }
+    .phase-card table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .phase-card th { color: #7aa8c2; text-align: left; border-bottom: 1px solid rgba(42,74,98,0.6); padding: 4px; }
+    .phase-card td { color: #d6ecff; padding: 4px; }
+    .phase-card tr.me td { color: #ffd887; font-weight: 700; }
+    .phase-empty { color: #7aa8c2; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -141,6 +192,7 @@
     <div class="hud-left">
       <div class="player-count" id="playerCount">0 players</div>
       <div class="my-stats" id="myStats">
+        <span class="global-score" id="myGlobalScore">★ 0</span>
         <span class="level-badge" id="myLevel">⚓ Lv 1</span>
         <span class="doubloons" id="myDoubloons">🪙 0</span>
         <span class="kills" id="myKills">☠ 0</span>
@@ -201,7 +253,32 @@
   </div>
 </div>
 
-<div class="hint">
+<div class="spectator-banner hidden" id="spectatorBanner"></div>
+
+<div class="phase-overlay hidden" id="phaseOverlay">
+  <div class="phase-panel">
+    <div class="phase-title" id="phaseTitle">Round Complete</div>
+    <div class="phase-sub" id="phaseSub">Returning to main chain screen shortly…</div>
+    <div class="phase-grid">
+      <div class="phase-card">
+        <h3>Round Scoreboard</h3>
+        <table>
+          <thead><tr><th>Player</th><th>K</th><th>D</th><th>🪙</th><th>Score</th></tr></thead>
+          <tbody id="roundScoreBody"></tbody>
+        </table>
+      </div>
+      <div class="phase-card">
+        <h3>Persistent High Scores</h3>
+        <table>
+          <thead><tr><th>Player</th><th>Lifetime</th><th>Best</th><th>Rounds</th></tr></thead>
+          <tbody id="persistentScoreBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="hint" id="controlHint">
   <button id="sfxToggle" style="pointer-events:auto;padding:1px 4px;font-size:8px;background:#163a52;color:#e8f5ff;border:1px solid #2a4a62;border-radius:2px;cursor:pointer;margin-bottom:2px;display:block;margin-left:auto;">SFX: ON</button>
   <button id="villageDebugToggle" style="pointer-events:auto;padding:1px 4px;font-size:8px;background:#163a52;color:#e8f5ff;border:1px solid #2a4a62;border-radius:2px;cursor:pointer;margin-bottom:2px;display:block;margin-left:auto;">Villages DBG: OFF</button>
   Steer: A/D · Row: W · Brake: S · Sail: Space · Anchor: X · Click: fire cannons · 1/2/3: pick upgrade · Tab: scoreboard · Enter: chat · Villages DBG: button
@@ -224,6 +301,8 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const timerEl = document.getElementById('timer');
 const playerCountEl = document.getElementById('playerCount');
+const myStatsEl = document.getElementById('myStats');
+const myGlobalScoreEl = document.getElementById('myGlobalScore');
 const myDoubloonsEl = document.getElementById('myDoubloons');
 const myKillsEl = document.getElementById('myKills');
 const myDeathsEl = document.getElementById('myDeaths');
@@ -243,9 +322,17 @@ const upgradeBarTitle = document.getElementById('upgradeBarTitle');
 const ugNames = [document.getElementById('ug0Name'), document.getElementById('ug1Name'), document.getElementById('ug2Name')];
 const ugDescs = [document.getElementById('ug0Desc'), document.getElementById('ug1Desc'), document.getElementById('ug2Desc')];
 const myLevelEl = document.getElementById('myLevel');
+const xpTrackWrapEl = document.getElementById('xpTrackWrap');
 const xpFillEl = document.getElementById('xpFill');
 const xpTextEl = document.getElementById('xpText');
 const villageDebugToggle = document.getElementById('villageDebugToggle');
+const controlHintEl = document.getElementById('controlHint');
+const spectatorBanner = document.getElementById('spectatorBanner');
+const phaseOverlay = document.getElementById('phaseOverlay');
+const phaseTitle = document.getElementById('phaseTitle');
+const phaseSub = document.getElementById('phaseSub');
+const roundScoreBody = document.getElementById('roundScoreBody');
+const persistentScoreBody = document.getElementById('persistentScoreBody');
 
 // ─── State ───
 let ws = null;
@@ -263,6 +350,10 @@ let currentSeed = null;
 let pendingOffer = null;       // Active upgrade offer or null
 let villageDebugEnabled = false;
 let startingPicksRemaining = 0; // Countdown for the 3-pick starting bonus sequence
+let isSpectator = false;
+let activePlayerLimit = 10;
+let latestRoundSummary = null;
+let persistentLeaderboard = [];
 let destroyedVillageFxSeen = new Set();
 const shipDamageMarkState = new Map(); // shipId -> { marks: Array<{x,y,size,rot,sides,state,fadeEndMs}> }
 const SHIP_DAMAGE_PATCH_LINGER_MS = 2200;
@@ -298,6 +389,11 @@ function connect() {
     switch (msg.type) {
       case 'joined':
         myId = msg.id;
+        isSpectator = !!msg.spectator;
+        activePlayerLimit = Number(msg.activePlayerLimit) || 10;
+        if (Array.isArray(msg.persistentLeaderboard)) {
+          persistentLeaderboard = msg.persistentLeaderboard;
+        }
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
           worldData = generateWorld(currentSeed);
@@ -305,8 +401,9 @@ function connect() {
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
         joinOverlay.classList.add('hidden');
+        updateSpectatorUi();
         // Show starting bonus upgrade picks if the server sent them
-        if (msg.startingOffer && msg.startingPicksRemaining > 0) {
+        if (!isSpectator && msg.startingOffer && msg.startingPicksRemaining > 0) {
           startingPicksRemaining = msg.startingPicksRemaining;
           const pickNum = 4 - startingPicksRemaining; // 1
           showUpgradeOffer(msg.startingOffer, `Starting Bonus — Pick ${pickNum} of 3`);
@@ -316,6 +413,12 @@ function connect() {
       case 'state':
         prevState = currState;
         currState = msg;
+        if (Array.isArray(msg.persistentLeaderboard)) {
+          persistentLeaderboard = msg.persistentLeaderboard;
+        }
+        if (msg.roundSummary) {
+          latestRoundSummary = msg.roundSummary;
+        }
         stateTime = performance.now();
         // ── Cannonball water-splash: detect heavy bullets that just vanished ──
         if (msg.bullets) {
@@ -355,6 +458,13 @@ function connect() {
           for (const ev of msg.events) {
             if (ev.type === 'kill') addKillFeed(ev.killerName, ev.victimName);
             if (ev.type === 'roundReset') { addSystemMessage('New round started!'); hideUpgradeOffer(); }
+            if (ev.type === 'roundEnded') {
+              latestRoundSummary = ev.summary || latestRoundSummary;
+              if (Array.isArray(ev.persistentLeaderboard)) {
+                persistentLeaderboard = ev.persistentLeaderboard;
+              }
+              addSystemMessage('Round complete — returning to main chain screen.');
+            }
             if (ev.type === 'upgradeOffer' && ev.playerId === myId) showUpgradeOffer(ev.offer);
             if (ev.type === 'explosion') {
               addExplosion(ev.x, ev.y, ev.size);
@@ -446,14 +556,28 @@ function connect() {
       case 'chat':
         appendChat(msg.name, msg.text);
         break;
+
+      case 'roleUpdate':
+        isSpectator = !!msg.spectator;
+        activePlayerLimit = Number(msg.activePlayerLimit) || activePlayerLimit;
+        updateSpectatorUi();
+        addSystemMessage(isSpectator
+          ? `Lobby full: moved to chat room (active cap ${activePlayerLimit}).`
+          : 'You are now active in the lobby.');
+        break;
     }
   };
 
   ws.onclose = () => {
     connected = false;
     myId = null;
+    isSpectator = false;
     prevState = null;
     currState = null;
+    latestRoundSummary = null;
+    persistentLeaderboard = [];
+    spectatorBanner.classList.add('hidden');
+    phaseOverlay.classList.add('hidden');
     connStatus.textContent = 'Disconnected. Reconnecting…';
     joinOverlay.classList.remove('hidden');
     setTimeout(connect, 2000);
@@ -492,6 +616,8 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (chatFocused) return;
+  if (currState?.roundPhase && currState.roundPhase !== 'playing') return;
+  if (isSpectator) return;
   if ((k === '1' || k === '2' || k === '3') && pendingOffer) { selectUpgrade(parseInt(k) - 1); return; }
   if (k === ' ') { e.preventDefault(); input.sailOpen = !input.sailOpen; sendInput(); return; }
   if (k === 'x') { input.anchored = !input.anchored; sendInput(); return; }
@@ -510,7 +636,8 @@ document.addEventListener('keyup', (e) => {
 });
 
 function sendInput() {
-  if (!ws || ws.readyState !== 1 || myId === null) return;
+  if (!ws || ws.readyState !== 1 || myId === null || isSpectator) return;
+  if (currState?.roundPhase && currState.roundPhase !== 'playing') return;
   ws.send(JSON.stringify({ type: 'input', ...input }));
 }
 
@@ -526,7 +653,8 @@ canvas.addEventListener('mousemove', (e) => {
   mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
 });
 canvas.addEventListener('mousedown', (e) => {
-  if (!ws || ws.readyState !== 1 || myId === null || !currState) return;
+  if (!ws || ws.readyState !== 1 || myId === null || !currState || isSpectator) return;
+  if (currState.roundPhase && currState.roundPhase !== 'playing') return;
   const me = currState.players[myId];
   if (!me || !me.alive) return;
   const baseZoom = 2.4;
@@ -545,6 +673,7 @@ canvas.addEventListener('mousedown', (e) => {
 // ─── Auto-fire toggle (F key) ───
 window.addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') {
+    if (isSpectator) return;
     autoFireEnabled = !autoFireEnabled;
     autoFireTimer = 0;
   }
@@ -574,7 +703,8 @@ function hideUpgradeOffer() {
   upgradeBar.classList.add('hidden');
 }
 function selectUpgrade(idx) {
-  if (!pendingOffer || !ws || ws.readyState !== 1) return;
+  if (!pendingOffer || !ws || ws.readyState !== 1 || isSpectator) return;
+  if (currState?.roundPhase && currState.roundPhase !== 'playing') return;
   ws.send(JSON.stringify({ type: 'selectUpgrade', index: idx }));
   // During the starting bonus sequence, wait for the server to send the next offer
   // (don't hide — the 'upgradeApplied' response will drive it).
@@ -1015,7 +1145,90 @@ function addSystemMessage(text) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function fmtScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  const rounded = Math.round(n * 1000) / 1000;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded.toFixed(3));
+}
+
+function getGlobalScoreByName(name) {
+  const target = String(name || '').trim().toLowerCase();
+  if (!target || !Array.isArray(persistentLeaderboard)) return 0;
+  const row = persistentLeaderboard.find((r) => String(r?.name || '').trim().toLowerCase() === target);
+  return Number(row?.lifetimeScore || 0);
+}
+
+function updateSpectatorUi() {
+  if (!spectatorBanner) return;
+  if (!isSpectator) {
+    spectatorBanner.classList.add('hidden');
+    if (myStatsEl) myStatsEl.style.display = '';
+    if (xpTrackWrapEl) xpTrackWrapEl.style.display = '';
+    if (controlHintEl) controlHintEl.style.display = '';
+    return;
+  }
+  hideUpgradeOffer();
+  if (myStatsEl) myStatsEl.style.display = 'none';
+  if (xpTrackWrapEl) xpTrackWrapEl.style.display = 'none';
+  if (controlHintEl) controlHintEl.style.display = 'none';
+  const active = currState?.activePlayerCount ?? Math.min(activePlayerLimit, currState?.lobbyPlayerCount || activePlayerLimit);
+  const lobby = currState?.lobbyPlayerCount ?? activePlayerLimit;
+  spectatorBanner.textContent = `Chat Room — lobby full (${active}/${activePlayerLimit} active, ${lobby} total)`;
+  spectatorBanner.classList.remove('hidden');
+}
+
+function updatePhaseOverlay(st) {
+  const inResults = st?.roundPhase === 'results';
+  if (!inResults) {
+    phaseOverlay.classList.add('hidden');
+    return;
+  }
+
+  phaseOverlay.classList.remove('hidden');
+  phaseTitle.textContent = 'Main Chain — Round Complete';
+  const t = Math.max(0, Math.ceil(st.phaseTimer || 0));
+  phaseSub.textContent = `Returning to next round in ${t}s`;
+
+  const summaryPlayers = (latestRoundSummary?.players || []).slice();
+  summaryPlayers.sort((a, b) => {
+    if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+    return (b.doubloons || 0) - (a.doubloons || 0);
+  });
+
+  if (summaryPlayers.length === 0) {
+    roundScoreBody.innerHTML = `<tr><td class="phase-empty" colspan="5">No round results yet.</td></tr>`;
+  } else {
+    roundScoreBody.innerHTML = summaryPlayers.map((p) => {
+      const isMe = Number(p.id) === Number(myId);
+      const globalScore = getGlobalScoreByName(p.name);
+      return `<tr class="${isMe ? 'me' : ''}">
+        <td>${fmtScore(globalScore)} · ${esc(p.name)}</td>
+        <td>${Math.floor(p.playerKills || 0)}</td>
+        <td>${Math.floor(p.deaths || 0)}</td>
+        <td>${Math.floor(p.doubloons || 0)}</td>
+        <td>${fmtScore(p.score || 0)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const persistentRows = Array.isArray(persistentLeaderboard) ? persistentLeaderboard : [];
+  if (persistentRows.length === 0) {
+    persistentScoreBody.innerHTML = `<tr><td class="phase-empty" colspan="4">No persistent scores yet.</td></tr>`;
+  } else {
+    persistentScoreBody.innerHTML = persistentRows.map((row) => {
+      const isMe = String(row.name || '').toLowerCase() === String(currState?.players?.[myId]?.name || '').toLowerCase();
+      return `<tr class="${isMe ? 'me' : ''}">
+        <td>${fmtScore(row.lifetimeScore || 0)} · ${esc(row.name || 'Unknown')}</td>
+        <td>${fmtScore(row.lifetimeScore || 0)}</td>
+        <td>${fmtScore(row.bestRoundScore || 0)}</td>
+        <td>${Math.floor(row.roundsPlayed || 0)}</td>
+      </tr>`;
+    }).join('');
+  }
+}
 
 // ─── Kill feed ───
 function addKillFeed(killer, victim) {
@@ -1416,19 +1629,28 @@ function draw() {
   if (!currState || myId === null) return;
 
   const st = currState;
+  updateSpectatorUi();
+  updatePhaseOverlay(st);
   const me = getInterpolatedPlayer(myId);
-  if (!me) return;
+  const firstActiveId = Object.keys(st.players || {})[0];
+  const fallbackView = firstActiveId ? getInterpolatedPlayer(parseInt(firstActiveId, 10)) : null;
+  const viewShip = me || fallbackView;
+  if (!viewShip) {
+    updateHud(st);
+    scoreboardEl.classList.remove('visible');
+    return;
+  }
 
   const dt = 1 / 60;
   const time = performance.now() / 1000;
 
   // Dynamic zoom (zoom out as lookout range increases)
   const baseZoom = 2.4;
-  const bonusZoom = (me.lookoutRangeBonus || 0) * -0.003;
+  const bonusZoom = (viewShip.lookoutRangeBonus || 0) * -0.003;
   const zoom = Math.max(1.3, Math.min(3.0, baseZoom + bonusZoom));
   const cam = {
-    x: me.x - canvas.width / (2 * zoom),
-    y: me.y - canvas.height / (2 * zoom)
+    x: viewShip.x - canvas.width / (2 * zoom),
+    y: viewShip.y - canvas.height / (2 * zoom)
   };
 
   // Tick particles
@@ -1526,10 +1748,10 @@ function draw() {
   drawExplosions(cam, zoom, dt);
 
   // Fog of war + procedural cloud mask
-  drawFogLayer(me, cam, zoom, time);
+  drawFogLayer(viewShip, cam, zoom, time);
 
   // Range rings (own ship)
-  if (me && me.alive) {
+  if (me && me.alive && !isSpectator && st.roundPhase === 'playing') {
     const sp = toScreen(me.x, me.y, cam, zoom);
     const gunR = getGunRange(me) * zoom;
     const cannonR = getCannonRange(me) * zoom;
@@ -1554,7 +1776,7 @@ function draw() {
   updateHud(st);
 
   // Aim line + crosshair
-  if (me && me.alive) {
+  if (me && me.alive && !isSpectator && st.roundPhase === 'playing') {
     const sp = toScreen(me.x, me.y, cam, zoom);
     ctx.strokeStyle = 'rgba(255,216,135,0.18)';
     ctx.lineWidth = 1;
@@ -1573,7 +1795,7 @@ function draw() {
   }
 
   // Auto-fire tick
-  if (autoFireEnabled && me.alive && ws && ws.readyState === 1) {
+  if (autoFireEnabled && me && me.alive && !isSpectator && st.roundPhase === 'playing' && ws && ws.readyState === 1) {
     autoFireTimer += dt;
     const autoReload = 3.5;
     if (autoFireTimer >= autoReload) {
@@ -1606,7 +1828,7 @@ function draw() {
   ctx.restore();
 
   // Scoreboard
-  if (tabHeld) {
+  if (tabHeld && st.roundPhase === 'playing') {
     scoreboardEl.classList.add('visible');
     updateScoreboard(st);
   } else {
@@ -2164,16 +2386,20 @@ function drawWindCompass(wind) {
 }
 
 function updateHud(st) {
-  const secs = Math.max(0, Math.ceil(st.roundTimer));
+  const timerValue = st.roundPhase === 'results' ? (st.phaseTimer || 0) : st.roundTimer;
+  const secs = Math.max(0, Math.ceil(timerValue));
   const mm = String(Math.floor(secs / 60)).padStart(2, '0');
   const ss = String(secs % 60).padStart(2, '0');
   timerEl.textContent = `${mm}:${ss}`;
 
-  const count = Object.keys(st.players).length;
-  playerCountEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
+  const activeCount = Number(st.activePlayerCount ?? Object.keys(st.players).length);
+  const totalCount = Number(st.lobbyPlayerCount ?? activeCount);
+  playerCountEl.textContent = `${activeCount}/${activePlayerLimit} active · ${totalCount} total`;
 
   const me = st.players[myId];
   if (me) {
+    const myGlobal = getGlobalScoreByName(me.name);
+    if (myGlobalScoreEl) myGlobalScoreEl.textContent = `★ ${fmtScore(myGlobal)}`;
     myLevelEl.textContent = `⚓ Lv ${me.level || 1}`;
     myDoubloonsEl.textContent = `🪙 ${me.doubloons}`;
     myKillsEl.textContent = `☠ ${me.kills}`;
@@ -2184,26 +2410,43 @@ function updateHud(st) {
     xpFillEl.style.width = `${Math.round(xpPct * 1000) / 10}%`;
     xpTextEl.textContent = `${xpNow}/${xpNeed}`;
   } else {
+    if (myGlobalScoreEl) myGlobalScoreEl.textContent = '★ 0';
     xpFillEl.style.width = '0%';
     xpTextEl.textContent = '0/10';
   }
 
-  // ── Leaderboard: top 3 players by doubloons ──
-  const rows = Object.entries(st.players)
+  const roundRows = Object.entries(st.players)
     .sort(([, a], [, b]) => b.doubloons - a.doubloons)
-    .slice(0, 3);
-  const rankSymbol = ['🥇', '🥈', '🥉'];
-  leaderboardEl.innerHTML = `<div class="leaderboard-title">Top Captains</div>` +
-    rows.map(([id, p], i) => {
-      const isMe = parseInt(id) === myId;
-      return `<div class="leaderboard-row${isMe ? ' lb-me' : ''}">
-        <span class="lb-rank">${rankSymbol[i]}</span>
-        <span class="leaderboard-name">${esc(p.name)}</span>
-        <span class="lb-k">☠${p.kills}</span>
-        <span class="lb-d">💀${p.deaths}</span>
-        <span class="lb-coins">🪙${p.doubloons}</span>
-      </div>`;
-    }).join('');
+    .slice(0, 5);
+  const rankSymbol = ['🥇', '🥈', '🥉', '4', '5'];
+  const roundHtml = roundRows.map(([id, p], i) => {
+    const isMe = parseInt(id) === myId;
+    const globalScore = getGlobalScoreByName(p.name);
+    return `<div class="leaderboard-row${isMe ? ' lb-me' : ''}">
+      <span class="lb-rank">${rankSymbol[i] || (i + 1)}</span>
+      <span class="leaderboard-name">${fmtScore(globalScore)} · ${esc(p.name)}</span>
+      <span class="lb-k">☠${p.kills}</span>
+      <span class="lb-d">💀${p.deaths}</span>
+      <span class="lb-coins">🪙${p.doubloons}</span>
+    </div>`;
+  }).join('');
+
+  const globalRows = (Array.isArray(persistentLeaderboard) ? persistentLeaderboard : []).map((row, i) => {
+    const isMe = String(row.name || '').toLowerCase() === String(me?.name || '').toLowerCase();
+    return `<div class="leaderboard-row${isMe ? ' lb-me' : ''}">
+      <span class="lb-rank">${i + 1}</span>
+      <span class="leaderboard-name">${fmtScore(row.lifetimeScore || 0)} · ${esc(row.name || 'Unknown')}</span>
+      <span class="lb-global">Best ${fmtScore(row.bestRoundScore || 0)}</span>
+    </div>`;
+  }).join('');
+
+  leaderboardEl.innerHTML = `
+    <div class="leaderboard-title">Leaderboard</div>
+    <div class="leaderboard-section-title">Current Round</div>
+    ${roundHtml || '<div class="phase-empty">No active players.</div>'}
+    <div class="leaderboard-section-title">Global (Persistent)</div>
+    ${globalRows || '<div class="phase-empty">No global scores yet.</div>'}
+  `;
 }
 
 function updateScoreboard(st) {
