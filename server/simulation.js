@@ -619,6 +619,8 @@ function respawnShip(sim, ship) {
   ship.invulnTimer = RESPAWN_INVULN;
   ship.gunTimer = 0;
   ship.cannonTimer = 0;
+  ship.gunMountTimers = { port: [], starboard: [] };
+  ship.cannonMountTimers = { port: [], starboard: [] };
   ship.onFire = false;
   ship.fireTimer = 0;
   ship.fireTicks = 0;
@@ -706,6 +708,8 @@ export function resetRound(sim) {
     ship.gunTimer = 0;
     ship.cannonTimer = 0;
     ship.cannonVolleyTimer = 0;
+    ship.gunMountTimers = { port: [], starboard: [] };
+    ship.cannonMountTimers = { port: [], starboard: [] };
     ship.onFire = false;
     ship.fireTimer = 0;
     ship.fireTicks = 0;

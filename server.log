@@ -2777,3 +2777,23 @@
 [2026-03-05T20:43:56.416Z] Open http://localhost:3000 in your browser to play.
 [2026-03-05T20:44:52.927Z] Player 1 (Gunthera) joined. Total: 1
 [2026-03-05T20:44:52.941Z] 404 /favicon.ico
+[2026-03-05T21:24:55.054Z] Leaderboard DB path: :memory:
+[2026-03-05T21:24:55.061Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T21:24:55.060Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T21:24:55.061Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T21:28:47.080Z] 404 /favicon.ico
+[2026-03-05T21:28:49.989Z] Player 1 (TEST) joined. Total: 1
+[2026-03-05T21:28:49.994Z] 404 /favicon.ico
+[2026-03-05T21:32:44.101Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T21:33:01.828Z] Player 2 (Gunthera) joined. Total: 1
+[2026-03-05T21:33:01.845Z] 404 /favicon.ico
+[2026-03-05T21:55:02.955Z] Player 2 disconnected. Remaining: 0
+[2026-03-05T21:55:04.692Z] 404 /favicon.ico
+[2026-03-05T21:55:05.423Z] Player 3 (TEST) joined. Total: 1
+[2026-03-05T21:55:27.999Z] Leaderboard DB path: :memory:
+[2026-03-05T21:55:28.002Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T21:55:28.002Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T21:55:28.002Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T21:55:54.643Z] Player 1 (TEST) joined. Total: 1
+[2026-03-05T21:56:15.803Z] Player 2 (TEST2) joined. Total: 2
+[2026-03-05T21:56:15.815Z] 404 /favicon.ico

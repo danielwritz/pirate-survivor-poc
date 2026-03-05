@@ -680,6 +680,7 @@ function sendInput() {
 // ─── Cannon fire (click to aim) ───
 let mouseX = 0, mouseY = 0;
 let autoFireEnabled = true, autoFireTimer = 0;
+const LOCAL_GUN_PIVOT_RAD = 30 * (Math.PI / 180);
 // ─── FPS counter ───
 let _fps = 0, _fpsFrames = 0, _fpsNext = 0;
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -705,6 +706,71 @@ canvas.addEventListener('mousedown', (e) => {
   const angle = Math.atan2(wy - me.y, wx - me.x);
   ws.send(JSON.stringify({ type: 'cannonFire', angle }));
 });
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function getMountFacingAngle(ship, mount) {
+  const cos = Math.cos(ship.heading);
+  const sin = Math.sin(ship.heading);
+  const worldNx = mount.nx * cos - mount.ny * sin;
+  const worldNy = mount.nx * sin + mount.ny * cos;
+  return Math.atan2(worldNy, worldNx);
+}
+
+function getBestAutoFireAimAngle(me, st) {
+  if (!me?.weaponLayout) return null;
+
+  const layout = me.weaponLayout || { port: [], starboard: [] };
+  const shape = getHullShape(me);
+  const cannonRange = getCannonRange(me);
+  const pivotRad = (me.cannonPivot || 0) * (Math.PI / 180) + LOCAL_GUN_PIVOT_RAD + 0.12;
+  const targets = [];
+
+  for (const id of Object.keys(st.players || {})) {
+    const p = st.players[id];
+    if (!p || !p.alive || p.id === myId) continue;
+    targets.push(p);
+  }
+  for (const id of Object.keys(st.npcs || {})) {
+    const p = st.npcs[id];
+    if (!p || !p.alive) continue;
+    targets.push(p);
+  }
+  if (targets.length === 0) return null;
+
+  let best = null;
+  for (const sideKey of ['port', 'starboard']) {
+    const sideSign = sideKey === 'starboard' ? 1 : -1;
+    const lane = layout[sideKey] || [];
+    const totalSlots = lane.length;
+    for (let i = 0; i < totalSlots; i++) {
+      if (lane[i] !== 'cannon') continue;
+      const mount = getHullSideMount(shape, i, totalSlots, sideSign);
+      const mountFacingAngle = getMountFacingAngle(me, mount);
+      for (const t of targets) {
+        const dx = t.x - me.x;
+        const dy = t.y - me.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > cannonRange) continue;
+        const toAngle = Math.atan2(dy, dx);
+        const arcOffset = Math.abs(angleDiff(toAngle, mountFacingAngle));
+        if (arcOffset > pivotRad) continue;
+
+        const score = dist + arcOffset * 30;
+        if (!best || score < best.score) {
+          best = { angle: toAngle, score };
+        }
+      }
+    }
+  }
+
+  return best ? best.angle : null;
+}
 
 // ─── Auto-fire toggle (F key) ───
 window.addEventListener('keydown', (e) => {
@@ -1752,7 +1818,7 @@ function draw() {
     if (!p || !p.alive) continue;
     const isMe = (nid === myId);
     const sp = toScreen(p.x, p.y, cam, zoom);
-    drawShipAt(sp.x, sp.y, p, zoom, isMe, cam);
+    drawShipAt(sp.x, sp.y, p, zoom, isMe, cam, allShips);
   }
 
   // NPC ships
@@ -1761,7 +1827,7 @@ function draw() {
       const p = getInterpolatedNpc(parseInt(id));
       if (!p || !p.alive) continue;
       const sp = toScreen(p.x, p.y, cam, zoom);
-      drawShipAt(sp.x, sp.y, p, zoom, false, cam);
+      drawShipAt(sp.x, sp.y, p, zoom, false, cam, allShips);
     }
   }
 
@@ -1837,20 +1903,12 @@ function draw() {
   // Auto-fire tick
   if (autoFireEnabled && me && me.alive && !isSpectator && st.roundPhase === 'playing' && ws && ws.readyState === 1) {
     autoFireTimer += dt;
-    const autoReload = 3.5;
-    if (autoFireTimer >= autoReload) {
-      let bestDist = Infinity, bestAngle = 0, gotTarget = false;
-      const checkTarget = (p) => {
-        if (!p || !p.alive || p.id === myId) return;
-        const dx = p.x - me.x, dy = p.y - me.y;
-        const d = Math.hypot(dx, dy);
-        if (d < bestDist) { bestDist = d; bestAngle = Math.atan2(dy, dx); gotTarget = true; }
-      };
-      for (const id of Object.keys(st.players)) checkTarget(st.players[id]);
-      if (st.npcs) for (const id of Object.keys(st.npcs)) checkTarget(st.npcs[id]);
-      if (gotTarget) {
+    const autoTick = 0.25;
+    if (autoFireTimer >= autoTick) {
+      autoFireTimer = 0;
+      const bestAngle = getBestAutoFireAimAngle(me, st);
+      if (bestAngle !== null) {
         ws.send(JSON.stringify({ type: 'cannonFire', angle: bestAngle }));
-        autoFireTimer = 0;
       }
     }
   }
@@ -2173,10 +2231,60 @@ function rendererMountLayoutStrategy(ship) {
   return { port, starboard };
 }
 
-function drawShipAt(sx, sy, p, zoom, isMe, cam) {
+function getRenderTargetsForShip(ship, allShips) {
+  const targets = [];
+  for (const other of allShips || []) {
+    if (!other || !other.alive) continue;
+    if (other.id === ship.id) continue;
+    targets.push(other);
+  }
+  return targets;
+}
+
+function getMountFacingAngleWorld(ship, mount) {
+  const cos = Math.cos(ship.heading || 0);
+  const sin = Math.sin(ship.heading || 0);
+  const worldNx = mount.nx * cos - mount.ny * sin;
+  const worldNy = mount.nx * sin + mount.ny * cos;
+  return Math.atan2(worldNy, worldNx);
+}
+
+function getMountedGunTargetAngle(ship, mount, targets) {
+  const mountFacing = getMountFacingAngleWorld(ship, mount);
+  const gunRange = getGunRange(ship);
+  const gunArc = LOCAL_GUN_PIVOT_RAD + 0.08;
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const t of targets) {
+    const dx = t.x - ship.x;
+    const dy = t.y - ship.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > gunRange || dist >= bestDist) continue;
+    const toAngle = Math.atan2(dy, dx);
+    if (Math.abs(angleDiff(toAngle, mountFacing)) > gunArc) continue;
+    best = toAngle;
+    bestDist = dist;
+  }
+
+  return best;
+}
+
+function getCannonReloadRatioForShip(ship, side, index) {
+  const reload = Math.max(0.001, Number(ship.cannonReload || 0));
+  const lane = ship?.cannonMountTimers?.[side];
+  if (Array.isArray(lane) && Number.isFinite(lane[index])) {
+    return 1 - clamp(Math.max(0, lane[index]) / reload, 0, 1);
+  }
+  const timer = Math.max(0, Number(ship.cannonTimer || 0));
+  return 1 - clamp(timer / reload, 0, 1);
+}
+
+function drawShipAt(sx, sy, p, zoom, isMe, cam, allShips) {
   const size = p.size || 16;
   const heading = p.heading || 0;
   const z = zoom;
+  const renderTargets = getRenderTargetsForShip(p, allShips);
 
   let aimWorldAngle = null;
   let aimSideSign = 0;
@@ -2196,6 +2304,12 @@ function drawShipAt(sx, sy, p, zoom, isMe, cam) {
     targetSideSign: aimSideSign,
     mountLayoutStrategy: rendererMountLayoutStrategy,
     showInWorldCannonReload: true,
+    getCannonReloadRatio: ({ ship, side, index }) => getCannonReloadRatioForShip(ship, side, index),
+    getMountTargetWorldAngle: ({ type, mount, targetWorldAngle }) => {
+      if (type === 'cannon') return targetWorldAngle;
+      if (type === 'gun') return getMountedGunTargetAngle(p, mount, renderTargets);
+      return null;
+    },
     drawOverlays: ({ shape, z }) => {
       drawDeckDamageMarks(p, shape, z);
       drawDeckGoldPiles(p, shape, z);

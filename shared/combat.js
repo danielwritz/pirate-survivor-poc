@@ -13,7 +13,6 @@ import {
   GUN_PIVOT_RAD, GUN_SPREAD,
   BULLET_SPEED_GUN_BONUS, BULLET_SPEED_CANNON_BONUS,
   CANNON_DMG_BONUS, CANNON_SPREAD,
-  CANNON_VOLLEY_COOLDOWN,
   INCOMING_DMG_SCALE_GUN, INCOMING_DMG_SCALE_CANNON,
   FIRE_CHANCE_BASE, FIRE_CHANCE_PER_DMG,
   FIRE_TICK_INTERVAL, FIRE_DMG_PLAYER, FIRE_DMG_ENEMY,
@@ -39,6 +38,72 @@ function normalizeAngle(a) {
   return a;
 }
 
+const SIDE_KEYS = ['port', 'starboard'];
+
+function ensureMountTimerLanes(ship, timerKey, fallbackValue = 0) {
+  if (!ship[timerKey] || typeof ship[timerKey] !== 'object') {
+    ship[timerKey] = { port: [], starboard: [] };
+  }
+  const layout = ship.weaponLayout || { port: [], starboard: [] };
+  for (const side of SIDE_KEYS) {
+    const slots = layout[side] || [];
+    const oldLane = Array.isArray(ship[timerKey][side]) ? ship[timerKey][side] : [];
+    const nextLane = new Array(slots.length);
+    for (let i = 0; i < slots.length; i++) {
+      const prior = oldLane[i];
+      nextLane[i] = Number.isFinite(prior) ? Math.max(0, prior) : Math.max(0, fallbackValue);
+    }
+    ship[timerKey][side] = nextLane;
+  }
+  return ship[timerKey];
+}
+
+function ensureMountTimers(ship) {
+  const gunFallback = Number.isFinite(ship.gunTimer) ? ship.gunTimer : (ship.gunReload || 0);
+  const cannonFallback = Number.isFinite(ship.cannonTimer) ? ship.cannonTimer : (ship.cannonReload || 0);
+  const gunMountTimers = ensureMountTimerLanes(ship, 'gunMountTimers', gunFallback);
+  const cannonMountTimers = ensureMountTimerLanes(ship, 'cannonMountTimers', cannonFallback);
+  return { gunMountTimers, cannonMountTimers };
+}
+
+function advanceTimerLanes(timerLanes, dt) {
+  for (const side of SIDE_KEYS) {
+    const lane = timerLanes[side] || [];
+    for (let i = 0; i < lane.length; i++) lane[i] += dt;
+  }
+}
+
+function getLegacyTimerFromMountLanes(ship, timerLanes, slotType) {
+  const layout = ship.weaponLayout || { port: [], starboard: [] };
+  let best = 0;
+  let foundAny = false;
+  for (const side of SIDE_KEYS) {
+    const slots = layout[side] || [];
+    const lane = timerLanes[side] || [];
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i] !== slotType) continue;
+      foundAny = true;
+      best = Math.max(best, lane[i] || 0);
+    }
+  }
+  return foundAny ? best : 0;
+}
+
+function getMountFacingAngle(ship, mount) {
+  const cos = Math.cos(ship.heading);
+  const sin = Math.sin(ship.heading);
+  const worldNx = mount.nx * cos - mount.ny * sin;
+  const worldNy = mount.nx * sin + mount.ny * cos;
+  return Math.atan2(worldNy, worldNx);
+}
+
+function getMountAimAngle(mountFacingAngle, aimAngle, pivotRad) {
+  if (!Number.isFinite(aimAngle)) return null;
+  const offset = angleDiff(aimAngle, mountFacingAngle);
+  if (Math.abs(offset) > pivotRad) return null;
+  return normalizeAngle(mountFacingAngle + offset);
+}
+
 // ─── Gun auto-fire ───
 
 /**
@@ -55,93 +120,81 @@ export function tickGunAutoFire(ship, targets, dt, spawnBullet) {
 
   const layout = ship.weaponLayout || { port: [], starboard: [] };
   const shape = getHullShape(ship);
-  const fwd = forwardVector(ship.heading);
-  const right = { x: -fwd.y, y: fwd.x };
+  const { gunMountTimers } = ensureMountTimers(ship);
   const gunRange = getGunRange(ship);
   const efficiency = getCrewEfficiency(ship);
   const effectiveReload = (ship.gunReload || 1.35) * efficiency;
+  const fireArc = GUN_PIVOT_RAD + 0.08;
 
-  // Advance gun timer
-  ship.gunTimer = (ship.gunTimer || 0) + dt;
-  if (ship.gunTimer < effectiveReload) return;
-
-  // Find nearest target in gun range
-  let nearest = null;
-  let nearestDist = Infinity;
-  for (const t of targets) {
-    if (!t.ship.alive) continue;
-    const dx = t.ship.x - ship.x;
-    const dy = t.ship.y - ship.y;
-    const d = Math.hypot(dx, dy);
-    if (d < gunRange && d < nearestDist) {
-      nearestDist = d;
-      nearest = { ...t, dx, dy, dist: d };
-    }
-  }
-  if (!nearest) return;
-
-  // Determine which side the target is on
-  const cross = fwd.x * nearest.dy - fwd.y * nearest.dx;
-  const sideKey = cross >= 0 ? 'starboard' : 'port';
-  const sideSign = cross >= 0 ? 1 : -1;
-  const lane = layout[sideKey] || [];
-
-  // Broadside direction
-  const broadX = right.x * sideSign;
-  const broadY = right.y * sideSign;
-  const broadsideAngle = Math.atan2(broadY, broadX);
-  const toTargetAngle = Math.atan2(nearest.dy, nearest.dx);
-  const angOffset = Math.abs(angleDiff(toTargetAngle, broadsideAngle));
-
-  if (angOffset > GUN_PIVOT_RAD + 0.08) return;
-
-  // Fire all gun mounts on this side
   let firedAny = false;
-  const totalSlots = lane.length;
-  for (let i = 0; i < totalSlots; i++) {
-    if (lane[i] !== 'gun') continue;
+  for (const sideKey of SIDE_KEYS) {
+    const sideSign = sideKey === 'starboard' ? 1 : -1;
+    const lane = layout[sideKey] || [];
+    const timerLane = gunMountTimers[sideKey] || [];
+    const totalSlots = lane.length;
 
-    // Mount position in world space — spawn from barrel tip
-    const mount = getHullSideMount(shape, i, totalSlots, sideSign);
-    const cos = Math.cos(ship.heading);
-    const sin = Math.sin(ship.heading);
-    const GUN_BARREL_LEN = 7.2;
-    const tipX = mount.x + mount.nx * GUN_BARREL_LEN;
-    const tipY = mount.y + mount.ny * GUN_BARREL_LEN;
-    const worldX = ship.x + tipX * cos - tipY * sin;
-    const worldY = ship.y + tipX * sin + tipY * cos;
+    for (let i = 0; i < totalSlots; i++) {
+      if (lane[i] !== 'gun') continue;
+      if ((timerLane[i] || 0) < effectiveReload) continue;
 
-    // Fire 2-3 musket balls per gun mount in a spread pattern.
-    // Aim along broadside; balls have systematic angular offsets for visible spray.
-    const ballCount = Math.random() < 0.45 ? 3 : 2;
-    const spreadHalf = GUN_SPREAD * 1.4; // total cone half-width
-    const baseDmg = (ship.bulletDamage || 9) * 0.65; // per-ball damage (tuned so total ≈ 1.3× single)
-    const speed = (ship.bulletSpeed || 6) + BULLET_SPEED_GUN_BONUS;
+      const mount = getHullSideMount(shape, i, totalSlots, sideSign);
+      const mountFacingAngle = getMountFacingAngle(ship, mount);
+      let nearest = null;
+      let nearestDist = Infinity;
 
-    for (let b = 0; b < ballCount; b++) {
-      // Spread balls evenly across the cone + small random jitter
-      const t = ballCount === 1 ? 0 : (b / (ballCount - 1)) - 0.5;
-      const jitter = (Math.random() - 0.5) * GUN_SPREAD * 0.3;
-      const aimAngle = broadsideAngle + t * spreadHalf * 2 + jitter;
-      const ballSpeed = speed * (0.92 + Math.random() * 0.16);
-      spawnBullet({
-        x: worldX, y: worldY,
-        vx: Math.cos(aimAngle) * ballSpeed,
-        vy: Math.sin(aimAngle) * ballSpeed,
-        dmg: baseDmg,
-        heavy: false,
-        ownerId: ship.id,
-        ownerIsNpc: ship.isNpc,
-        travel: 0,
-        maxRange: gunRange
-      });
+      for (const t of targets) {
+        if (!t.ship.alive) continue;
+        const dx = t.ship.x - ship.x;
+        const dy = t.ship.y - ship.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > gunRange || dist >= nearestDist) continue;
+        const toTargetAngle = Math.atan2(dy, dx);
+        if (Math.abs(angleDiff(toTargetAngle, mountFacingAngle)) > fireArc) continue;
+        nearest = t;
+        nearestDist = dist;
+      }
+
+      if (!nearest) continue;
+
+      const cos = Math.cos(ship.heading);
+      const sin = Math.sin(ship.heading);
+      const GUN_BARREL_LEN = 7.2;
+      const tipX = mount.x + mount.nx * GUN_BARREL_LEN;
+      const tipY = mount.y + mount.ny * GUN_BARREL_LEN;
+      const worldX = ship.x + tipX * cos - tipY * sin;
+      const worldY = ship.y + tipX * sin + tipY * cos;
+
+      // Fire 2-3 musket balls along this mount's own line-of-fire.
+      const ballCount = Math.random() < 0.45 ? 3 : 2;
+      const spreadHalf = GUN_SPREAD * 1.4;
+      const baseDmg = (ship.bulletDamage || 9) * 0.65;
+      const speed = (ship.bulletSpeed || 6) + BULLET_SPEED_GUN_BONUS;
+
+      for (let b = 0; b < ballCount; b++) {
+        const t = ballCount === 1 ? 0 : (b / (ballCount - 1)) - 0.5;
+        const jitter = (Math.random() - 0.5) * GUN_SPREAD * 0.3;
+        const shotAngle = mountFacingAngle + t * spreadHalf * 2 + jitter;
+        const ballSpeed = speed * (0.92 + Math.random() * 0.16);
+        spawnBullet({
+          x: worldX, y: worldY,
+          vx: Math.cos(shotAngle) * ballSpeed,
+          vy: Math.sin(shotAngle) * ballSpeed,
+          dmg: baseDmg,
+          heavy: false,
+          ownerId: ship.id,
+          ownerIsNpc: ship.isNpc,
+          travel: 0,
+          maxRange: gunRange
+        });
+      }
+
+      timerLane[i] = 0;
+      firedAny = true;
     }
-    firedAny = true;
   }
 
-  if (firedAny) {
-    ship.gunTimer = 0;
-  }
+  ship.gunTimer = getLegacyTimerFromMountLanes(ship, gunMountTimers, 'gun');
+  if (firedAny) ship.gunTimer = 0;
 }
 
 // ─── Cannon auto-fire (server-side, all ships including player) ───
@@ -158,9 +211,7 @@ export function tickGunAutoFire(ship, targets, dt, spawnBullet) {
 export function tickCannonAutoFire(ship, targets, dt, spawnBullet) {
   if (!ship.alive) return null;
 
-  // Advance cannon reload timer
-  ship.cannonTimer = (ship.cannonTimer || 0) + dt;
-  if (ship.cannonVolleyTimer > 0) ship.cannonVolleyTimer = Math.max(0, ship.cannonVolleyTimer - dt);
+  ensureMountTimers(ship);
 
   const layout = ship.weaponLayout || { port: [], starboard: [] };
   const hasCannons = (layout.port || []).some(s => s === 'cannon') ||
@@ -226,26 +277,14 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
 
   const layout = ship.weaponLayout || { port: [], starboard: [] };
   const lane = layout[side] || [];
+  const { cannonMountTimers } = ensureMountTimers(ship);
+  const timerLane = cannonMountTimers[side] || [];
   const shape = getHullShape(ship);
   const sideSign = side === 'starboard' ? 1 : -1;
   const efficiency = getCrewEfficiency(ship);
   const effectiveReload = (ship.cannonReload || 3.4) * (efficiency * 1.04);
-
-  // Check cannon reload
-  if ((ship.cannonTimer || 0) < effectiveReload) return false;
-
-  // Check volley cooldown
-  if ((ship.cannonVolleyTimer || 0) > 0) return false;
-
-  // Check broadside arc — aim must be roughly perpendicular
-  const fwd = forwardVector(ship.heading);
-  const right = { x: -fwd.y, y: fwd.x };
-  const broadX = right.x * sideSign;
-  const broadY = right.y * sideSign;
-  const broadsideAngle = Math.atan2(broadY, broadX);
   const pivotRad = (ship.cannonPivot || 0) * (Math.PI / 180) + GUN_PIVOT_RAD;
-  const angOffset = Math.abs(angleDiff(aimAngle, broadsideAngle));
-  if (angOffset > pivotRad + 0.12) return false;
+  if (!Number.isFinite(aimAngle)) return false;
 
   const cannonRange = getCannonRange(ship);
   const totalSlots = lane.length;
@@ -253,8 +292,11 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
 
   for (let i = 0; i < totalSlots; i++) {
     if (lane[i] !== 'cannon') continue;
+    if ((timerLane[i] || 0) < effectiveReload) continue;
 
     const mount = getHullSideMount(shape, i, totalSlots, sideSign);
+    const mountAimAngle = getMountAimAngle(getMountFacingAngle(ship, mount), aimAngle, pivotRad + 0.12);
+    if (mountAimAngle === null) continue;
     const cos = Math.cos(ship.heading);
     const sin = Math.sin(ship.heading);
     const CANNON_BARREL_LEN = 11.0;
@@ -264,7 +306,7 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
     const worldY = ship.y + tipX * sin + tipY * cos;
 
     const spread = (Math.random() - 0.5) * CANNON_SPREAD * (1 - Math.min(0.8, ship.cannonAccuracyBonus || 0));
-    const finalAngle = aimAngle + spread;
+    const finalAngle = mountAimAngle + spread;
     const speed = (ship.bulletSpeed || 6) + BULLET_SPEED_CANNON_BONUS;
 
     spawnBullet({
@@ -279,13 +321,12 @@ export function fireCannonBroadside(ship, side, aimAngle, spawnBullet) {
       travel: 0,
       maxRange: cannonRange
     });
+    timerLane[i] = 0;
     firedAny = true;
   }
 
-  if (firedAny) {
-    ship.cannonTimer = 0;
-    ship.cannonVolleyTimer = CANNON_VOLLEY_COOLDOWN;
-  }
+  ship.cannonTimer = getLegacyTimerFromMountLanes(ship, cannonMountTimers, 'cannon');
+  if (firedAny) ship.cannonTimer = 0;
 
   return firedAny;
 }
@@ -430,12 +471,17 @@ export function tickFire(ship, dt) {
 export function tickRepair(ship, dt) {
   if (!ship.alive) return;
 
+  const { gunMountTimers, cannonMountTimers } = ensureMountTimers(ship);
+
   ship.repairSuppressed = Math.max(0, (ship.repairSuppressed || 0) - dt);
   ship.invulnTimer = Math.max(0, (ship.invulnTimer || 0) - dt);
   ship.impactTimer = Math.max(0, (ship.impactTimer || 0) - dt);
   ship.cannonVolleyTimer = Math.max(0, (ship.cannonVolleyTimer || 0) - dt);
-  ship.gunTimer = (ship.gunTimer || 0) + dt;
-  ship.cannonTimer = (ship.cannonTimer || 0) + dt;
+
+  advanceTimerLanes(gunMountTimers, dt);
+  advanceTimerLanes(cannonMountTimers, dt);
+  ship.gunTimer = getLegacyTimerFromMountLanes(ship, gunMountTimers, 'gun');
+  ship.cannonTimer = getLegacyTimerFromMountLanes(ship, cannonMountTimers, 'cannon');
 
   if (ship.repairSuppressed <= 0 && ship.hp < ship.maxHp) {
     const rate = REPAIR_RATE_BASE + (ship.repairCrew || 0) * REPAIR_RATE_PER_CREW;

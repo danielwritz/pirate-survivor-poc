@@ -106,7 +106,9 @@ export function createShip(x = 0, y = 0, opts = {}) {
     repairSuppressed: 0,
     gunTimer: BASE_GUN_RELOAD,      // start ready to fire
     cannonTimer: BASE_CANNON_RELOAD,
-    cannonVolleyTimer: 0,            // per-side volley cooldown
+    cannonVolleyTimer: 0,            // legacy compatibility timer (no longer authoritative)
+    gunMountTimers: { port: [], starboard: [] },
+    cannonMountTimers: { port: [], starboard: [] },
     onFire: false,
     fireTimer: 0,
     fireTicks: 0,
@@ -253,6 +255,8 @@ export function shipSnapshot(ship) {
     // Reload timers (for HUD bars)
     gunTimer: r2(ship.gunTimer || 0),
     cannonTimer: r2(ship.cannonTimer || 0),
+    gunMountTimers: ship.gunMountTimers || { port: [], starboard: [] },
+    cannonMountTimers: ship.cannonMountTimers || { port: [], starboard: [] },
     gunReload: r2(ship.gunReload),
     cannonReload: r2(ship.cannonReload),
     baseSpeed: r2(ship.baseSpeed),

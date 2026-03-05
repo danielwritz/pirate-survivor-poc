@@ -107,15 +107,11 @@ function getDefaultLayout(ship) {
   return { port, starboard };
 }
 
-function getMountAimOffset(ship, mount, type, sideSign, targetWorldAngle, targetSideSign) {
+function getMountAimOffset(ship, mount, type, sideSign, targetWorldAngle) {
   if (!Number.isFinite(targetWorldAngle)) return 0;
 
   const localTarget = angleDiff(targetWorldAngle, ship.heading || 0);
   const base = Math.atan2(mount.ny, mount.nx);
-
-  if (type === 'gun' && targetSideSign && targetSideSign !== sideSign) {
-    return 0;
-  }
 
   const pivot = type === 'cannon'
     ? Math.max(0, Number(ship.cannonPivot || 0)) * (Math.PI / 180)
@@ -124,7 +120,14 @@ function getMountAimOffset(ship, mount, type, sideSign, targetWorldAngle, target
   return clamp(angleDiff(localTarget, base), -pivot, pivot);
 }
 
-function defaultReloadRatio(ship) {
+function defaultReloadRatio(ship, side, index) {
+  const mountLane = ship?.cannonMountTimers?.[side];
+  if (Array.isArray(mountLane) && Number.isFinite(mountLane[index])) {
+    const mountReload = Math.max(0.001, Number(ship.cannonReload || 0));
+    const mountTimer = Math.max(0, Number(mountLane[index] || 0));
+    return 1 - clamp(mountTimer / mountReload, 0, 1);
+  }
+
   const reload = Math.max(0.001, Number(ship.cannonReload || 0));
   const timer = Math.max(0, Number(ship.cannonTimer || 0));
   return 1 - clamp(timer / reload, 0, 1);
@@ -196,6 +199,7 @@ export function drawShipRenderer(ctx, sx, sy, ship, options = {}) {
     targetSideSign = 0,
     showInWorldCannonReload = true,
     getCannonReloadRatio = null,
+    getMountTargetWorldAngle = null,
     drawInterior = null,
     drawOverlays = null
   } = options;
@@ -266,14 +270,26 @@ export function drawShipRenderer(ctx, sx, sy, ship, options = {}) {
       const length = cannonPort ? Math.max(8, size * 0.48) : Math.max(4.5, size * 0.3);
       const thickness = cannonPort ? Math.max(2.8, size * 0.14) : Math.max(1.8, size * 0.1);
       const color = cannonPort ? '#5f656c' : '#d5dbe2';
-      const aimOffset = getMountAimOffset(ship, mount, type, sideSign, targetWorldAngle, targetSideSign);
+      const mountTargetWorldAngle = typeof getMountTargetWorldAngle === 'function'
+        ? getMountTargetWorldAngle({
+          ship,
+          side: sideName,
+          sideSign,
+          index: i,
+          type,
+          mount,
+          targetWorldAngle,
+          targetSideSign
+        })
+        : targetWorldAngle;
+      const aimOffset = getMountAimOffset(ship, mount, type, sideSign, mountTargetWorldAngle);
 
       drawPerimeterMountWithAim(ctx, mount, length, thickness, color, z, aimOffset);
 
       if (cannonPort && showInWorldCannonReload) {
         const ratio = typeof getCannonReloadRatio === 'function'
           ? getCannonReloadRatio({ ship, side: sideName, index: i, type })
-          : defaultReloadRatio(ship);
+          : defaultReloadRatio(ship, sideName, i);
         drawCannonReloadOverlay(ctx, mount, length, thickness, z, aimOffset, ratio);
       }
     }
