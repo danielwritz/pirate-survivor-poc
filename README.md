@@ -87,6 +87,7 @@ Developer museum screens are available under `dev/`.
 - Guns: auto-fire when enemies in broadside arc
 - Scoreboard: hold `Tab`
 - Chat: `Enter` to type, `Enter` to send
+- Villages debug overlay: HUD `Villages DBG` button (shows building bounds/IDs and village cluster count)
 
 ### Single-player only
 - Toggle SFX: HUD button

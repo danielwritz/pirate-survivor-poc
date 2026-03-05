@@ -67,9 +67,14 @@ export function awardXp(ship, amount) {
   if (!catalog) return null;
 
   ship.xp += amount;
+  ship.pendingLevelUpOffers = Math.max(0, ship.pendingLevelUpOffers || 0);
+  ship.pendingMajorOffers = Math.max(0, ship.pendingMajorOffers || 0);
+  ship._lastMajorLevel = Math.max(0, ship._lastMajorLevel || 0);
 
-  // Check for level up
-  if (ship.xp >= ship.xpToNext) {
+  // Process all level-ups from this XP gain
+  let leveled = 0;
+  let gainedMajorOffers = 0;
+  while (ship.xp >= ship.xpToNext) {
     ship.xp -= ship.xpToNext;
     ship.level += 1;
     ship.xpToNext = Math.floor(ship.xpToNext * XP_SCALE + XP_ADD);
@@ -79,20 +84,30 @@ export function awardXp(ship, amount) {
     ship.maxHp += 2;
     ship.hp = Math.min(ship.maxHp, ship.hp + 4);
 
-    // Roll standard upgrade offer
-    const offer = rollUpgradeOffer('standard', 3, catalog);
-    ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+    leveled += 1;
 
-    return ship.upgradeOffer;
+    if (ship.level > 1 && ship.level % 5 === 0 && ship.level > ship._lastMajorLevel) {
+      gainedMajorOffers += 1;
+      ship._lastMajorLevel = ship.level;
+    }
   }
 
-  // Check for major upgrade milestone (every 5 levels)
-  // (This is checked separately so standard and major can stack)
-  if (ship.level > 1 && ship.level % 5 === 0 && !ship._lastMajorLevel) {
-    ship._lastMajorLevel = ship.level;
-    const offer = rollUpgradeOffer('major', 3, catalog);
-    ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
-    return ship.upgradeOffer;
+  if (leveled > 0) {
+    ship.pendingLevelUpOffers += leveled;
+    ship.pendingMajorOffers += gainedMajorOffers;
+
+    if (!ship.upgradeOffer) {
+      if (ship.pendingMajorOffers > 0) {
+        const offer = rollUpgradeOffer('major', 3, catalog);
+        ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+        ship.pendingMajorOffers -= 1;
+      } else if (ship.pendingLevelUpOffers > 0) {
+        const offer = rollUpgradeOffer('standard', 3, catalog);
+        ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+        ship.pendingLevelUpOffers -= 1;
+      }
+      return ship.upgradeOffer;
+    }
   }
 
   return null;
@@ -106,6 +121,8 @@ export function awardXp(ship, amount) {
 export function initStartingUpgradeOffer(ship) {
   if (!catalog) return null;
   ship.startingPicksRemaining = 3;
+  ship.pendingLevelUpOffers = Math.max(0, ship.pendingLevelUpOffers || 0);
+  ship.pendingMajorOffers = Math.max(0, ship.pendingMajorOffers || 0);
   const offer = rollUpgradeOffer('standard', 3, catalog);
   ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
   return ship.upgradeOffer;
@@ -130,10 +147,26 @@ export function selectUpgrade(ship, choiceIndex) {
   // Handle starting picks sequence
   let nextOffer = null;
   let startingPicksRemaining = 0;
+  let consumedStartingPick = false;
   if (typeof ship.startingPicksRemaining === 'number' && ship.startingPicksRemaining > 0) {
+    consumedStartingPick = true;
     ship.startingPicksRemaining -= 1;
     startingPicksRemaining = ship.startingPicksRemaining;
     if (ship.startingPicksRemaining > 0) {
+      const offer = rollUpgradeOffer('standard', 3, catalog);
+      ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+      nextOffer = ship.upgradeOffer;
+    }
+  }
+
+  if (!nextOffer && (consumedStartingPick ? ship.startingPicksRemaining <= 0 : true)) {
+    if ((ship.pendingMajorOffers || 0) > 0) {
+      ship.pendingMajorOffers = Math.max(0, ship.pendingMajorOffers - 1);
+      const offer = rollUpgradeOffer('major', 3, catalog);
+      ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+      nextOffer = ship.upgradeOffer;
+    } else if ((ship.pendingLevelUpOffers || 0) > 0) {
+      ship.pendingLevelUpOffers = Math.max(0, ship.pendingLevelUpOffers - 1);
       const offer = rollUpgradeOffer('standard', 3, catalog);
       ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
       nextOffer = ship.upgradeOffer;

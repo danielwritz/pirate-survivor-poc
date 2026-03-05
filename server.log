@@ -2477,3 +2477,133 @@
 [2026-03-04T02:31:55.661Z] 404 /favicon.ico
 [2026-03-04T02:32:59.362Z] Player 16 disconnected. Remaining: 1
 [2026-03-04T02:33:08.564Z] Player 14 disconnected. Remaining: 0
+[2026-03-04T22:15:15.885Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T22:15:15.894Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T22:15:15.894Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T22:17:51.772Z] 404 /favicon.ico
+[2026-03-04T22:17:53.677Z] Player 1 (Test) joined. Total: 1
+[2026-03-04T22:17:53.688Z] 404 /favicon.ico
+[2026-03-04T22:32:36.395Z] ERROR: uncaughtException: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at start (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/index.js:207:14)
+[2026-03-04T22:33:49.015Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T22:33:52.307Z] Player 2 (gunthr) joined. Total: 1
+[2026-03-04T22:33:52.325Z] 404 /favicon.ico
+[2026-03-04T22:35:41.676Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T22:35:41.677Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T22:35:41.678Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T22:36:46.347Z] Player 1 (gunthr) joined. Total: 1
+[2026-03-04T22:41:07.123Z] Player 2 (SHANE) joined. Total: 2
+[2026-03-04T22:41:07.137Z] 404 /favicon.ico
+[2026-03-04T22:44:03.598Z] Player 2 disconnected. Remaining: 1
+[2026-03-04T22:55:25.456Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T22:55:33.500Z] Player 3 (test) joined. Total: 1
+[2026-03-04T22:55:33.539Z] 404 /favicon.ico
+[2026-03-04T23:02:06.504Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:02:06.505Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:02:06.505Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:02:35.232Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-04T23:21:18.198Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T23:21:19.985Z] 404 /favicon.ico
+[2026-03-04T23:21:20.982Z] Player 2 (gunthera) joined. Total: 1
+[2026-03-04T23:27:19.450Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:27:19.451Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:27:19.451Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:27:38.731Z] Player 1 (Pirate) joined. Total: 1
+[2026-03-04T23:27:38.757Z] 404 /favicon.ico
+[2026-03-04T23:29:10.369Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:29:10.370Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:29:10.370Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:29:30.358Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-04T23:29:30.379Z] 404 /favicon.ico
+[2026-03-04T23:32:27.518Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:32:27.520Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:32:27.520Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:32:30.323Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-04T23:36:46.117Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:36:46.119Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:36:46.119Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:36:53.204Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-04T23:37:23.306Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T23:37:26.118Z] Player 2 (Gunthr) joined. Total: 1
+[2026-03-04T23:37:26.136Z] 404 /favicon.ico
+[2026-03-04T23:40:52.759Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:40:52.761Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:40:52.761Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:40:57.747Z] Player 1 (Gunthr) joined. Total: 1
+[2026-03-04T23:41:00.540Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T23:41:04.726Z] Player 2 (Gunthera) joined. Total: 1
+[2026-03-04T23:41:04.735Z] 404 /favicon.ico
+[2026-03-04T23:45:41.023Z] Player 2 disconnected. Remaining: 0
+[2026-03-04T23:45:42.126Z] 404 /favicon.ico
+[2026-03-04T23:45:42.970Z] Player 3 (Test) joined. Total: 1
+[2026-03-04T23:47:12.806Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-04T23:47:12.807Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-04T23:47:12.807Z] Open http://localhost:3000 in your browser to play.
+[2026-03-04T23:47:20.224Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-04T23:53:33.591Z] Player 1 disconnected. Remaining: 0
+[2026-03-04T23:53:36.398Z] Player 2 (Gunthera) joined. Total: 1
+[2026-03-04T23:53:36.417Z] 404 /favicon.ico
+[2026-03-04T23:56:32.358Z] Player 2 disconnected. Remaining: 0
+[2026-03-04T23:56:34.750Z] Player 3 (gunthr) joined. Total: 1
+[2026-03-04T23:56:34.766Z] 404 /favicon.ico
+[2026-03-05T00:09:06.173Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:09:06.174Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:09:06.174Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:09:48.161Z] Player 1 (gunthr) joined. Total: 1
+[2026-03-05T00:09:48.185Z] 404 /favicon.ico
+[2026-03-05T00:11:55.163Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:11:55.164Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:11:55.165Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:12:18.825Z] Player 1 (gunthr) joined. Total: 1
+[2026-03-05T00:12:18.836Z] 404 /favicon.ico
+[2026-03-05T00:13:26.339Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T00:13:28.134Z] Player 2 (g) joined. Total: 1
+[2026-03-05T00:13:28.155Z] 404 /favicon.ico
+[2026-03-05T00:16:16.340Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:16:16.339Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:16:16.340Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:16:22.711Z] Player 1 (g) joined. Total: 1
+[2026-03-05T00:19:01.071Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T00:19:02.573Z] Player 2 (g) joined. Total: 1
+[2026-03-05T00:19:02.585Z] 404 /favicon.ico
+[2026-03-05T00:27:52.787Z] Player 2 disconnected. Remaining: 0
+[2026-03-05T00:27:54.371Z] Player 3 (g) joined. Total: 1
+[2026-03-05T00:27:54.385Z] 404 /favicon.ico
+[2026-03-05T00:31:22.584Z] Player 3 disconnected. Remaining: 0
+[2026-03-05T00:31:24.248Z] Player 4 (g) joined. Total: 1
+[2026-03-05T00:31:24.265Z] 404 /favicon.ico
+[2026-03-05T00:33:03.370Z] Player 4 disconnected. Remaining: 0
+[2026-03-05T00:33:04.573Z] Player 5 (g) joined. Total: 1
+[2026-03-05T00:33:04.586Z] 404 /favicon.ico
+[2026-03-05T00:35:53.794Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:35:53.796Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:35:53.796Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:35:59.200Z] Player 1 (g) joined. Total: 1
+[2026-03-05T00:37:31.515Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:37:31.516Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:37:31.516Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:37:33.833Z] Player 1 (g) joined. Total: 1
+[2026-03-05T00:42:52.758Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T00:42:54.578Z] Player 2 (g) joined. Total: 1
+[2026-03-05T00:42:54.607Z] 404 /favicon.ico
+[2026-03-05T00:47:35.427Z] Player 2 disconnected. Remaining: 0
+[2026-03-05T00:47:36.953Z] Player 3 (g) joined. Total: 1
+[2026-03-05T00:47:36.968Z] 404 /favicon.ico
+[2026-03-05T00:48:19.362Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-05T00:48:19.363Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-05T00:48:19.363Z] Open http://localhost:3000 in your browser to play.
+[2026-03-05T00:48:40.798Z] Player 1 (G) joined. Total: 1
+[2026-03-05T00:48:40.818Z] 404 /favicon.ico
+[2026-03-05T00:56:46.860Z] Player 1 disconnected. Remaining: 0
+[2026-03-05T00:56:48.052Z] Player 2 (g) joined. Total: 1
+[2026-03-05T00:56:48.066Z] 404 /favicon.ico
+[2026-03-05T00:59:56.700Z] Player 2 disconnected. Remaining: 0
+[2026-03-05T00:59:57.978Z] Player 3 (g) joined. Total: 1
+[2026-03-05T00:59:58.006Z] 404 /favicon.ico
+[2026-03-05T01:04:49.401Z] Player 3 disconnected. Remaining: 0
+[2026-03-05T01:04:50.635Z] Player 4 (g) joined. Total: 1
+[2026-03-05T01:04:50.655Z] 404 /favicon.ico
+[2026-03-05T01:44:33.326Z] Player 4 disconnected. Remaining: 0

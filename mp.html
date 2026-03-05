@@ -20,6 +20,52 @@
     .kills { color: #7fdb8a; }
     .deaths { color: #f59b80; }
 
+    .xp-track-wrap {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 22;
+      width: min(680px, calc(100vw - 30px));
+      pointer-events: none;
+      text-align: center;
+    }
+    .xp-track-label {
+      font-size: 11px;
+      color: #ffd887;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.65);
+      margin-bottom: 4px;
+      opacity: 0.95;
+    }
+    .xp-track {
+      height: 20px;
+      border-radius: 2px;
+      background: rgba(20, 30, 40, 0.88);
+      border: 1px solid rgba(255,216,135,0.45);
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 1px 6px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .xp-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #b3771b 0%, #d49b3d 30%, #ffd887 65%, #f6e7ba 100%);
+      transition: width 0.12s linear;
+    }
+    .xp-track-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #102030;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.45);
+    }
+
     .kill-feed { position: fixed; top: 10px; right: 16px; z-index: 10; pointer-events: none; font-size: 13px; text-align: right; }
     .kill-feed div { color: #d6ecff; margin-bottom: 3px; opacity: 1; transition: opacity 0.5s; }
     .kill-feed .fade { opacity: 0; }
@@ -61,7 +107,7 @@
     .scoreboard tr.me td { color: #ffd887; font-weight: bold; }
 
     /* Upgrade offer cards */
-    .upgrade-bar { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 14px; pointer-events: auto; }
+    .upgrade-bar { position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 14px; pointer-events: auto; }
     .upgrade-bar.hidden { display: none; }
     .upgrade-bar-cards { display: flex; gap: 10px; }
     .upgrade-bar-title { font-size: 11px; color: #ffd887; letter-spacing: 1px; text-transform: uppercase; text-align: center; opacity: 0.85; }
@@ -101,6 +147,14 @@
         <span class="deaths" id="myDeaths">💀 0</span>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="xp-track-wrap" id="xpTrackWrap">
+  <div class="xp-track-label">Doubloons to next level</div>
+  <div class="xp-track">
+    <div class="xp-fill" id="xpFill"></div>
+    <div class="xp-track-text" id="xpText">0/10</div>
   </div>
 </div>
 
@@ -148,8 +202,9 @@
 </div>
 
 <div class="hint">
-  <button id="sfxToggle" style="pointer-events:auto;padding:3px 8px;font-size:11px;background:#163a52;color:#e8f5ff;border:1px solid #2a4a62;border-radius:4px;cursor:pointer;margin-bottom:4px;display:block;margin-left:auto;">SFX: ON</button>
-  Steer: A/D · Row: W · Brake: S · Sail: Space · Anchor: X · Click: fire cannons · 1/2/3: pick upgrade · Tab: scoreboard · Enter: chat
+  <button id="sfxToggle" style="pointer-events:auto;padding:1px 4px;font-size:8px;background:#163a52;color:#e8f5ff;border:1px solid #2a4a62;border-radius:2px;cursor:pointer;margin-bottom:2px;display:block;margin-left:auto;">SFX: ON</button>
+  <button id="villageDebugToggle" style="pointer-events:auto;padding:1px 4px;font-size:8px;background:#163a52;color:#e8f5ff;border:1px solid #2a4a62;border-radius:2px;cursor:pointer;margin-bottom:2px;display:block;margin-left:auto;">Villages DBG: OFF</button>
+  Steer: A/D · Row: W · Brake: S · Sail: Space · Anchor: X · Click: fire cannons · 1/2/3: pick upgrade · Tab: scoreboard · Enter: chat · Villages DBG: button
 </div>
 
 <script type="module">
@@ -188,6 +243,9 @@ const upgradeBarTitle = document.getElementById('upgradeBarTitle');
 const ugNames = [document.getElementById('ug0Name'), document.getElementById('ug1Name'), document.getElementById('ug2Name')];
 const ugDescs = [document.getElementById('ug0Desc'), document.getElementById('ug1Desc'), document.getElementById('ug2Desc')];
 const myLevelEl = document.getElementById('myLevel');
+const xpFillEl = document.getElementById('xpFill');
+const xpTextEl = document.getElementById('xpText');
+const villageDebugToggle = document.getElementById('villageDebugToggle');
 
 // ─── State ───
 let ws = null;
@@ -203,7 +261,11 @@ const SERVER_TICK_MS = 50;
 let worldData = null;       // Client-side generated world (islands from seed)
 let currentSeed = null;
 let pendingOffer = null;       // Active upgrade offer or null
+let villageDebugEnabled = false;
 let startingPicksRemaining = 0; // Countdown for the 3-pick starting bonus sequence
+let destroyedVillageFxSeen = new Set();
+const shipDamageMarkState = new Map(); // shipId -> { marks: Array<{x,y,size,rot,sides,state,fadeEndMs}> }
+const SHIP_DAMAGE_PATCH_LINGER_MS = 2200;
 
 // Input
 const input = { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
@@ -239,6 +301,7 @@ function connect() {
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
           worldData = generateWorld(currentSeed);
+          destroyedVillageFxSeen.clear();
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
         joinOverlay.classList.add('hidden');
@@ -285,6 +348,7 @@ function connect() {
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
           worldData = generateWorld(currentSeed);
+          destroyedVillageFxSeen.clear();
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
         if (msg.events) {
@@ -323,7 +387,7 @@ function connect() {
               }
             }
             if (ev.type === 'cannonFire') {
-              if (audioSys) audioSys.playCannonVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
+              if (audioSys && ev.playSfx !== false) audioSys.playCannonVolleySfx(ev.x, ev.y, ev.dx || 0, ev.dy || 0, ev.count || 1, ev.size || 16);
               particles.push(...createMuzzleBlastParticles(ev.x, ev.y, ev.dx || 0, ev.dy || 0, true));
             }
             if (ev.type === 'gunFire') {
@@ -366,11 +430,14 @@ function connect() {
         break;
 
       case 'upgradeApplied':
-        if (msg.startingPicksRemaining > 0 && msg.nextOffer) {
-          // Still in starting bonus sequence — show the next offer
-          startingPicksRemaining = msg.startingPicksRemaining;
-          const pickNum = 4 - startingPicksRemaining;
-          showUpgradeOffer(msg.nextOffer, `Starting Bonus — Pick ${pickNum} of 3`);
+        if (msg.nextOffer) {
+          if (msg.startingPicksRemaining > 0) {
+            startingPicksRemaining = msg.startingPicksRemaining;
+            const pickNum = 4 - startingPicksRemaining;
+            showUpgradeOffer(msg.nextOffer, `Starting Bonus — Pick ${pickNum} of 3`);
+          } else {
+            showUpgradeOffer(msg.nextOffer);
+          }
         } else {
           hideUpgradeOffer();
         }
@@ -519,6 +586,13 @@ document.querySelectorAll('.upgrade-card').forEach(card => {
   card.addEventListener('click', () => selectUpgrade(parseInt(card.dataset.idx)));
 });
 
+if (villageDebugToggle) {
+  villageDebugToggle.addEventListener('click', () => {
+    villageDebugEnabled = !villageDebugEnabled;
+    villageDebugToggle.textContent = villageDebugEnabled ? 'Villages DBG: ON' : 'Villages DBG: OFF';
+  });
+}
+
 // ─── Explosions ───
 const explosions = [];
 function addExplosion(x, y, size) {
@@ -527,6 +601,113 @@ function addExplosion(x, y, size) {
 
 // ─── Particle system ───
 const particles = [];
+
+function spawnWaterSplash(x, y, heavy = false) {
+  const count = heavy ? 12 : 7;
+  const colors = heavy
+    ? ['#c7ebff', '#9fd5f4', '#72b6df', '#ffffff']
+    : ['#d6f0ff', '#9ed0ee', '#7fb9df', '#f4fcff'];
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = (0.35 + Math.random() * (heavy ? 1.45 : 1.05)) * 0.8;
+    const life = 0.18 + Math.random() * (heavy ? 0.32 : 0.24);
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: 1.2 + Math.random() * (heavy ? 3.2 : 2.3),
+      rot: 0,
+      spin: 0,
+      life,
+      maxLife: life,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      sides: 8,
+      drag: 0.94,
+      circle: true
+    });
+  }
+}
+
+function spawnVillageDestructionFx(x, y, size, island) {
+  const wind = currState?.wind || { x: 0, y: 0 };
+  const palette = ['#7a5639', '#8a6242', '#6b4d33', '#5a402c', '#9a6f4c'];
+  const triangleCount = 18;
+  const blockCount = 12;
+
+  let splashBaseX = x;
+  let splashBaseY = y;
+  if (island) {
+    const dx = x - island.x;
+    const dy = y - island.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len;
+    const ny = dy / len;
+    const coastR = island.radius * 0.92;
+    splashBaseX = island.x + nx * coastR;
+    splashBaseY = island.y + ny * coastR;
+  }
+
+  for (let i = 0; i < triangleCount; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 0.55 + Math.random() * 1.15;
+    const life = 0.55 + Math.random() * 0.55;
+    const splashX = splashBaseX + (Math.random() - 0.5) * Math.max(8, size * 0.28);
+    const splashY = splashBaseY + (Math.random() - 0.5) * Math.max(8, size * 0.28);
+    particles.push({
+      x: x + (Math.random() - 0.5) * size * 0.22,
+      y: y + (Math.random() - 0.5) * size * 0.22,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: 1.4 + Math.random() * 3.2,
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.45,
+      life,
+      maxLife: life,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      sides: 3,
+      drag: 0.978 + Math.random() * 0.012,
+      settleToWater: true,
+      splashOnSettle: true,
+      splashHeavy: false,
+      removeOnSettle: true,
+      splashX,
+      splashY,
+      currentX: wind.x * (0.05 + Math.random() * 0.08),
+      currentY: wind.y * (0.04 + Math.random() * 0.07)
+    });
+  }
+
+  for (let i = 0; i < blockCount; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 0.5 + Math.random() * 1.05;
+    const life = 0.6 + Math.random() * 0.6;
+    const splashX = splashBaseX + (Math.random() - 0.5) * Math.max(8, size * 0.3);
+    const splashY = splashBaseY + (Math.random() - 0.5) * Math.max(8, size * 0.3);
+    particles.push({
+      x: x + (Math.random() - 0.5) * size * 0.24,
+      y: y + (Math.random() - 0.5) * size * 0.24,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: 1.8 + Math.random() * 4.1,
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.36,
+      life,
+      maxLife: life,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      sides: 4,
+      drag: 0.98 + Math.random() * 0.01,
+      settleToWater: true,
+      splashOnSettle: true,
+      splashHeavy: true,
+      removeOnSettle: true,
+      splashX,
+      splashY,
+      currentX: wind.x * (0.05 + Math.random() * 0.08),
+      currentY: wind.y * (0.04 + Math.random() * 0.07)
+    });
+  }
+}
 
 function tickParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -545,6 +726,14 @@ function tickParticles(dt) {
     }
     if (p.life <= 0) {
       if (p.settleToWater && !p.settled) {
+        if (p.splashOnSettle) {
+          spawnWaterSplash(p.splashX ?? p.x, p.splashY ?? p.y, !!p.splashHeavy);
+          p.splashOnSettle = false;
+        }
+        if (p.removeOnSettle) {
+          particles.splice(i, 1);
+          continue;
+        }
         p.settled = true;
         p.vx *= 0.3;
         p.vy *= 0.3;
@@ -637,14 +826,27 @@ function spawnFireParticles(ship) {
   const ry = (Math.random() - 0.5) * hw * 1.4;
   const wx = ship.x + fwd.x * rx + right.x * ry;
   const wy = ship.y + fwd.y * rx + right.y * ry;
-  const colors = ['#ffcc00', '#ff9933', '#ff5500', '#cc3300'];
-  particles.push({
-    x: wx, y: wy,
-    vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
-    size: 0.8 + Math.random() * 1.2, life: 0.25 + Math.random() * 0.35, maxLife: 0.6,
-    color: colors[Math.floor(Math.random() * colors.length)],
-    circle: true, drag: 0.96, rot: 0, spin: 0
-  });
+  const intensity = clamp(Math.max(0.8, Number(ship.burnTime || 0)) / 7, 0.25, 1);
+  const count = 1 + Math.floor(intensity * 3 + Math.random() * 2);
+  for (let i = 0; i < count; i++) {
+    const hot = Math.random() < 0.68;
+    const life = 0.18 + Math.random() * (0.3 + intensity * 0.45);
+    particles.push({
+      x: wx,
+      y: wy,
+      vx: (Math.random() - 0.5) * (0.2 + intensity * 0.38),
+      vy: -0.1 - Math.random() * (0.35 + intensity * 0.5),
+      size: 1.1 + Math.random() * (1.6 + intensity * 1.9),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.22,
+      life,
+      maxLife: life,
+      color: hot ? (Math.random() < 0.55 ? '#ffb14e' : '#ff7b42') : '#2a2120',
+      sides: hot ? 5 : 6,
+      drag: hot ? 0.92 : 0.95,
+      circle: !hot
+    });
+  }
 }
 
 // ─── Fog of war + procedural cloud mask ───
@@ -853,6 +1055,17 @@ function interpShip(currColl, prevColl, id) {
 function getInterpolatedPlayer(id) { return interpShip(currState?.players, prevState?.players, id); }
 function getInterpolatedNpc(id) { return interpShip(currState?.npcs, prevState?.npcs, id); }
 
+function stableNumericSeed(id) {
+  if (typeof id === 'number' && Number.isFinite(id)) return id;
+  const raw = String(id ?? '0');
+  let hash = 2166136261 >>> 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 // ─── Rendering ───
 function toScreen(wx, wy, cam, zoom) {
   return { x: (wx - cam.x) * zoom, y: (wy - cam.y) * zoom };
@@ -888,8 +1101,12 @@ function drawIslands(cam, zoom, buildingState) {
     ctx.lineWidth = 2.5;
     ctx.stroke();
     // Beach glow
-    ctx.strokeStyle = 'rgba(210,195,150,0.25)';
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(214,198,156,0.34)';
+    ctx.lineWidth = 9;
+    ctx.stroke();
+    // Outer sandy fringe
+    ctx.strokeStyle = 'rgba(226,210,168,0.18)';
+    ctx.lineWidth = 15;
     ctx.stroke();
 
     // Foliage (multi-blob canopy)
@@ -916,6 +1133,33 @@ function drawIslands(cam, zoom, buildingState) {
       }
     }
 
+    // Tropical ground clutter (small square patches across island body)
+    const tropicalCount = 10 + Math.floor(island.radius * 0.09);
+    for (let i = 0; i < tropicalCount; i++) {
+      const seed = stableNumericSeed(`${island.x}:${island.y}:trop:${i}`);
+      const ang = seeded01(seed + 0.21) * Math.PI * 2;
+      const radial = Math.sqrt(seeded01(seed + 0.57)) * island.radius * 0.72;
+      const wx = island.x + Math.cos(ang) * radial;
+      const wy = island.y + Math.sin(ang) * radial;
+      const tp = toScreen(wx, wy, cam, zoom);
+      const sq = Math.max(1.2, (0.9 + seeded01(seed + 1.11) * 2.2) * zoom);
+      const colorSet = seeded01(seed + 1.83);
+      ctx.fillStyle = colorSet < 0.34
+        ? 'rgba(45,90,39,0.42)'
+        : colorSet < 0.67
+          ? 'rgba(74,122,66,0.38)'
+          : 'rgba(58,106,52,0.34)';
+      ctx.fillRect(tp.x - sq * 0.5, tp.y - sq * 0.5, sq, sq);
+      if (seeded01(seed + 2.47) > 0.45) {
+        const sq2 = sq * (0.62 + seeded01(seed + 3.01) * 0.33);
+        ctx.fillRect(tp.x + sq * 0.22, tp.y - sq * 0.28, sq2, sq2);
+      }
+      if (seeded01(seed + 3.33) > 0.62) {
+        const sq3 = sq * (0.48 + seeded01(seed + 4.21) * 0.28);
+        ctx.fillRect(tp.x - sq * 0.52, tp.y + sq * 0.18, sq3, sq3);
+      }
+    }
+
     // Docks
     for (const dock of island.docks) {
       const dp = toScreen(dock.x, dock.y, cam, zoom);
@@ -937,51 +1181,201 @@ function drawIslands(cam, zoom, buildingState) {
       const destroyed = bs ? bs.destroyed : false;
       const isTower = bs ? bs.isTower : false;
       const bp = toScreen(b.x, b.y, cam, zoom);
-      const bHalf = b.size * zoom * 0.3;
+      const villageScale = isTower ? 1 : 0.75;
+      const bHalf = isTower
+        ? Math.max(6, b.size * zoom * 0.46)
+        : Math.max(1.5, b.size * zoom * 0.46 * villageScale);
+      const hpRatio = bs ? Math.max(0, (bs.hp || 0) / Math.max(1, bs.maxHp || 1)) : 1;
+      const damage = 1 - hpRatio;
+      const seedBase = stableNumericSeed(b.id) * 13.17;
+
+      if (destroyed && !isTower && !destroyedVillageFxSeen.has(b.id)) {
+        destroyedVillageFxSeen.add(b.id);
+        addExplosion(b.x, b.y, Math.max(10, b.size * 0.95));
+        spawnVillageDestructionFx(b.x, b.y, b.size * villageScale, island);
+      }
+
       if (destroyed) {
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = '#5a4a30';
-        ctx.fillRect(bp.x - bHalf, bp.y - bHalf, bHalf * 2, bHalf * 2);
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillStyle = isTower ? '#8a4a3a' : '#6a5a4a';
-        ctx.fillRect(bp.x - bHalf, bp.y - bHalf, bHalf * 2, bHalf * 2);
-        ctx.strokeStyle = isTower ? '#cc6644' : '#9a8a72';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bp.x - bHalf, bp.y - bHalf, bHalf * 2, bHalf * 2);
-        // Roof
-        ctx.fillStyle = isTower ? '#aa5a4a' : '#8a7a6a';
-        ctx.beginPath();
-        ctx.moveTo(bp.x - bHalf - 1, bp.y - bHalf);
-        ctx.lineTo(bp.x, bp.y - bHalf - bHalf * 0.55);
-        ctx.lineTo(bp.x + bHalf + 1, bp.y - bHalf);
-        ctx.closePath();
-        ctx.fill();
-        // Windows
-        if (bHalf > 3.5) {
-          ctx.fillStyle = 'rgba(180,200,220,0.3)';
-          const wS = Math.max(1, bHalf * 0.22);
-          ctx.fillRect(bp.x - bHalf * 0.45 - wS/2, bp.y - wS/2, wS, wS);
-          ctx.fillRect(bp.x + bHalf * 0.45 - wS/2, bp.y - wS/2, wS, wS);
-        }
-        // Door
-        ctx.fillStyle = 'rgba(50,35,20,0.45)';
-        const dW = bHalf * 0.28;
-        const dH = bHalf * 0.45;
-        ctx.fillRect(bp.x - dW/2, bp.y + bHalf - dH, dW, dH);
         if (isTower) {
-          ctx.fillStyle = '#ff6644';
-          ctx.beginPath();
-          ctx.arc(bp.x, bp.y - bHalf - 4, 2.5, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = '#4f3f2b';
+          ctx.fillRect(bp.x - bHalf * 1.05, bp.y - bHalf * 0.95, bHalf * 2.1, bHalf * 1.9);
+          for (let i = 0; i < 5; i++) {
+            const ox = (seeded01(seedBase + i * 2.1) - 0.5) * bHalf * 1.4;
+            const oy = (seeded01(seedBase + i * 3.3 + 1.2) - 0.5) * bHalf * 1.1;
+            const rw = Math.max(1.2, bHalf * (0.18 + seeded01(seedBase + i * 5.4) * 0.25));
+            const rh = Math.max(1.2, bHalf * (0.14 + seeded01(seedBase + i * 7.1) * 0.2));
+            ctx.fillStyle = i % 2 === 0 ? '#2f261b' : '#6a553a';
+            ctx.fillRect(bp.x + ox - rw / 2, bp.y + oy - rh / 2, rw, rh);
+          }
+          ctx.globalAlpha = 1;
         }
-        if (bs && bs.hp < bs.maxHp) {
-          const hpR = Math.max(0, bs.hp / bs.maxHp);
+      } else {
+        if (isTower) {
+          // Tower base: simple large wooden rectangle
+          const baseW = bHalf * 2.6;
+          const baseH = bHalf * 2.05;
+          ctx.fillStyle = '#7d623f';
+          ctx.fillRect(bp.x - baseW * 0.5, bp.y - baseH * 0.5, baseW, baseH);
+          ctx.strokeStyle = '#463422';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(bp.x - baseW * 0.5, bp.y - baseH * 0.5, baseW, baseH);
+          // Plank seam hint
+          ctx.strokeStyle = 'rgba(62,44,29,0.45)';
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(bp.x - baseW * 0.2, bp.y - baseH * 0.45);
+          ctx.lineTo(bp.x - baseW * 0.2, bp.y + baseH * 0.45);
+          ctx.moveTo(bp.x + baseW * 0.18, bp.y - baseH * 0.45);
+          ctx.lineTo(bp.x + baseW * 0.18, bp.y + baseH * 0.45);
+          ctx.stroke();
+
+          // Cannon barrel (faces nearest player visually)
+          const players = currState?.players ? Object.values(currState.players).filter(p => p && p.alive) : [];
+          let aim = -Math.PI / 2;
+          if (players.length > 0) {
+            let nearest = players[0];
+            let nearestD = Math.hypot(nearest.x - b.x, nearest.y - b.y);
+            for (const pl of players) {
+              const d = Math.hypot(pl.x - b.x, pl.y - b.y);
+              if (d < nearestD) { nearestD = d; nearest = pl; }
+            }
+            aim = Math.atan2(nearest.y - b.y, nearest.x - b.x);
+          }
+          ctx.save();
+          ctx.translate(bp.x, bp.y - baseH * 0.12);
+          // Fat breech block
+          ctx.fillStyle = '#666666';
+          ctx.fillRect(-bHalf * 0.52, -bHalf * 0.32, bHalf * 1.04, bHalf * 0.64);
+          ctx.strokeStyle = '#3f3f3f';
+          ctx.strokeRect(-bHalf * 0.52, -bHalf * 0.32, bHalf * 1.04, bHalf * 0.64);
+          ctx.rotate(aim);
+          // Fat cannon tube
+          ctx.fillStyle = '#4a4a4a';
+          ctx.fillRect(0, -bHalf * 0.2, bHalf * 1.55, bHalf * 0.4);
+          ctx.strokeStyle = '#9a9a9a';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(0, -bHalf * 0.2, bHalf * 1.55, bHalf * 0.4);
+          ctx.restore();
+        } else {
+          // Village houses: a couple of spaced single rectangles
+          const houseCount = 2 + Math.floor(seeded01(seedBase + 2.7) * 2); // 2-3 houses
+          const brownPalette = ['#5f452d', '#745338', '#8a6242', '#9a6f4c', '#6b4d33'];
+
+          ctx.fillStyle = 'rgba(74,52,34,0.2)';
+          ctx.beginPath();
+          ctx.ellipse(bp.x, bp.y, bHalf * 0.95, bHalf * 0.68, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          const ringR = bHalf * 0.58;
+          const baseRot = seeded01(seedBase + 8.1) * Math.PI * 2;
+          const houses = [];
+          const maxAttempts = houseCount * 14;
+          const pad = bHalf * 0.1;
+
+          for (let attempt = 0; attempt < maxAttempts && houses.length < houseCount; attempt++) {
+            const t = (attempt + 0.31) / Math.max(1, houseCount);
+            const ang = baseRot + t * Math.PI * 2 + (seeded01(seedBase + attempt * 5.3 + 3.9) - 0.5) * 0.38;
+            const radiusJitter = ringR * (0.78 + seeded01(seedBase + attempt * 7.7 + 1.8) * 0.34);
+            const ox = Math.cos(ang) * radiusJitter;
+            const oy = Math.sin(ang) * radiusJitter * 0.78;
+            const rw = Math.max(4.6, bHalf * (0.68 + seeded01(seedBase + attempt * 4.1 + 6.6) * 0.34));
+            const rh = Math.max(3.4, bHalf * (0.52 + seeded01(seedBase + attempt * 6.2 + 9.9) * 0.28));
+
+            let overlap = false;
+            for (const h of houses) {
+              const overlapX = Math.abs(ox - h.ox) < (rw + h.rw) * 0.5 + pad;
+              const overlapY = Math.abs(oy - h.oy) < (rh + h.rh) * 0.5 + pad;
+              if (overlapX && overlapY) { overlap = true; break; }
+            }
+            if (overlap) continue;
+
+            const colorIndex = Math.floor(seeded01(seedBase + 90 + attempt * 1.97) * brownPalette.length) % brownPalette.length;
+            houses.push({ ox, oy, rw, rh, colorIndex });
+          }
+
+          for (const h of houses) {
+            ctx.fillStyle = brownPalette[h.colorIndex];
+            ctx.fillRect(bp.x + h.ox - h.rw / 2, bp.y + h.oy - h.rh / 2, h.rw, h.rh);
+          }
+
+          if (villageDebugEnabled) {
+            ctx.strokeStyle = 'rgba(106,229,255,0.88)';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(bp.x - bHalf, bp.y - bHalf * 0.8, bHalf * 2, bHalf * 1.6);
+            ctx.fillStyle = 'rgba(106,229,255,0.95)';
+            ctx.font = `${Math.max(10, Math.floor(10 * zoom))}px system-ui, sans-serif`;
+            ctx.fillText(`v:${b.id} c:${houses.length}`, bp.x - bHalf, bp.y - bHalf - 4);
+          }
+        }
+
+        // Damage marks: more black marks as HP drops
+        if (damage > 0.06) {
+          const markCount = 1 + Math.floor(damage * 8);
+          for (let i = 0; i < markCount; i++) {
+            const r1 = seeded01(seedBase + 31 + i * 2.8);
+            const r2 = seeded01(seedBase + 42 + i * 4.4);
+            const r3 = seeded01(seedBase + 53 + i * 6.6);
+            const mx = bp.x + (r1 * 2 - 1) * bHalf * 0.7;
+            const my = bp.y + (r2 * 2 - 1) * bHalf * 0.6;
+            const ms = Math.max(1.1, bHalf * (0.12 + r3 * 0.2));
+            ctx.fillStyle = 'rgba(10,10,10,0.58)';
+            if (i % 3 === 0) {
+              ctx.beginPath();
+              ctx.moveTo(mx, my - ms * 0.7);
+              ctx.lineTo(mx + ms * 0.7, my + ms * 0.55);
+              ctx.lineTo(mx - ms * 0.7, my + ms * 0.55);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              ctx.fillRect(mx - ms * 0.5, my - ms * 0.5, ms, ms);
+            }
+          }
+        }
+
+        // Sporadic village fire at higher damage
+        if (damage > 0.35) {
+          const fireCount = 1 + Math.floor(damage * 4);
+          const t = performance.now() * 0.008;
+          for (let i = 0; i < fireCount; i++) {
+            const r1 = seeded01(seedBase + 71 + i * 3.3);
+            const r2 = seeded01(seedBase + 83 + i * 5.2);
+            const fx = bp.x + (r1 * 2 - 1) * bHalf * 0.62;
+            const fy = bp.y + (r2 * 2 - 1) * bHalf * 0.45;
+            const fh = Math.max(1.4, bHalf * (0.16 + 0.08 * Math.sin(t + i)));
+            if ((i + Math.floor(t * 3)) % 2 === 0) {
+              ctx.fillStyle = 'rgba(255,170,80,0.78)';
+              ctx.beginPath();
+              ctx.moveTo(fx, fy - fh);
+              ctx.lineTo(fx + fh * 0.5, fy + fh * 0.15);
+              ctx.lineTo(fx - fh * 0.5, fy + fh * 0.15);
+              ctx.closePath();
+              ctx.fill();
+              ctx.fillStyle = 'rgba(255,90,40,0.65)';
+              ctx.beginPath();
+              ctx.arc(fx, fy - fh * 0.2, fh * 0.3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+
+        if (isTower && bs && bs.hp < bs.maxHp) {
+          const hpR = hpRatio;
           const bw = bHalf * 2.4;
           ctx.fillStyle = 'rgba(0,0,0,0.5)';
           ctx.fillRect(bp.x - bw / 2, bp.y + bHalf + 2, bw, 3);
           ctx.fillStyle = hpR > 0.5 ? '#4caf50' : '#ff9800';
           ctx.fillRect(bp.x - bw / 2, bp.y + bHalf + 2, bw * hpR, 3);
+        }
+
+        if (villageDebugEnabled && (destroyed || isTower)) {
+          ctx.strokeStyle = destroyed ? 'rgba(255,110,110,0.85)' : 'rgba(255,208,120,0.9)';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(bp.x - bHalf * 1.15, bp.y - bHalf * 0.95, bHalf * 2.3, bHalf * 1.9);
+          ctx.fillStyle = destroyed ? 'rgba(255,110,110,0.95)' : 'rgba(255,208,120,0.95)';
+          ctx.font = `${Math.max(10, Math.floor(10 * zoom))}px system-ui, sans-serif`;
+          const kind = destroyed ? 'destroyed' : 'tower';
+          ctx.fillText(`${kind}:${b.id}`, bp.x - bHalf, bp.y - bHalf - 4);
         }
       }
     }
@@ -1113,30 +1507,15 @@ function draw() {
   if (st.bullets) {
     for (const b of st.bullets) {
       const bp = toScreen(b.x, b.y, cam, zoom);
-      if (b.heavy) {
-        // Cannonball — black circle with slight sheen
-        ctx.fillStyle = '#111';
-        ctx.beginPath();
-        ctx.arc(bp.x, bp.y, 3.4 * zoom, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.beginPath();
-        ctx.arc(bp.x - 0.8 * zoom, bp.y - 0.8 * zoom, 1.1 * zoom, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Musket ball — tiny silver circle, 10% the radius of a cannonball
-        const r = Math.max(1, 0.34 * zoom);
-        ctx.beginPath();
-        ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = '#c8ccd0';
-        ctx.fill();
-        if (r > 1.2) {
-          ctx.beginPath();
-          ctx.arc(bp.x - r * 0.3, bp.y - r * 0.3, r * 0.35, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,255,255,0.45)';
-          ctx.fill();
-        }
-      }
+      const r = 4;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8ccd0';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x - 1.2, bp.y - 1.2, 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill();
     }
   }
 
@@ -1236,12 +1615,19 @@ function draw() {
 }
 
 function drawWaterGrid(cam, zoom) {
-  const tileSize = 64;
+  const tileSize = 32;
   const startTX = Math.floor(cam.x / tileSize);
   const startTY = Math.floor(cam.y / tileSize);
   const endTX = Math.ceil((cam.x + canvas.width / zoom) / tileSize);
   const endTY = Math.ceil((cam.y + canvas.height / zoom) / tileSize);
   const time = performance.now() / 1000;
+  const wind = currState?.wind || { x: 0.7, y: 0.2 };
+  const windMag = Math.hypot(wind.x, wind.y) || 1;
+  const windNX = wind.x / windMag;
+  const windNY = wind.y / windMag;
+  const oppNX = -windNX;
+  const oppNY = -windNY;
+  const wrap01 = (v) => ((v % 1) + 1) % 1;
 
   for (let tx = startTX; tx <= endTX; tx++) {
     for (let ty = startTY; ty <= endTY; ty++) {
@@ -1261,6 +1647,25 @@ function drawWaterGrid(cam, zoom) {
         ctx.fillRect(sx, sy, sw, sh);
         ctx.globalAlpha = 1;
       }
+
+      // Wind-reactive tile shimmer: one layer drifts against wind, one with wind.
+      const projOpp = (wx * oppNX + wy * oppNY) * 0.045;
+      const projWind = (wx * windNX + wy * windNY) * 0.04;
+      const driftA = wrap01(projOpp + time * 0.92 + ((tx + ty) & 1) * 0.31);
+      const driftB = wrap01(projWind - time * 0.78 + ((tx - ty) & 1) * 0.27);
+
+      const ax = sx + (0.15 + driftA * 0.7) * sw;
+      const ay = sy + (0.18 + driftA * 0.55) * sh;
+      const bx = sx + (0.15 + driftB * 0.7) * sw;
+      const by = sy + (0.2 + driftB * 0.5) * sh;
+
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = 'rgba(120,185,225,1)';
+      ctx.fillRect(ax - sw * 0.2, ay - sh * 0.09, sw * 0.4, sh * 0.18);
+      ctx.globalAlpha = 0.05;
+      ctx.fillStyle = 'rgba(95,165,210,1)';
+      ctx.fillRect(bx - sw * 0.18, by - sh * 0.08, sw * 0.36, sh * 0.16);
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -1289,6 +1694,191 @@ function drawHullPolygon(shape, z) {
   ctx.lineTo(shape.sternShoulderX * z, shape.sternHalfBeam * z);
   ctx.lineTo(shape.shoulderX * z, shape.shoulderHalfBeam * z);
   ctx.closePath();
+}
+
+function getNpcDeckColor(p) {
+  const palette = ['#6c4e35', '#5a3f2b', '#4f5b38', '#4a4158', '#385562', '#6a5838'];
+  const idx = Math.abs(((p.id || 0) * 37 + (p.level || 1) * 11) % palette.length);
+  return palette[idx];
+}
+
+function drawDeckDamageMarks(p, shape, z) {
+  const shipId = p.id ?? p.name;
+  if (shipId === undefined || shipId === null) return;
+
+  const nowMs = performance.now();
+  const maxHp = Math.max(1, p.maxHp || 1);
+  const hp = clamp(p.hp || maxHp, 0, maxHp);
+  const damage = 1 - hp / maxHp;
+
+  const sizeScale = clamp((p.size || 16) / 16, 1, 2.8);
+  const targetBlackMarks = damage <= 0.05
+    ? 0
+    : Math.max(2, Math.floor(damage * (20 + sizeScale * 22)));
+
+  const minX = shape.sternShoulderX * 0.88;
+  const maxX = shape.shoulderX * 0.92;
+
+  const state = shipDamageMarkState.get(shipId) || { marks: [] };
+  state.marks = state.marks.filter((mark) => mark.state !== 'brown' || nowMs < mark.fadeEndMs);
+
+  const activeBlack = state.marks.filter((mark) => mark.state === 'black');
+
+  if (activeBlack.length > targetBlackMarks) {
+    const toBrown = activeBlack.length - targetBlackMarks;
+    let converted = 0;
+    for (let i = state.marks.length - 1; i >= 0 && converted < toBrown; i--) {
+      const mark = state.marks[i];
+      if (mark.state !== 'black') continue;
+      mark.state = 'brown';
+      mark.fadeEndMs = nowMs + SHIP_DAMAGE_PATCH_LINGER_MS;
+      converted++;
+    }
+  } else if (activeBlack.length < targetBlackMarks) {
+    const toAdd = targetBlackMarks - activeBlack.length;
+    for (let i = 0; i < toAdd; i++) {
+      const r1 = Math.random();
+      const r2 = Math.random();
+      const r3 = Math.random();
+      const r4 = Math.random();
+      const x = minX + (maxX - minX) * r1;
+      const halfW = hullHalfWidthAt(shape, x) * (0.62 + r2 * 0.2);
+      const y = (r3 * 2 - 1) * halfW;
+      const size = (0.95 + r4 * 2.0) * z;
+      state.marks.push({
+        x,
+        y,
+        size,
+        rot: r2 * Math.PI * 2,
+        sides: r1 > 0.5 ? 4 : 3,
+        state: 'black',
+        fadeEndMs: 0
+      });
+
+      if (Math.random() < 0.58) {
+        const mini = size * (0.45 + Math.random() * 0.42);
+        state.marks.push({
+          x: x + (Math.random() - 0.5) * size * 1.05 / z,
+          y: y + (Math.random() - 0.5) * size * 0.95 / z,
+          size: mini,
+          rot: (Math.random() - 0.5) * 0.9,
+          sides: Math.random() > 0.5 ? 4 : 3,
+          state: 'black',
+          fadeEndMs: 0
+        });
+      }
+    }
+  }
+
+  shipDamageMarkState.set(shipId, state);
+
+  for (const mark of state.marks) {
+    if (mark.state === 'black') {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#141516';
+    } else {
+      const remain = clamp((mark.fadeEndMs - nowMs) / SHIP_DAMAGE_PATCH_LINGER_MS, 0, 1);
+      ctx.globalAlpha = 0.2 + remain * 0.55;
+      ctx.fillStyle = '#6c4d2d';
+    }
+    ctx.save();
+    ctx.translate(mark.x * z, mark.y * z);
+    ctx.rotate(mark.rot);
+    polygonPath(mark.sides, mark.size);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawDeckGoldPiles(p, shape, z) {
+  const chunks = Math.floor(Math.max(0, p.doubloons || 0) / 20);
+  if (chunks <= 0) return;
+
+  const deckLen = shape.shoulderX - shape.sternShoulderX;
+  const sternX = shape.sternShoulderX;
+  const zoneLen = Math.max(1.6, deckLen * 0.52); // back half-ish zone
+
+  const capacity = 56;
+  const drawCount = Math.min(chunks, capacity);
+
+  const goldShades = ['#c88f2a', '#d7a43a', '#e6bf55', '#b77a1e', '#f0d27a'];
+  const brownShades = ['#7d5a34', '#8e6840', '#6c4d2d'];
+
+  for (let i = 0; i < drawCount; i++) {
+    const seed = (p.id || 1) * 97.13 + i * 11.71;
+    const tx = Math.pow(seeded01(seed + 0.83), 1.6); // stronger stern bias (back of ship)
+    const x = sternX + tx * zoneLen;
+    const halfW = hullHalfWidthAt(shape, x) * 0.7;
+    const y = (seeded01(seed + 2.1) * 2 - 1) * halfW * 0.42; // crowd toward centerline
+    const layer = Math.floor(seeded01(seed + 2.9) * 3);
+    const jitterX = (seeded01(seed + 3.5) - 0.5) * zoneLen * 0.08;
+    const jitterY = (seeded01(seed + 4.2) - 0.5) * halfW * 0.16;
+    const sizeLocal = Math.max(2.8 / Math.max(0.01, z), 2.8 + seeded01(seed + 5.6) * 2.6);
+    const size = sizeLocal * z;
+
+    const localX = x + jitterX;
+    const deckHalfW = hullHalfWidthAt(shape, localX) * 0.88;
+    const edgePad = sizeLocal * 0.62;
+    const maxY = Math.max(0, deckHalfW - edgePad);
+    const localY = clamp(y + jitterY, -maxY, maxY);
+
+    const px = localX * z;
+    const py = (localY - layer * (sizeLocal * 0.5)) * z;
+
+    const chestLike = seeded01(seed + 5.8) < 0.35;
+    if (chestLike) {
+      const bw = size * 1.18;
+      const bh = size * 0.86;
+      const brownIdx = Math.floor(seeded01(seed + 6.4) * brownShades.length) % brownShades.length;
+      const goldIdx = Math.floor(seeded01(seed + 7.1) * goldShades.length) % goldShades.length;
+      ctx.fillStyle = brownShades[brownIdx];
+      ctx.fillRect(px - bw * 0.5, py - bh * 0.45, bw, bh);
+      ctx.fillStyle = goldShades[goldIdx];
+      ctx.fillRect(px - bw * 0.38, py - bh * 0.26, bw * 0.76, bh * 0.38);
+      ctx.fillStyle = 'rgba(70, 45, 24, 0.75)';
+      ctx.fillRect(px - bw * 0.42, py - bh * 0.5, bw * 0.84, bh * 0.2);
+    } else {
+      const shadeIdx = Math.floor(seeded01(seed + 4.7) * goldShades.length) % goldShades.length;
+      ctx.fillStyle = goldShades[shadeIdx];
+      ctx.fillRect(px - size * 0.5, py - size * 0.5, size, size);
+    }
+  }
+}
+
+function drawShipBurningOverlay(p, shape, z) {
+  if (!p.onFire) return;
+  const burn = Math.max(0.6, Number(p.burnTime || 0));
+  const intensity = clamp(burn / 7, 0.2, 1);
+  const flames = 2 + Math.floor(intensity * 4);
+  const seed = (p.damageSeed || p.id || 17) * 0.37;
+  const t = performance.now() * 0.001;
+
+  for (let i = 0; i < flames; i++) {
+    const lane = (i + 1) / (flames + 1);
+    const minX = shape.sternShoulderX * 0.62;
+    const maxX = shape.shoulderX * 0.72;
+    const x = minX + (maxX - minX) * lane;
+    const hw = hullHalfWidthAt(shape, x) * 0.48;
+    const wave = Math.sin(t * 7.5 + seed + i * 1.27);
+    const y = clamp(wave * hw * 0.55, -hw, hw);
+    const h = (2 + intensity * 2.8 + Math.sin(t * 10 + i * 2.1) * 0.4) * z;
+    const sx = x * z;
+    const sy = y * z;
+
+    ctx.fillStyle = 'rgba(255,178,80,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - h);
+    ctx.lineTo(sx + h * 0.52, sy + h * 0.1);
+    ctx.lineTo(sx - h * 0.52, sy + h * 0.1);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,114,58,0.72)';
+    ctx.beginPath();
+    ctx.arc(sx, sy - h * 0.18, h * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawShipAt(sx, sy, p, zoom, isMe) {
@@ -1334,6 +1924,20 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
   drawHullPolygon(shape, z);
   ctx.fillStyle = p.hullColor || '#5f4630';
   ctx.fill();
+
+  // Deck tint layer (adds visual variety, especially for NPC ships)
+  drawHullPolygon(shape, z);
+  ctx.save();
+  ctx.clip();
+  const deckColor = p.isNpc ? getNpcDeckColor(p) : (p.trimColor || '#d9b78d');
+  const minDeckX = shape.sternShoulderX * z;
+  const maxDeckX = shape.shoulderX * z;
+  const beam = shape.shoulderHalfBeam * z * 0.76;
+  ctx.fillStyle = deckColor;
+  ctx.globalAlpha = p.isNpc ? 0.34 : 0.22;
+  ctx.fillRect(minDeckX, -beam, Math.max(1, maxDeckX - minDeckX), beam * 2);
+  ctx.restore();
+  ctx.globalAlpha = 1;
 
   // Trim stroke
   ctx.strokeStyle = p.trimColor || '#d9b78d';
@@ -1407,28 +2011,6 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
     }
   }
 
-  // Square sail — thin horizontal rectangle, rotates to always face the wind
-  if (p.sailOpen && currState && currState.wind) {
-    const wind = currState.wind;
-    const mastPosX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
-    // Wind direction relative to ship heading → yard angle (perpendicular to wind = broad face catches wind)
-    const windAngle = Math.atan2(wind.y, wind.x);
-    const yardAngle = windAngle - p.heading + Math.PI / 2;
-    const sailW = size * 2.0 * z;   // wider than hull beam
-    const sailH = Math.max(2.5, z * 2.5); // thin flat rectangle
-    ctx.save();
-    ctx.translate(mastPosX, 0);
-    ctx.rotate(yardAngle);
-    ctx.fillStyle = p.sailColor || '#f0f7ff';
-    ctx.globalAlpha = 0.88;
-    ctx.fillRect(-sailW / 2, -sailH / 2, sailW, sailH);
-    ctx.strokeStyle = 'rgba(130,150,170,0.5)';
-    ctx.lineWidth = Math.max(0.5, z * 0.4);
-    ctx.strokeRect(-sailW / 2, -sailH / 2, sailW, sailH);
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
   // Mast
   const mastX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
   ctx.fillStyle = '#3a2a1a';
@@ -1436,48 +2018,46 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
   ctx.arc(mastX, 0, Math.max(1.5, z * 1.2), 0, Math.PI * 2);
   ctx.fill();
 
-  // Fire overlay
-  if (p.onFire) {
-    drawHullPolygon(shape, z);
-    ctx.globalAlpha = 0.28 + Math.sin(performance.now() * 0.012) * 0.1;
-    ctx.fillStyle = '#ff6a00';
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    const now = performance.now();
-    const deckLen = shape.shoulderX - shape.sternShoulderX;
-    for (let f = 0; f < 6; f++) {
-      const phase = now * 0.005 + f * 1.3;
-      const fxLocal = shape.sternShoulderX + deckLen * (0.15 + Math.abs(Math.sin(phase * 0.7)) * 0.65);
-      const hw = hullHalfWidthAt(shape, fxLocal);
-      const fy = Math.sin(phase * 1.1) * hw * 0.7;
-      const fr = (1.4 + Math.sin(phase * 2.3) * 0.9) * z * 0.5;
-      ctx.fillStyle = ['#ffcc00', '#ff9933', '#ff5500'][f % 3];
-      ctx.globalAlpha = 0.45 + Math.sin(phase * 3) * 0.2;
-      ctx.beginPath();
-      ctx.arc(fxLocal * z, fy * z, fr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
+  drawDeckDamageMarks(p, shape, z);
+  drawDeckGoldPiles(p, shape, z);
+  drawShipBurningOverlay(p, shape, z);
 
-  // Deck damage marks
-  const hpRatio = Math.max(0, (p.hp || 0) / (p.maxHp || 20));
-  if (hpRatio < 0.8) {
-    const markCount = Math.ceil((1 - hpRatio) * 5);
-    const seed = (p.id || 0) * 137;
-    const deckLen = shape.shoulderX - shape.sternShoulderX;
-    ctx.fillStyle = 'rgba(30,20,10,0.3)';
-    for (let i = 0; i < markCount; i++) {
-      const s = ((seed + i * 41) % 997) / 997;
-      const s2 = ((seed + i * 73 + 17) % 991) / 991;
-      const dx = shape.sternShoulderX + deckLen * (0.15 + s * 0.7);
-      const hw = hullHalfWidthAt(shape, dx);
-      const dy = (s2 - 0.5) * hw * 1.2;
-      const mr = (1.0 + s * 1.4) * z * 0.4;
-      ctx.beginPath();
-      ctx.arc(dx * z, dy * z, mr, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // Square sail — draw above damage overlays
+  if (p.sailOpen && currState && currState.wind) {
+    const wind = currState.wind;
+    const mastPosX = ((shape.sternShoulderX + shape.shoulderX) * 0.5) * z;
+    const windAngle = Math.atan2(wind.y, wind.x);
+    const yardAngle = windAngle - p.heading + Math.PI / 2;
+    const sailW = size * 2.0 * z;
+    const sailH = Math.max(3.2, z * 3.1);
+    const swayTime = performance.now() * 0.003 + (p.id || 0) * 0.73;
+    const backSwayOffset = Math.sin(swayTime) * Math.max(0.35, size * z * 0.05);
+    const backSwayRot = Math.sin(swayTime * 0.82) * 0.014;
+    const sailSwayOffset = Math.sin(swayTime + 1.1) * Math.max(0.28, size * z * 0.038);
+    const sailSwayRot = Math.sin(swayTime * 0.97 + 0.55) * 0.011;
+
+    // Translucent backing panel (subtle sway)
+    ctx.save();
+    ctx.translate(mastPosX + backSwayOffset, 0);
+    ctx.rotate(yardAngle + backSwayRot);
+    const backW = sailW * 1.24;
+    const backH = sailH * 2.25;
+    ctx.fillStyle = 'rgba(195, 215, 230, 0.22)';
+    ctx.fillRect(-backW / 2, -backH / 2, backW, backH);
+    ctx.restore();
+
+    // Main sail (slightly different sway; not in sync with backing)
+    ctx.save();
+    ctx.translate(mastPosX + sailSwayOffset, 0);
+    ctx.rotate(yardAngle + sailSwayRot);
+    ctx.fillStyle = p.sailColor || '#f0f7ff';
+    ctx.globalAlpha = 0.88;
+    ctx.fillRect(-sailW / 2, -sailH / 2, sailW, sailH);
+    ctx.strokeStyle = 'rgba(130,150,170,0.5)';
+    ctx.lineWidth = Math.max(0.7, z * 0.52);
+    ctx.strokeRect(-sailW / 2, -sailH / 2, sailW, sailH);
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // NPC flag / pennant
@@ -1511,6 +2091,7 @@ function drawShipAt(sx, sy, p, zoom, isMe) {
   ctx.restore();
 
   // HP bar (above ship)
+  const hpRatio = Math.max(0, (p.hp || 0) / (p.maxHp || 20));
   const barWidth = shape.len * z * 2;
   const barHeight = 4 * (z / 2);
   const barX = sx - barWidth / 2;
@@ -1597,6 +2178,14 @@ function updateHud(st) {
     myDoubloonsEl.textContent = `🪙 ${me.doubloons}`;
     myKillsEl.textContent = `☠ ${me.kills}`;
     myDeathsEl.textContent = `💀 ${me.deaths}`;
+    const xpNow = Math.max(0, Math.floor(me.xp || 0));
+    const xpNeed = Math.max(1, Math.floor(me.xpToNext || 10));
+    const xpPct = clamp(xpNow / xpNeed, 0, 1);
+    xpFillEl.style.width = `${Math.round(xpPct * 1000) / 10}%`;
+    xpTextEl.textContent = `${xpNow}/${xpNeed}`;
+  } else {
+    xpFillEl.style.width = '0%';
+    xpTextEl.textContent = '0/10';
   }
 
   // ── Leaderboard: top 3 players by doubloons ──

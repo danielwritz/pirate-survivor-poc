@@ -22,6 +22,51 @@
       pointer-events: auto;
     }
     .audio-btn.is-muted { background: #3a2023; border-color: #88545b; color: #ffd4d8; }
+    .xp-track-wrap {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 6;
+      width: min(680px, calc(100vw - 30px));
+      pointer-events: none;
+      text-align: center;
+    }
+    .xp-track-label {
+      font-size: 11px;
+      color: #ffd887;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.65);
+      margin-bottom: 4px;
+      opacity: 0.95;
+    }
+    .xp-track {
+      height: 20px;
+      border-radius: 2px;
+      background: rgba(20, 30, 40, 0.88);
+      border: 1px solid rgba(255,216,135,0.45);
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 1px 6px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .xp-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #b3771b 0%, #d49b3d 30%, #ffd887 65%, #f6e7ba 100%);
+      transition: width 0.12s linear;
+    }
+    .xp-track-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #102030;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.45);
+    }
     .hint { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 5; color: #9fc2d9; font-size: 13px; text-align: center; pointer-events: none; }
   </style>
 </head>
@@ -32,6 +77,13 @@
       <div class="hud-right">
         <div id="wind"></div>
         <button id="audioToggle" class="audio-btn" type="button" aria-label="Toggle sound effects">SFX: ON</button>
+      </div>
+    </div>
+    <div class="xp-track-wrap">
+      <div class="xp-track-label">Doubloons to next level</div>
+      <div class="xp-track">
+        <div class="xp-fill" id="xpFill"></div>
+        <div class="xp-track-text" id="xpText">0/10</div>
       </div>
     </div>
     <canvas id="game" width="1280" height="720"></canvas>
@@ -77,6 +129,8 @@ ctx.imageSmoothingEnabled = false;
 const statsEl = document.getElementById('stats');
 const windEl = document.getElementById('wind');
 const audioToggleBtn = document.getElementById('audioToggle');
+const xpFillEl = document.getElementById('xpFill');
+const xpTextEl = document.getElementById('xpText');
 
 function polygonPath(cx, cy, radius, sides, rot) {
   polygonPathCore(ctx, cx, cy, radius, sides, rot);
@@ -2333,11 +2387,11 @@ function ensureRepairCrewFromRule() {
 function applyHullArmorVisualTier() {
   const tier = clamp(Number(player.hullArmorTier || 0), 0, 4);
   const palette = [
-    { hullColor: '#5f4630', trimColor: '#b87333' },
-    { hullColor: '#5a422d', trimColor: '#b87a3f' },
-    { hullColor: '#553e2b', trimColor: '#9c8058' },
-    { hullColor: '#503a28', trimColor: '#7f8791' },
-    { hullColor: '#4b3626', trimColor: '#b8c1cb' }
+    { hullColor: '#5f4630', trimColor: '#d9b78d' },
+    { hullColor: '#6a4a2f', trimColor: '#c8833f' },
+    { hullColor: '#5a4634', trimColor: '#b27c45' },
+    { hullColor: '#4a4747', trimColor: '#8f979f' },
+    { hullColor: '#55616e', trimColor: '#d7e1ea' }
   ];
   const style = palette[tier] || palette[0];
   player.hullColor = style.hullColor;
@@ -4755,10 +4809,18 @@ function drawWorld() {
     ctx.fillStyle = '#b2a46f';
     polygonFromPoints(outer);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(206,176,118,0.78)';
+    ctx.lineWidth = Math.max(1.8, 2.6 * z);
+    polygonFromPoints(outer);
+    ctx.stroke();
 
     ctx.fillStyle = '#6e9d4b';
     polygonFromPoints(inner);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(95,132,72,0.6)';
+    ctx.lineWidth = Math.max(1.2, 1.9 * z);
+    polygonFromPoints(inner);
+    ctx.stroke();
 
     for (const dock of island.docks) {
       const dp = toScreen(dock.x, dock.y);
@@ -5012,6 +5074,12 @@ function drawHud() {
   const bossIn = Math.max(0, Math.round(getLevelConfig(state.stageIndex).bossEvery - state.bossTimer));
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
   const crewDemand = getWeaponCrewDemand();
+  const xpNow = Math.max(0, Math.floor(state.xp || 0));
+  const xpNeed = Math.max(1, Math.floor(state.xpToNext || 10));
+  const xpPct = clamp(xpNow / xpNeed, 0, 1);
+
+  xpFillEl.style.width = `${Math.round(xpPct * 1000) / 10}%`;
+  xpTextEl.textContent = `${xpNow}/${xpNeed}`;
 
   const panelW = Math.min(560, canvas.width * 0.62);
   const panelX = (canvas.width - panelW) / 2;
@@ -5486,10 +5554,15 @@ function draw() {
   drawCollectorSkiffs();
 
   for (const b of state.bullets) {
-    ctx.fillStyle = b.owner === 'enemy' ? (b.heavy ? '#f59b80' : '#f8baa5') : (b.heavy ? '#f1b05f' : '#ffd887');
-    ctx.beginPath();
     const bp = toScreen(b.x, b.y);
-    ctx.arc(bp.x, bp.y, (b.heavy ? 3.4 : 2.6) * state.zoom, 0, Math.PI * 2);
+    const r = 4;
+    ctx.beginPath();
+    ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#c8ccd0';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(bp.x - 1.2, bp.y - 1.2, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fill();
   }
 

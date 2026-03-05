@@ -47,10 +47,12 @@ export function damageBuildingAtPoint(worldState, bx, by, dmg, isHeavy, prevBx, 
       if (b.destroyed) continue;
 
       // Swept segment-circle test (catches fast cannonballs that tunnel through)
+      const hitScale = b.isTower ? 1 : 3;
+      const hitRadius = b.size * hitScale + 6;
       const d = swept
         ? pointToSegmentDist(b.x, b.y, prevBx, prevBy, bx, by)
         : Math.hypot(b.x - bx, b.y - by);
-      if (d > b.size + 6) continue;
+      if (d > hitRadius) continue;
 
       // Apply damage with weapon-type scaling
       const scale = isHeavy ? BUILDING_DMG_CANNON_SCALE : BUILDING_DMG_GUN_SCALE;

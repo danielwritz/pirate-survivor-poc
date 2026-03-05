@@ -16,7 +16,7 @@ export function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
     for (let i = 0; i < smokeCount; i++) {
       const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.26 : 0.34);
       const speed = (cannon ? 0.42 : 0.28) + Math.random() * (cannon ? 0.36 : 0.26);
-      const life = 2 + (cannon ? 0.85 : 0.58) + Math.random() * (cannon ? 0.9 : 0.55);
+      const life = 2 + (cannon ? 1.1 : 0.72) + Math.random() * (cannon ? 1.1 : 0.7);
       const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
       particles.push({
         x: x + dir.x * (cannon ? 0.3 : 0.2) + (Math.random() - 0.5) * 0.6,
@@ -40,7 +40,7 @@ export function createMuzzleBlastParticles(x, y, dirX, dirY, cannon = false) {
     for (let i = 0; i < plumeCount; i++) {
       const ang = Math.atan2(dir.y, dir.x) + (Math.random() - 0.5) * (cannon ? 0.14 : 0.2);
       const speed = (cannon ? 0.72 : 0.52) + Math.random() * (cannon ? 0.48 : 0.32);
-      const life = 2 + (cannon ? 1.15 : 0.76) + Math.random() * (cannon ? 1.1 : 0.7);
+      const life = 2 + (cannon ? 1.35 : 0.9) + Math.random() * (cannon ? 1.3 : 0.85);
       const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
       particles.push({
         x: x + dir.x * (cannon ? 0.45 : 0.3),

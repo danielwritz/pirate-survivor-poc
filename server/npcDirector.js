@@ -56,6 +56,27 @@ const ARCHETYPE = {
   }
 };
 
+const NPC_COLORWAYS = {
+  standard: [
+    { hull: '#5f4630', trim: '#d9b78d', sail: '#e8dcc8' },
+    { hull: '#6a3f33', trim: '#d7b28a', sail: '#efe3cf' },
+    { hull: '#4f4637', trim: '#b7c2ab', sail: '#d9decf' },
+    { hull: '#5a3f4f', trim: '#d7b7d2', sail: '#eee2f2' }
+  ],
+  heavy: [
+    { hull: '#4a3828', trim: '#c3a37e', sail: '#c8b89a' },
+    { hull: '#433327', trim: '#aeb7c3', sail: '#c9d0d8' },
+    { hull: '#3f3a49', trim: '#b8b3d1', sail: '#d9d3ea' },
+    { hull: '#4a3a32', trim: '#d2b6a1', sail: '#d7c6b6' }
+  ],
+  scavenger: [
+    { hull: '#4a5a30', trim: '#b9c98d', sail: '#c8d89a' },
+    { hull: '#3e5b4d', trim: '#9fd1c0', sail: '#b8ddd0' },
+    { hull: '#4e4f35', trim: '#c4c596', sail: '#d7d8bc' },
+    { hull: '#3f565c', trim: '#a6c7d0', sail: '#c7e0e7' }
+  ]
+};
+
 // ─── Helpers ───
 
 function angleDiff(a, b) {
@@ -254,8 +275,11 @@ export function spawnNpc(director, playerPositions, roundTime) {
   if (archetype.hpMul)   { ship.maxHp *= archetype.hpMul; ship.hp = ship.maxHp; }
   ship.baseSpeed *= archetype.speedMul;
   if (archetype.extraGunners) { ship.gunners += archetype.extraGunners; ship.crew += archetype.extraGunners; }
-  ship.hullColor  = archetype.hullColor;
-  ship.sailColor  = archetype.sailColor;
+  const colorways = NPC_COLORWAYS[archetypeKey] || NPC_COLORWAYS.standard;
+  const colorway = colorways[Math.abs((id + director.currentUpgradeCount) % colorways.length)];
+  ship.hullColor  = colorway?.hull || archetype.hullColor;
+  ship.trimColor  = colorway?.trim || ship.trimColor;
+  ship.sailColor  = colorway?.sail || archetype.sailColor;
   ship.invulnTimer = 0;
 
   const threat = Math.min(4, 1 + Math.floor(director.currentUpgradeCount / 2));

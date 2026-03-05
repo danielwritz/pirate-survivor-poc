@@ -18,10 +18,10 @@ const MP_CUT_IDS = new Set([
 // ─── Hull armor visual tiers ───
 const ARMOR_COLORS = [
   { hull: '#5f4630', trim: '#d9b78d' },  // Tier 0: wood
-  { hull: '#5a4a3a', trim: '#b8a282' },  // Tier 1: reinforced
-  { hull: '#4e4238', trim: '#9a8a72' },  // Tier 2: iron-bound
-  { hull: '#424040', trim: '#787272' },  // Tier 3: ironclad
-  { hull: '#3a3a3e', trim: '#686870' }   // Tier 4: steel
+  { hull: '#6a4a2f', trim: '#c8833f' },  // Tier 1: copper
+  { hull: '#5a4634', trim: '#b27c45' },  // Tier 2: bronze
+  { hull: '#4a4747', trim: '#8f979f' },  // Tier 3: iron
+  { hull: '#55616e', trim: '#d7e1ea' }   // Tier 4: bright steel
 ];
 
 /**

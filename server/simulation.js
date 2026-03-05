@@ -116,24 +116,45 @@ export function playerFireCannon(sim, playerId, aimAngle) {
   const cross = fwd.x * Math.sin(aimAngle) - fwd.y * Math.cos(aimAngle);
   const side = cross >= 0 ? 'starboard' : 'port';
 
+  const volleyBullets = [];
   const fired = fireCannonBroadside(ship, side, aimAngle, (bullet) => {
     bullet.id = sim.nextBulletId++;
     sim.bullets.push(bullet);
+    if (bullet.heavy) volleyBullets.push(bullet);
   });
 
   if (fired) {
     const perpSign = side === 'starboard' ? 1 : -1;
-    sim.events.push({
-      type: 'cannonFire',
-      id: playerId,
-      x: ship.x,
-      y: ship.y,
-      dx: -Math.sin(ship.heading) * perpSign,
-      dy: Math.cos(ship.heading) * perpSign,
-      count: fired === true ? 1 : (fired || 1),
-      size: ship.size,
-      side
-    });
+    if (volleyBullets.length > 0) {
+      for (let i = 0; i < volleyBullets.length; i++) {
+        const b = volleyBullets[i];
+        sim.events.push({
+          type: 'cannonFire',
+          id: playerId,
+          x: b.x,
+          y: b.y,
+          dx: b.vx,
+          dy: b.vy,
+          count: volleyBullets.length,
+          size: ship.size,
+          side,
+          playSfx: i === 0
+        });
+      }
+    } else {
+      sim.events.push({
+        type: 'cannonFire',
+        id: playerId,
+        x: ship.x,
+        y: ship.y,
+        dx: -Math.sin(ship.heading) * perpSign,
+        dy: Math.cos(ship.heading) * perpSign,
+        count: fired === true ? 1 : (fired || 1),
+        size: ship.size,
+        side,
+        playSfx: true
+      });
+    }
   }
 }
 
@@ -152,7 +173,6 @@ export function tick(sim) {
   const dt = TICK_INTERVAL;
   sim.time += dt;
   sim.roundTimer -= dt;
-  sim.events = [];
 
   // Wind
   sim.wind.timer += dt;
@@ -274,6 +294,7 @@ export function tick(sim) {
   // Check remaining bullets against buildings
   for (let i = sim.bullets.length - 1; i >= 0; i--) {
     const b = sim.bullets[i];
+    if (b.ownerId === -1) continue;
     const buildingDrops = damageBuildingAtPoint(sim.worldState, b.x, b.y, b.dmg, b.heavy, b.prevX, b.prevY);
     if (buildingDrops.length > 0) {
       sim.drops.push(...buildingDrops);
@@ -324,13 +345,22 @@ export function tick(sim) {
     }
   }
 
-  // ─── Doubloon drops ───
-  tickDrops(sim, allPlayerShips, dt);
+  // ─── Doubloon drops (players + NPCs can collect) ───
+  const dropCollectors = [...allPlayerShips];
+  for (const [, npc] of sim.npcDirector.npcs) {
+    if (npc.ship?.alive) dropCollectors.push(npc.ship);
+  }
+  tickDrops(sim, dropCollectors, dt);
 
   // ─── Passive doubloons + XP ───
   for (const [id, pd] of sim.players) {
     if (!pd.ship.alive) continue;
-    pd.ship.doubloons += dt * PASSIVE_DOUBLOON_RATE;
+    const passiveGain = dt * PASSIVE_DOUBLOON_RATE;
+    pd.ship.doubloons += passiveGain;
+    const offer = awardXp(pd.ship, passiveGain);
+    if (offer) {
+      sim.events.push({ type: 'upgradeOffer', playerId: id, offer });
+    }
   }
 
   // ─── Round end ───
@@ -588,6 +618,9 @@ export function resetRound(sim) {
     ship.upgrades = [];
     ship.slots = [];
     ship.upgradeOffer = null;
+    ship.pendingLevelUpOffers = 0;
+    ship.pendingMajorOffers = 0;
+    ship.startingPicksRemaining = 0;
     ship.alive = true;
 
     // Reset ship to starter baseline
@@ -672,8 +705,10 @@ export function getStateSnapshot(sim) {
   };
 
   if (sim.events.length > 0) {
-    snapshot.events = sim.events;
+    snapshot.events = sim.events.slice();
   }
+
+  sim.events.length = 0;
 
   return snapshot;
 }

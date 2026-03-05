@@ -120,7 +120,9 @@ export function createShip(x = 0, y = 0, opts = {}) {
     xpToNext: 10,
 
     // Pending upgrade offer (null or array of 3 upgrade objects)
-    upgradeOffer: null
+    upgradeOffer: null,
+    pendingLevelUpOffers: 0,
+    pendingMajorOffers: 0
   };
 }
 
@@ -270,6 +272,8 @@ export function shipSnapshot(ship) {
     kills: ship.kills,
     deaths: ship.deaths,
     level: ship.level,
+    xp: Math.floor(ship.xp || 0),
+    xpToNext: Math.max(1, Math.floor(ship.xpToNext || 10)),
 
     // Vision
     lookoutRangeBonus: ship.lookoutRangeBonus,

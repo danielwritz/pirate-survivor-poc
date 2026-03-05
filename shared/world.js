@@ -13,6 +13,10 @@ import {
   TOWER_DMG_BASE, TOWER_DMG_PER_LEVEL
 } from './constants.js';
 
+// Village density tuning (applies to all islands)
+const MIN_VILLAGE_BUILDINGS_PER_ISLAND = 4;
+const VILLAGE_RANDOM_BONUS_BUILDINGS = 3;
+
 // ─── Seeded RNG (mulberry32) ───
 
 export function createRng(seed) {
@@ -82,8 +86,11 @@ function createIsland(id, x, y, radius, rng) {
     });
   }
 
-  // Buildings (2+ based on radius)
-  const buildingCount = Math.max(2, Math.floor(radius / 30) + Math.floor(rng() * 3));
+  // Buildings (configurable density, guaranteed on every island)
+  const buildingCount = Math.max(
+    MIN_VILLAGE_BUILDINGS_PER_ISLAND,
+    Math.floor(radius / 28) + Math.floor(rng() * VILLAGE_RANDOM_BONUS_BUILDINGS)
+  );
   const buildings = [];
   for (let i = 0; i < buildingCount; i++) {
     const bAngle = rng() * Math.PI * 2;
@@ -150,9 +157,16 @@ export function setDefenseTier(islands, defenseTier, rng = Math.random) {
   );
 
   for (const island of islands) {
+    let assignedTowers = 0;
+    const maxTowersForIsland = Math.max(1, island.buildings.length - 2);
     for (const b of island.buildings) {
       if (b.destroyed) continue;
+      if (assignedTowers >= maxTowersForIsland) {
+        b.isTower = false;
+        continue;
+      }
       b.isTower = rng() < towerChance;
+      if (b.isTower) assignedTowers++;
     }
   }
 }
