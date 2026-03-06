@@ -73,9 +73,10 @@ export function getShipWeaponCaps(entity, cannonCapacityBonus = 0) {
   const deckBeam = shape.beam * 1.16;
   const deckArea = deckLength * deckBeam;
 
-  const baseCannonsPerSide = 2 + (tier - 1) * 2;
-  const areaCannons = Math.max(0, Math.floor((deckArea - 28) / 72));
-  const maxCannonsPerSide = clamp(baseCannonsPerSide + areaCannons + cannonCapacityBonus, 2, 16);
+  // Keep cannon growth tied to real hull deck footprint so extra racks matter.
+  const baseCannonsPerSide = 1 + tier;
+  const areaCannons = Math.max(0, Math.floor((deckArea - 140) / 180));
+  const maxCannonsPerSide = clamp(baseCannonsPerSide + areaCannons + cannonCapacityBonus, 2, 12);
 
   const baseGuns = 3 + tier * 2;
   const areaGuns = Math.max(0, Math.floor((deckArea - 28) / 44));

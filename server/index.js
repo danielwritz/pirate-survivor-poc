@@ -10,8 +10,8 @@
  */
 
 import { createServer } from 'http';
-import { readFile, appendFile } from 'fs/promises';
-import { extname, join, resolve, dirname } from 'path';
+import { readFile, appendFile, copyFile, readdir, unlink } from 'fs/promises';
+import { extname, join, resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 
@@ -50,13 +50,16 @@ import {
   TICK_INTERVAL
 } from './simulation.js';
 import { createLeaderboardStore } from './leaderboardStore.js';
+import { createChatStore } from './chatStore.js';
 
 // --- Configuration ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ACTIVE_PLAYER_LIMIT = 10;
 const GLOBAL_LEADERBOARD_LIMIT = 100;
 const CHAT_HISTORY_LIMIT = 200;
+const LEADERBOARD_BACKUP_KEEP = 5;
 const LEADERBOARD_DB_PATH = (process.env.LEADERBOARD_DB_PATH || '').trim() || undefined;
+const CHAT_DB_PATH = (process.env.CHAT_DB_PATH || '').trim() || undefined;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
@@ -102,7 +105,8 @@ const httpServer = createServer(async (req, res) => {
 const wss = new WebSocketServer({ server: httpServer });
 let sim = null; // Will be set after async init
 let leaderboardStore = null;
-const chatHistory = [];
+let chatStore = null;
+let chatHistory = [];
 
 // Map WebSocket → playerId
 const socketToPlayer = new Map();
@@ -112,6 +116,23 @@ function getSocketByPlayerId(playerId) {
     if (id === playerId) return socket;
   }
   return null;
+}
+
+async function backupLeaderboardDb(dbPath) {
+  if (!dbPath || dbPath === ':memory:') return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${dbPath}.backup-${stamp}`;
+  const prefix = `${basename(dbPath)}.backup-`;
+  await copyFile(dbPath, backupPath);
+
+  const dir = dirname(dbPath);
+  const names = await readdir(dir);
+  const backupNames = names
+    .filter((name) => name.startsWith(prefix))
+    .sort((a, b) => b.localeCompare(a));
+  for (let i = LEADERBOARD_BACKUP_KEEP; i < backupNames.length; i++) {
+    await unlink(join(dir, backupNames[i])).catch(() => {});
+  }
 }
 
 function rebalanceActiveSlots() {
@@ -168,6 +189,12 @@ wss.on('connection', (ws) => {
           startingPicksRemaining,
           spectator: !!joinedPd?.spectator,
           activePlayerLimit: ACTIVE_PLAYER_LIMIT,
+          playerRoster: Array.from(sim.players.entries()).map(([id, info]) => ({
+            id,
+            name: info?.ship?.name || `Player ${id}`,
+            spectator: !!info?.spectator,
+            alive: !!info?.ship?.alive
+          })),
           persistentLeaderboard: sim.persistentLeaderboard
         }));
         if (chatHistory.length > 0) {
@@ -214,7 +241,7 @@ wss.on('connection', (ws) => {
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 200) : '';
         if (!text) return;
         const pd = sim.players.get(playerId);
-        const historyEntry = {
+        const historyEntry = chatStore.saveMessage(playerId, pd?.ship?.name || `Player ${playerId}`, text) || {
           id: playerId,
           name: pd?.ship?.name || `Player ${playerId}`,
           text
@@ -255,12 +282,27 @@ function broadcastState() {
 // --- Start (async — loads catalogs before beginning tick loop) ---
 async function start() {
   leaderboardStore = createLeaderboardStore(LEADERBOARD_DB_PATH);
+  chatStore = createChatStore(CHAT_DB_PATH);
   sim = await createSimulation();
   sim.activePlayerLimit = ACTIVE_PLAYER_LIMIT;
   sim.persistentLeaderboard = leaderboardStore.getTopScores(GLOBAL_LEADERBOARD_LIMIT);
-  sim.onRoundEnded = (roundSummary) => leaderboardStore.saveRoundSummary(roundSummary, GLOBAL_LEADERBOARD_LIMIT);
+  chatHistory = chatStore.getHistory(CHAT_HISTORY_LIMIT);
+  sim.onRoundEnded = (roundSummary) => {
+    const board = leaderboardStore.saveRoundSummary(roundSummary, GLOBAL_LEADERBOARD_LIMIT);
+    backupLeaderboardDb(leaderboardStore.dbPath).catch((err) => {
+      logErr('Leaderboard backup failed:', err?.message || err);
+    });
+    return board;
+  };
   console.log('Simulation initialized (upgrade catalog loaded).');
   log(`Leaderboard DB path: ${leaderboardStore.dbPath}`);
+  log(`Leaderboard persistence mode: ${leaderboardStore.mode || 'unknown'}`);
+  log(`Chat DB path: ${chatStore.dbPath}`);
+  log(`Chat persistence mode: ${chatStore.mode || 'unknown'}`);
+  if (leaderboardStore.mode === 'memory' || chatStore.mode === 'memory') {
+    logErr('One or more stores are running in non-durable memory mode. Data will not survive restarts.');
+  }
+  log(`Loaded ${chatHistory.length} chat messages for replay.`);
 
   setInterval(() => {
     try {

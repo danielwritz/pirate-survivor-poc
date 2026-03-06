@@ -76,11 +76,12 @@
     {
       "id": "gun-installments",
       "name": "Deck Guns",
-      "desc": "+1 gun per side, faster reload",
+      "desc": "+1 gun per side, faster reload, +damage",
       "rules": [
         { "op": "autoInstallGuns", "perSide": 1 },
         { "op": "add", "path": "player.gunReload", "value": -0.03 },
         { "op": "clamp", "path": "player.gunReload", "min": 0.75, "max": 999 },
+        { "op": "add", "path": "player.bulletDamage", "value": 1 },
         { "op": "add", "path": "player.hullLength", "value": 0.01 },
         { "op": "addAbility", "value": "GunInstallments" },
         { "op": "call", "fn": "clampArmament" }
@@ -89,9 +90,10 @@
     {
       "id": "cannon-installments",
       "name": "Cannon Racks",
-      "desc": "+1 cannon slot per side, heavier hull",
+      "desc": "+1 cannon slot per side, install 1 cannon/side, heavier hull",
       "rules": [
         { "op": "add", "path": "player.cannonCapacityBonus", "value": 1 },
+        { "op": "autoInstallCannons", "perSide": 1 },
         { "op": "add", "path": "player.size", "value": 1.4 },
         { "op": "add", "path": "player.mass", "value": 4 },
         { "op": "add", "path": "player.hullBeam", "value": 0.06 },
@@ -105,6 +107,32 @@
       ]
     },
     {
+      "id": "powder-magazines",
+      "name": "Powder Magazines",
+      "desc": "Faster cannon volleys, +damage",
+      "rules": [
+        { "op": "add", "path": "player.cannonReload", "value": -0.14 },
+        { "op": "clamp", "path": "player.cannonReload", "min": 0.9, "max": 999 },
+        { "op": "add", "path": "player.bulletDamage", "value": 2 },
+        { "op": "add", "path": "player.mass", "value": 1 },
+        { "op": "addAbility", "value": "PowderMagazines" }
+      ]
+    },
+    {
+      "id": "boarding-drums",
+      "name": "Boarding Drums",
+      "desc": "+2 crew, better rowing and gunnery",
+      "rules": [
+        { "op": "add", "path": "player.crew", "value": 2 },
+        { "op": "add", "path": "player.rowers", "value": 1 },
+        { "op": "add", "path": "player.gunners", "value": 1 },
+        { "op": "add", "path": "player.baseSpeed", "value": 0.1 },
+        { "op": "add", "path": "player.gunReload", "value": -0.03 },
+        { "op": "clamp", "path": "player.gunReload", "min": 0.75, "max": 999 },
+        { "op": "addAbility", "value": "BoardingDrums" }
+      ]
+    },
+    {
       "id": "rowers",
       "name": "Row Crew",
       "desc": "+1 rower, better speed",
@@ -113,6 +141,19 @@
         { "op": "add", "path": "player.baseSpeed", "value": 0.16 },
         { "op": "add", "path": "player.hullLength", "value": 0.02 },
         { "op": "addAbility", "value": "Rowers" }
+      ]
+    },
+    {
+      "id": "quartermaster-stores",
+      "name": "Quartermaster Stores",
+      "desc": "Patch the hull and tighten gun drills",
+      "rules": [
+        { "op": "add", "path": "player.maxHp", "value": 8 },
+        { "op": "add", "path": "player.hp", "value": 8 },
+        { "op": "call", "fn": "clampHpToMax" },
+        { "op": "add", "path": "player.gunReload", "value": -0.04 },
+        { "op": "clamp", "path": "player.gunReload", "min": 0.75, "max": 999 },
+        { "op": "addAbility", "value": "Quartermaster" }
       ]
     },
     {
@@ -157,9 +198,10 @@
     {
       "id": "ram-bow",
       "name": "Ram Prow",
-      "desc": "Enable ramming, +size",
+      "desc": "Enable ramming, +size, +ram damage",
       "rules": [
         { "op": "set", "path": "player.ram", "value": true },
+        { "op": "add", "path": "player.ramDamage", "value": 10 },
         { "op": "add", "path": "player.size", "value": 2 },
         { "op": "add", "path": "player.bowSharpness", "value": 0.14 },
         { "op": "addAbility", "value": "Ram" }
@@ -181,30 +223,52 @@
     {
       "id": "rudder-upgrade",
       "name": "Helm Crew",
-      "desc": "Turn faster",
+      "desc": "Turn faster and tighten maneuvers",
       "rules": [
-        { "op": "add", "path": "player.rudder", "value": 1 },
+        { "op": "add", "path": "player.rudder", "value": 2 },
+        { "op": "add", "path": "player.baseSpeed", "value": 0.05 },
+        { "op": "add", "path": "player.maneuverPenalty", "value": -0.02 },
+        { "op": "clamp", "path": "player.maneuverPenalty", "min": 0, "max": 0.42 },
         { "op": "addAbility", "value": "Rudder" }
       ]
     },
     {
       "id": "cannon-trunnions",
       "name": "Pivot Cannons",
-      "desc": "Cannons auto-pivot +1°",
+      "desc": "Cannons auto-pivot +3°, faster reload",
       "rules": [
-        { "op": "add", "path": "player.cannonPivot", "value": 1 },
+        { "op": "add", "path": "player.cannonPivot", "value": 3 },
         { "op": "clamp", "path": "player.cannonPivot", "min": 0, "max": 20 },
+        { "op": "add", "path": "player.cannonReload", "value": -0.08 },
+        { "op": "clamp", "path": "player.cannonReload", "min": 0.9, "max": 999 },
         { "op": "addAbility", "value": "PivotCannons" }
       ]
     },
     {
       "id": "crows-nest",
       "name": "Crow's Nest",
-      "desc": "+40 sight range",
+      "desc": "+65 sight range and tighter gunnery",
       "rules": [
-        { "op": "add", "path": "player.lookoutRangeBonus", "value": 40 },
+        { "op": "add", "path": "player.lookoutRangeBonus", "value": 65 },
         { "op": "clamp", "path": "player.lookoutRangeBonus", "min": 0, "max": 520 },
+        { "op": "add", "path": "player.gunReload", "value": -0.02 },
+        { "op": "clamp", "path": "player.gunReload", "min": 0.75, "max": 999 },
+        { "op": "add", "path": "player.cannonPivot", "value": 1 },
+        { "op": "clamp", "path": "player.cannonPivot", "min": 0, "max": 20 },
         { "op": "addAbility", "value": "CrowsNest" }
+      ]
+    },
+    {
+      "id": "reef-runner",
+      "name": "Reef Runner",
+      "desc": "Faster hull, lighter turns, +rudder",
+      "rules": [
+        { "op": "add", "path": "player.baseSpeed", "value": 0.22 },
+        { "op": "add", "path": "player.rudder", "value": 1 },
+        { "op": "add", "path": "player.maneuverPenalty", "value": -0.04 },
+        { "op": "clamp", "path": "player.maneuverPenalty", "min": 0, "max": 0.42 },
+        { "op": "add", "path": "player.hullBeam", "value": -0.02 },
+        { "op": "addAbility", "value": "ReefRunner" }
       ]
     }
   ],

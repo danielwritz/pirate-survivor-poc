@@ -40,9 +40,15 @@ Minimal browser prototype for the pirate-themed survivor game concept.
 4. Open `http://localhost:3000` in one or more browser tabs
 
 #### Multiplayer persistent leaderboard (SQLite)
-- Leaderboard storage uses SQLite on-disk (no in-memory fallback).
+- Leaderboard storage uses SQLite on-disk (with in-memory fallback if SQLite cannot load).
 - Optional env var: `LEADERBOARD_DB_PATH` (absolute or relative file path).
 - Default path: `data/leaderboard.sqlite`.
+- Server keeps rotating leaderboard backups (`*.backup-<timestamp>`, latest 5 snapshots).
+
+#### Multiplayer persistent chat (SQLite)
+- Chat history is persisted in SQLite and replayed to joiners (last 200 messages).
+- Optional env var: `CHAT_DB_PATH` (absolute or relative file path).
+- Default path: `data/chat.sqlite`.
 
 ### Azure App Service notes (SQLite)
 - SQLite is file-based and only safe for a **single App Service instance**. Disable horizontal scale-out.

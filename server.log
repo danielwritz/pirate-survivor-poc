@@ -2797,3 +2797,39 @@
 [2026-03-05T21:55:54.643Z] Player 1 (TEST) joined. Total: 1
 [2026-03-05T21:56:15.803Z] Player 2 (TEST2) joined. Total: 2
 [2026-03-05T21:56:15.815Z] 404 /favicon.ico
+[2026-03-06T01:17:50.848Z] Player 1 disconnected. Remaining: 1
+[2026-03-06T01:18:10.500Z] Player 2 disconnected. Remaining: 0
+[2026-03-06T01:24:13.044Z] Player 3 (Gunthera) joined. Total: 1
+[2026-03-06T01:24:13.074Z] 404 /favicon.ico
+[2026-03-06T02:00:05.944Z] Leaderboard DB path: :memory:
+[2026-03-06T02:00:05.945Z] Leaderboard persistence mode: memory
+[2026-03-06T02:00:05.946Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-06T02:00:05.946Z] Chat persistence mode: memory
+[2026-03-06T02:00:05.946Z] Chat DB path: :memory:
+[2026-03-06T02:00:05.949Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-06T02:00:05.949Z] Open http://localhost:3000 in your browser to play.
+[2026-03-06T02:00:05.949Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-06T02:00:05.946Z] Loaded 0 chat messages for replay.
+[2026-03-06T02:00:57.028Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-06T02:04:29.040Z] Leaderboard DB path: :memory:
+[2026-03-06T02:04:29.041Z] Leaderboard persistence mode: memory
+[2026-03-06T02:04:29.041Z] Chat persistence mode: memory
+[2026-03-06T02:04:29.041Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-06T02:04:29.041Z] Loaded 0 chat messages for replay.
+[2026-03-06T02:04:29.044Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-06T02:04:29.041Z] Chat DB path: :memory:
+[2026-03-06T02:04:29.044Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-06T02:04:29.044Z] Open http://localhost:3000 in your browser to play.
+[2026-03-06T02:04:31.637Z] Player 1 (Gunthera) joined. Total: 1
+[2026-03-06T02:06:41.499Z] Player 1 disconnected. Remaining: 0
+[2026-03-06T02:06:44.839Z] Player 2 (Gunthera) joined. Total: 1
+[2026-03-06T02:06:44.866Z] 404 /favicon.ico
+[2026-03-06T02:11:59.107Z] Leaderboard DB path: :memory:
+[2026-03-06T02:11:59.108Z] Chat DB path: :memory:
+[2026-03-06T02:11:59.108Z] Leaderboard persistence mode: memory
+[2026-03-06T02:11:59.109Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-06T02:11:59.111Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-06T02:11:59.109Z] Loaded 0 chat messages for replay.
+[2026-03-06T02:11:59.111Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-06T02:11:59.111Z] Open http://localhost:3000 in your browser to play.
+[2026-03-06T02:11:59.108Z] Chat persistence mode: memory

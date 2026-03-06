@@ -71,13 +71,90 @@
     .kill-feed div { color: #d6ecff; margin-bottom: 3px; opacity: 1; transition: opacity 0.5s; }
     .kill-feed .fade { opacity: 0; }
 
-    .chat-panel { position: fixed; bottom: 10px; left: 10px; width: 340px; z-index: 20; }
-    .chat-log { max-height: 140px; overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 6px 8px; background: rgba(6,16,24,0.72); border-radius: 6px 6px 0 0; }
+    .chat-panel {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      width: min(420px, calc(100vw - 20px));
+      height: clamp(170px, 20vh, 320px);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      background: rgba(6,16,24,0.72);
+      border: 1px solid rgba(42,74,98,0.55);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .chat-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 28px;
+      padding: 5px 8px;
+      font-size: 12px;
+      color: #9fc2d9;
+      border-bottom: 1px solid rgba(42,74,98,0.35);
+      background: rgba(6,16,24,0.55);
+      pointer-events: auto;
+      user-select: none;
+    }
+    .chat-head-title { font-weight: 600; letter-spacing: 0.4px; }
+    .chat-head-actions { display: flex; align-items: center; gap: 6px; }
+    .chat-toggle-btn {
+      min-width: 24px;
+      height: 22px;
+      padding: 0 6px;
+      font-size: 12px;
+      border: 1px solid #2a4a62;
+      border-radius: 4px;
+      background: #163a52;
+      color: #e8f5ff;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .players-list {
+      max-height: 92px;
+      overflow-y: auto;
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(42,74,98,0.28);
+      background: rgba(8,20,32,0.58);
+    }
+    .players-list.collapsed { display: none; }
+    .players-list:empty::before {
+      content: 'No players online';
+      display: block;
+      color: #7aa8c2;
+      font-size: 11px;
+      padding: 2px 0;
+    }
+    .player-item { display: flex; align-items: center; gap: 6px; padding: 1px 0; font-size: 12px; color: #d6ecff; }
+    .player-item.spectator { color: #9fc2d9; opacity: 0.8; }
+    .player-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex: 0 0 7px;
+      background: #7fdb8a;
+      box-shadow: 0 0 6px rgba(127,219,138,0.45);
+    }
+    .player-item.spectator .player-status-dot {
+      background: #ffd887;
+      box-shadow: 0 0 5px rgba(255,216,135,0.4);
+    }
+    .chat-log {
+      flex: 1;
+      min-height: 62px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 6px 8px;
+    }
     .chat-log:empty { display: none; }
     .chat-log div { word-break: break-word; }
     .chat-log .name { color: #ffd887; }
     .chat-log .text { color: #d6ecff; }
-    .chat-input-row { display: flex; pointer-events: auto; }
+    .chat-input-row { display: flex; pointer-events: auto; border-top: 1px solid rgba(42,74,98,0.35); }
     .chat-input-row input {
       flex: 1; padding: 6px 8px; font-size: 13px; border: 1px solid #2a4a62;
       background: #0c2233; color: #e8f5ff; border-radius: 0 0 0 6px; outline: none;
@@ -86,6 +163,18 @@
     .chat-input-row button {
       padding: 6px 12px; font-size: 13px; border: 1px solid #2a4a62; border-left: 0;
       background: #163a52; color: #e8f5ff; border-radius: 0 0 6px 0; cursor: pointer;
+    }
+
+    @media (max-width: 900px) {
+      .chat-panel {
+        width: calc(100vw - 16px);
+        left: 8px;
+        bottom: 8px;
+        height: clamp(160px, 20vh, 260px);
+      }
+      .players-list {
+        max-height: 78px;
+      }
     }
 
     .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 50; background: rgba(6,16,24,0.92); }
@@ -252,7 +341,14 @@
 </div>
 
 <!-- Chat -->
-<div class="chat-panel">
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-panel-head">
+    <span class="chat-head-title">Chat · <span id="onlinePlayerCount">0</span> online</span>
+    <div class="chat-head-actions">
+      <button class="chat-toggle-btn" id="togglePlayersList" title="Toggle online player list">Players</button>
+    </div>
+  </div>
+  <div class="players-list" id="playersList"></div>
   <div class="chat-log" id="chatLog"></div>
   <div class="chat-input-row">
     <input id="chatInput" type="text" placeholder="Press Enter to chat…" maxlength="200" autocomplete="off" />
@@ -331,6 +427,9 @@ const killFeedEl = document.getElementById('killFeed');
 const scoreboardEl = document.getElementById('scoreboard');
 const scoreBodyEl = document.getElementById('scoreBody');
 const globalScoreBodyEl = document.getElementById('globalScoreBody');
+const playersListEl = document.getElementById('playersList');
+const onlinePlayerCountEl = document.getElementById('onlinePlayerCount');
+const togglePlayersListBtn = document.getElementById('togglePlayersList');
 const chatLog = document.getElementById('chatLog');
 const chatInput = document.getElementById('chatInput');
 const chatSend = document.getElementById('chatSend');
@@ -375,6 +474,8 @@ let isSpectator = false;
 let activePlayerLimit = 10;
 let latestRoundSummary = null;
 let persistentLeaderboard = [];
+let onlineRoster = [];
+let playersListExpanded = window.matchMedia('(min-width: 901px)').matches;
 let destroyedVillageFxSeen = new Set();
 const shipDamageMarkState = new Map(); // shipId -> { marks: Array<{x,y,size,rot,sides,state,fadeEndMs}> }
 const SHIP_DAMAGE_PATCH_LINGER_MS = 2200;
@@ -415,6 +516,9 @@ function connect() {
         if (Array.isArray(msg.persistentLeaderboard)) {
           persistentLeaderboard = msg.persistentLeaderboard;
         }
+        if (Array.isArray(msg.playerRoster)) {
+          updateOnlineRoster(msg.playerRoster);
+        }
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
           worldData = generateWorld(currentSeed);
@@ -436,6 +540,9 @@ function connect() {
         currState = msg;
         if (Array.isArray(msg.persistentLeaderboard)) {
           persistentLeaderboard = msg.persistentLeaderboard;
+        }
+        if (Array.isArray(msg.playerRoster)) {
+          updateOnlineRoster(msg.playerRoster);
         }
         if (msg.roundSummary) {
           latestRoundSummary = msg.roundSummary;
@@ -606,6 +713,7 @@ function connect() {
     currState = null;
     latestRoundSummary = null;
     persistentLeaderboard = [];
+    updateOnlineRoster([]);
     spectatorBanner.classList.add('hidden');
     phaseOverlay.classList.add('hidden');
     connStatus.textContent = 'Disconnected. Reconnecting…';
@@ -1236,6 +1344,38 @@ function sendChat() {
   chatInput.blur();
 }
 chatSend.addEventListener('click', sendChat);
+
+function setPlayersListExpanded(expanded) {
+  playersListExpanded = !!expanded;
+  playersListEl.classList.toggle('collapsed', !playersListExpanded);
+  togglePlayersListBtn.textContent = playersListExpanded ? 'Hide' : 'Show';
+}
+
+function updateOnlineRoster(roster) {
+  onlineRoster = Array.isArray(roster) ? roster.slice() : [];
+  if (onlinePlayerCountEl) {
+    onlinePlayerCountEl.textContent = String(onlineRoster.length);
+  }
+  if (!playersListEl) return;
+
+  const sorted = onlineRoster.slice().sort((a, b) => {
+    if (!!a?.spectator !== !!b?.spectator) return a?.spectator ? 1 : -1;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
+
+  playersListEl.innerHTML = sorted.map((row) => {
+    const isSpectatorRow = !!row?.spectator;
+    const cssClass = isSpectatorRow ? 'player-item spectator' : 'player-item';
+    const statusLabel = isSpectatorRow ? 'spectator' : 'active';
+    return `<div class="${cssClass}"><span class="player-status-dot" aria-hidden="true"></span>${esc(row?.name || 'Unknown')} <span style="opacity:0.75">(${statusLabel})</span></div>`;
+  }).join('');
+}
+
+togglePlayersListBtn.addEventListener('click', () => {
+  setPlayersListExpanded(!playersListExpanded);
+});
+
+setPlayersListExpanded(playersListExpanded);
 
 function appendChat(name, text, autoScroll = true) {
   const div = document.createElement('div');
@@ -1878,6 +2018,10 @@ function draw() {
   // Wind compass
   drawWindCompass(st.wind);
 
+  if (me && me.alive && !isSpectator && st.roundPhase === 'playing') {
+    drawNearestPlayerSkullIndicator(me, st);
+  }
+
   // HUD
   updateHud(st);
 
@@ -2417,6 +2561,67 @@ function drawWindCompass(wind) {
   ctx.stroke();
   ctx.fillStyle = '#d6ecff';
   ctx.fillRect(ax - 2, ay - 2, 4, 4);
+  ctx.restore();
+}
+
+function drawNearestPlayerSkullIndicator(me, st) {
+  if (!me || !me.alive || !st?.players) return;
+
+  let nearest = null;
+  let nearestDist = Infinity;
+  for (const [id, raw] of Object.entries(st.players)) {
+    const pid = Number(id);
+    if (pid === myId) continue;
+    if (!raw?.alive) continue;
+
+    const target = getInterpolatedPlayer(pid);
+    if (!target || !target.alive) continue;
+
+    const dx = target.x - me.x;
+    const dy = target.y - me.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < nearestDist) {
+      nearestDist = distance;
+      nearest = { dx, dy, distance };
+    }
+  }
+
+  if (!nearest) return;
+
+  const angle = Math.atan2(nearest.dy, nearest.dx);
+  const centerX = canvas.width * 0.5;
+  const centerY = canvas.height * 0.5;
+  const radius = Math.max(52, Math.min(canvas.width, canvas.height) * 0.43);
+  const markerX = centerX + Math.cos(angle) * radius;
+  const markerY = centerY + Math.sin(angle) * radius;
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.strokeStyle = 'rgba(255,214,133,0.22)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX + Math.cos(angle) * 22, centerY + Math.sin(angle) * 22);
+  ctx.lineTo(markerX, markerY);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(8,16,24,0.85)';
+  ctx.beginPath();
+  ctx.arc(markerX, markerY, 18, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,214,133,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffd887';
+  ctx.font = '16px system-ui';
+  ctx.fillText('\u2620', markerX, markerY - 1);
+
+  ctx.fillStyle = 'rgba(214,236,255,0.92)';
+  ctx.font = '11px system-ui';
+  ctx.fillText(`${Math.round(nearest.distance)}m`, markerX, markerY + 18);
   ctx.restore();
 }
 

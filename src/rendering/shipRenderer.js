@@ -1,5 +1,5 @@
 import { clamp } from '../core/math.js';
-import { getHullShape, getHullSideMount } from '../core/shipMath.js';
+import { getHullShape, getHullSideMount, hullHalfWidthAt } from '../core/shipMath.js';
 
 const DEFAULT_GUN_PIVOT_RAD = (30 * Math.PI) / 180;
 
@@ -183,6 +183,38 @@ function drawReactiveSail(ctx, ship, size, z, wind, time) {
   ctx.restore();
 }
 
+function drawCannonRackBraces(ctx, shape, ship, z) {
+  const rackBonus = Math.max(0, Math.floor(Number(ship?.cannonCapacityBonus || 0)));
+  if (rackBonus <= 0) return;
+
+  const braceCount = Math.min(10, rackBonus + 1);
+  const startX = shape.sternShoulderX + (shape.shoulderX - shape.sternShoulderX) * 0.18;
+  const endX = shape.shoulderX + (shape.bowX - shape.shoulderX) * 0.18;
+  const span = Math.max(0.001, endX - startX);
+
+  ctx.strokeStyle = 'rgba(198,166,120,0.72)';
+  ctx.lineWidth = Math.max(0.6, z * 0.62);
+  for (let sideSign = -1; sideSign <= 1; sideSign += 2) {
+    for (let i = 0; i < braceCount; i++) {
+      const t = braceCount <= 1 ? 0.5 : i / (braceCount - 1);
+      const x = startX + span * t;
+      const y = hullHalfWidthAt(shape, x) * sideSign;
+      const ny = sideSign;
+      const inset = (1.2 + rackBonus * 0.12) * z;
+      const out = (2.8 + rackBonus * 0.22) * z;
+      const px = x * z;
+      const py = y * z;
+
+      ctx.beginPath();
+      ctx.moveTo(px - 1.2 * z, py - ny * inset);
+      ctx.lineTo(px - 1.2 * z, py + ny * out);
+      ctx.moveTo(px + 1.2 * z, py - ny * inset);
+      ctx.lineTo(px + 1.2 * z, py + ny * out);
+      ctx.stroke();
+    }
+  }
+}
+
 /**
  * Draw SP-style ship body, mounts, and sail using a shared renderer.
  *
@@ -246,6 +278,8 @@ export function drawShipRenderer(ctx, sx, sy, ship, options = {}) {
       ctx.stroke();
     }
   }
+
+  drawCannonRackBraces(ctx, shape, ship, z);
 
   drawRam(ctx, shape, z, ship);
 

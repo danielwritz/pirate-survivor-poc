@@ -29,6 +29,7 @@ function createInMemoryLeaderboardStore() {
 
   return {
     dbPath: ':memory:',
+    mode: 'memory',
     saveRoundSummary(summary, limit = 10) {
       if (summary && Array.isArray(summary.players)) {
         const now = Date.now();
@@ -133,6 +134,7 @@ export function createLeaderboardStore(dbPath = DEFAULT_DB_PATH) {
 
   return {
     dbPath,
+    mode: 'sqlite',
     saveRoundSummary(summary, limit = 10) {
       if (!summary || !Array.isArray(summary.players) || summary.players.length === 0) {
         return this.getTopScores(limit);

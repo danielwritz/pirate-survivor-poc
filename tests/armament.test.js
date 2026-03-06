@@ -5,6 +5,7 @@ import {
   getWeaponCounts,
   normalizeWeaponLayout
 } from '../src/core/armament.js';
+import { getShipWeaponCaps } from '../src/core/shipMath.js';
 
 describe('armament', () => {
   it('normalizes weapon layout to slot count', () => {
@@ -43,5 +44,40 @@ describe('armament', () => {
 
     expect(before.cannonPerSide).toBeGreaterThan(0);
     expect(after.cannonPerSide).toBeLessThanOrEqual(caps.maxCannonsPerSide);
+  });
+
+  it('cannon rack bonus increases allowed cannons per side', () => {
+    const base = {
+      size: 14,
+      hullLength: 1,
+      hullBeam: 1,
+      bowSharpness: 1,
+      sternTaper: 1,
+      crew: 12,
+      gunners: 12,
+      cannonCapacityBonus: 0,
+      weaponLayout: { port: [], starboard: [] }
+    };
+
+    normalizeWeaponLayout(base);
+    autoInstallCannons(base, 8);
+    const baseCaps = clampArmamentToHull(base);
+    const baseCounts = getWeaponCounts(base);
+
+    const withRacks = {
+      ...base,
+      cannonCapacityBonus: 2,
+      weaponLayout: {
+        port: [...base.weaponLayout.port],
+        starboard: [...base.weaponLayout.starboard]
+      }
+    };
+    autoInstallCannons(withRacks, 8);
+    const rackCaps = clampArmamentToHull(withRacks);
+    const rackCounts = getWeaponCounts(withRacks);
+
+    expect(rackCaps.maxCannonsPerSide).toBe(baseCaps.maxCannonsPerSide + 2);
+    expect(rackCounts.cannonPerSide).toBeGreaterThanOrEqual(baseCounts.cannonPerSide);
+    expect(rackCounts.cannonPerSide).toBeLessThanOrEqual(getShipWeaponCaps(withRacks, withRacks.cannonCapacityBonus).maxCannonsPerSide);
   });
 });

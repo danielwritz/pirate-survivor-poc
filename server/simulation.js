@@ -767,8 +767,15 @@ export function resetRound(sim) {
 
 export function getStateSnapshot(sim) {
   const players = {};
+  const playerRoster = [];
   let activePlayerCount = 0;
   for (const [id, pd] of sim.players) {
+    playerRoster.push({
+      id,
+      name: pd?.ship?.name || `Player ${id}`,
+      spectator: !!pd?.spectator,
+      alive: !!pd?.ship?.alive
+    });
     if (pd.spectator) continue;
     activePlayerCount++;
     players[id] = shipSnapshot(pd.ship);
@@ -813,6 +820,7 @@ export function getStateSnapshot(sim) {
     activePlayerCount,
     spectatorCount: Math.max(0, sim.players.size - activePlayerCount),
     activePlayerLimit: sim.activePlayerLimit,
+    playerRoster,
     players,
     npcs,
     bullets,
