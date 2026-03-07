@@ -290,6 +290,9 @@ export function tick(sim) {
     sim.bullets.push(bullet);
   }, sim.events, sim.roundConfig);
 
+  // ─── Boss director tick ───
+  tickBossDirector(sim.bossDirector, ROUND_DURATION - sim.roundTimer, dt, sim.world, sim.events);
+
   // NPC physics + fire
   for (const [npcId, npc] of sim.npcDirector.npcs) {
     if (!npc.ship.alive) continue;

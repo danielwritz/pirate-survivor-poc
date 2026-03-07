@@ -23,6 +23,25 @@ import {
   BOSS_SPLASH_RADIUS, BOSS_SPLASH_PERCENT
 } from '../shared/constants.js';
 
+// ─── Boss archetypes (Story 7) ───
+
+export const BOSS_ARCHETYPES = {
+  war_galleon: { displayName: 'War Galleon' },
+  fire_ship:   { displayName: 'Fire Ship'   },
+  kraken:      { displayName: 'Kraken'      }
+};
+
+export function getBossDisplayName(bossType) {
+  return BOSS_ARCHETYPES[bossType]?.displayName ?? String(bossType);
+}
+
+export const BOSS_SCHEDULE = [
+  { time: 150, bossType: 'war_galleon' },
+  { time: 270, bossType: 'fire_ship'   },
+  { time: 420, bossType: 'war_galleon' },
+  { time: 540, bossType: 'kraken'      }
+];
+
 let nextBossId = 90000;
 
 // ─── HP formula ───
@@ -265,4 +284,11 @@ export function distributeBossKillRewards(boss, killerShip, allPlayerShips, tier
   }
 
   return { killerDoubloons: baseDoubloons, splashDoubloons };
+}
+
+// ─── Boss defeated callback (Story 7) ───
+
+export function onBossDefeated(director) {
+  director.boss = null;
+  director.nextBossTime = Infinity;  // reset until scheduled
 }
