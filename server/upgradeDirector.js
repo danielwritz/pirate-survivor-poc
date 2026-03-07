@@ -177,6 +177,21 @@ export function selectUpgrade(ship, choiceIndex) {
 }
 
 /**
+ * Immediately trigger a major upgrade offer for a ship (e.g. after a boss kill).
+ * Sets majorOfferTriggered = true and, if the catalog is loaded, populates
+ * ship.upgradeOffer with a major-tier offer right away.
+ */
+export function triggerMajorOffer(ship) {
+  ship.majorOfferTriggered = true;
+  ship.pendingMajorOffers = (ship.pendingMajorOffers || 0) + 1;
+  if (catalog && !ship.upgradeOffer) {
+    const offer = rollUpgradeOffer('major', 3, catalog);
+    ship.upgradeOffer = offer.map(u => ({ id: u.id, name: u.name, desc: u.desc }));
+    ship.pendingMajorOffers = Math.max(0, ship.pendingMajorOffers - 1);
+  }
+}
+
+/**
  * Apply random upgrades to an NPC ship for difficulty scaling.
  */
 export function scaleNpcWithUpgrades(ship, upgradeCount) {
