@@ -1,8 +1,14 @@
 /**
  * Scenario: review_stage_transition_events (weight: 4)
- * Verify that advancing time produces exactly 3 stage transition events.
+ * Verify that advancing time through the four stages produces 3 stageTransition events.
+ *
+ * tick() computes roundTime as ROUND_DURATION - sim.roundTimer (countdown).
+ * ROUND_DURATION = 600. Transitions happen at roundTime 120, 300, 480.
+ * We set sim.roundTimer to values that place us just before each boundary,
+ * then tick once past the boundary so the stage comparison detects the change.
  */
-import { createSimulation, tick } from '../../server/simulation.js';
+import { createSimulation, tick, TICK_INTERVAL } from '../../../server/simulation.js';
+import { ROUND_DURATION } from '../../../shared/constants.js';
 
 const failures = [];
 let sim;
@@ -13,33 +19,43 @@ try {
   process.exit(0);
 }
 
-// Collect all stageTransition events by ticking from 0 to 601 seconds
+// Collect all stageTransition events
 const transitionEvents = [];
-const tickInterval = sim.tickInterval ?? (1 / 20); // 20Hz = 0.05s
 
-// We'll manipulate roundTime directly rather than ticking 12000 times
-// Tick in 1-second jumps to stay fast but catch transitions
-const checkpoints = [0, 60, 119, 120, 200, 299, 300, 400, 479, 480, 550, 600];
+// Boundary roundTimes: 120 (calm→contested), 300 (contested→war), 480 (war→kraken)
+// For each boundary, set roundTimer so current tick lands just before, then tick past it.
+const boundaries = [
+  { before: 119, after: 120.5 },  // calm → contested
+  { before: 299, after: 300.5 },  // contested → war
+  { before: 479, after: 480.5 }   // war → kraken
+];
 
-for (const targetTime of checkpoints) {
-  sim.roundTime = targetTime;
+for (const { before, after } of boundaries) {
+  // Position sim just before the boundary
+  sim.roundTimer = ROUND_DURATION - before;
+  sim.time = before;
   sim.events = [];
-  try {
-    tick(sim);
-  } catch (e) {
-    // Some ticks may fail due to missing players etc — that's ok, we just want events
-  }
+  try { tick(sim); } catch { /* allow tick errors from missing players */ }
+  // Collect any transition from the "before" tick (shouldn't be one)
   for (const ev of (sim.events || [])) {
     if (ev.type === 'stageTransition') {
-      transitionEvents.push({ time: targetTime, stage: ev.stage });
+      transitionEvents.push({ time: before, stage: ev.stage });
+    }
+  }
+
+  // Now position sim so roundTime crosses the boundary
+  sim.roundTimer = ROUND_DURATION - after;
+  sim.time = after;
+  sim.events = [];
+  try { tick(sim); } catch { /* allow */ }
+  for (const ev of (sim.events || [])) {
+    if (ev.type === 'stageTransition') {
+      transitionEvents.push({ time: after, stage: ev.stage });
     }
   }
 }
 
-// We expect transitions at: ~120 (calm→contested), ~300 (contested→war), ~480 (war→kraken)
-// Since we jump directly, transitions happen when currentStage changes between ticks
-
-// Check: must have at least 3 transitions
+// We expect exactly 3 transitions
 if (transitionEvents.length < 3) {
   failures.push(`Expected >=3 stageTransition events, got ${transitionEvents.length}`);
 }

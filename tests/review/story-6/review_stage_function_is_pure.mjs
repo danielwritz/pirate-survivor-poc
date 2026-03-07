@@ -8,7 +8,7 @@ const failures = [];
 // 1. Must be importable from shared/ (not server/)
 let getCurrentStage;
 try {
-  const mod = await import('../../shared/stages.js');
+  const mod = await import('../../../shared/stages.js');
   getCurrentStage = mod.getCurrentStage;
   if (typeof getCurrentStage !== 'function') {
     throw new Error('getCurrentStage is not a function');
