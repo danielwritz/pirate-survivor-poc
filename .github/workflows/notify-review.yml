@@ -1,0 +1,21 @@
+name: Notify Review System
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  trigger-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract story ID from PR
+        id: extract
+        run: |
+          echo "story_id=$(echo '${{ github.event.pull_request.title }}' | grep -oP 'STORY-\d+')" >> $GITHUB_OUTPUT
+      - name: Dispatch to scenarios repo
+        if: steps.extract.outputs.story_id != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SCENARIOS_REPO_TOKEN }}
+          repository: danielwritz/pirate-survivor-scenarios
+          event-type: new-pr
+          client-payload: '{"pr_number": "${{ github.event.pull_request.number }}", "story_id": "${{ steps.extract.outputs.story_id }}"}'
