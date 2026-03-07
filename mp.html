@@ -1789,9 +1789,9 @@ function showBossAnnouncement(bossType, bossX, bossY) {
     const dx = bossX - me.x;
     const dy = bossY - me.y;
     const angle = Math.atan2(dy, dx); // radians, 0 = right
-    // Map angle to one of 8 arrow characters
+    // Map angle to one of 8 arrow characters (floor avoids out-of-bounds when result = 8)
     const directions = ['➡', '↘', '⬇', '↙', '⬅', '↖', '⬆', '↗'];
-    const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+    const idx = Math.floor(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
     arrowChar = directions[idx];
   }
 

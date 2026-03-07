@@ -30,7 +30,7 @@ const BOSS_SCHEDULE = [
   { time: 150, bossType: 'war_galleon' }, // ~2:30 — first real threat
   { time: 270, bossType: 'fire_ship'   }, // ~4:30 — mid-game escalation
   { time: 420, bossType: 'war_galleon' }, // ~7:00 — war zone climax
-  { time: 540, bossType: 'kraken'      }  // ~9:00 — Kraken Frontier
+  { time: 540, bossType: 'kraken'      }  // ~9:00 — Kraken finale
 ];
 
 // ─── Factory ───
