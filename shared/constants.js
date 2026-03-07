@@ -131,6 +131,27 @@ export const XP_SCALE = 1.18;
 export const XP_ADD = 3;
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
+// ─── Difficulty Stages ───
+export const STAGE_CALM_WATERS    = 'calm_waters';
+export const STAGE_CONTESTED_SEAS = 'contested_seas';
+export const STAGE_WAR_ZONE       = 'war_zone';
+export const STAGE_KRAKEN_FRONTIER = 'kraken_frontier';
+
+export const STAGE_BOUNDARIES = [
+  { stage: STAGE_CALM_WATERS,     start:   0, end: 120 },
+  { stage: STAGE_CONTESTED_SEAS,  start: 120, end: 300 },
+  { stage: STAGE_WAR_ZONE,        start: 300, end: 480 },
+  { stage: STAGE_KRAKEN_FRONTIER, start: 480, end: 600 }
+];
+
+/** Archetype keys allowed per stage */
+export const STAGE_ARCHETYPE_POOLS = {
+  [STAGE_CALM_WATERS]:     ['weak', 'standard'],
+  [STAGE_CONTESTED_SEAS]:  ['weak', 'standard', 'heavy'],
+  [STAGE_WAR_ZONE]:        ['weak', 'standard', 'heavy', 'scavenger'],
+  [STAGE_KRAKEN_FRONTIER]: ['weak', 'standard', 'heavy', 'scavenger']
+};
+
 // ─── NPC ───
 export const MAX_NPCS = 20;
 export const NPC_SPAWN_INTERVAL_BASE = 3.5;    // seconds between spawns, decreases with time
