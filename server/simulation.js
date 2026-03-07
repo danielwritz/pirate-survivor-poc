@@ -27,6 +27,7 @@ import {
   DOUBLOON_PICKUP_RADIUS, DOUBLOON_MAGNET_RADIUS, DOUBLOON_MAGNET_SPEED,
   DOUBLOON_TIMEOUT, PASSIVE_DOUBLOON_RATE
 } from '../shared/constants.js';
+import { getCurrentStage } from '../shared/stages.js';
 
 export { TICK_RATE, TICK_INTERVAL };
 
@@ -109,6 +110,9 @@ export async function createSimulation(roundCatalogData = null) {
     // Directors
     npcDirector: createNpcDirector(),
     worldState: createWorldState(seed, roundConfig),
+
+    // Difficulty stage tracking
+    currentStage: getCurrentStage(0),
 
     // Round summary / persistence hooks
     roundSummary: null,
@@ -384,7 +388,14 @@ export function tick(sim) {
   tickTowers(sim.worldState, allPlayerShips, defenseLevel, dt, (bullet) => {
     bullet.id = sim.nextBulletId++;
     sim.bullets.push(bullet);
-  });
+  }, roundTime);
+
+  // ─── Stage transition detection ───
+  const newStage = getCurrentStage(roundTime);
+  if (newStage !== sim.currentStage) {
+    sim.currentStage = newStage;
+    sim.events.push({ type: 'stageTransition', stage: newStage });
+  }
 
   // ─── Ship-to-ship collisions ───
   for (let i = 0; i < allShips.length; i++) {
@@ -742,6 +753,7 @@ export function resetRound(sim) {
   sim.world = { width: nextRoundConfig.worldWidth, height: nextRoundConfig.worldHeight };
   sim.worldState = createWorldState(seed, nextRoundConfig);
   sim.npcDirector = createNpcDirector();
+  sim.currentStage = getCurrentStage(0);
   const spawnCorners = getSpawnCorners(sim);
 
   let idx = 0;

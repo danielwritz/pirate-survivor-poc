@@ -18,6 +18,7 @@ import {
   MAX_NPCS, NPC_SPAWN_INTERVAL_BASE,
   WORLD_EDGE_PAD
 } from '../shared/constants.js';
+import { getAllowedArchetypes } from '../shared/stages.js';
 
 let nextNpcId = 10000;
 
@@ -99,7 +100,19 @@ const NPC_COLORWAYS = {
   ]
 };
 
-export function rollNpcArchetype(roll = Math.random()) {
+export function rollNpcArchetype(roll = Math.random(), allowedPool = null) {
+  if (allowedPool && allowedPool.length > 0) {
+    // Re-map the original weights onto only the allowed archetypes
+    const weights = { weak: 0.30, standard: 0.35, heavy: 0.20, scavenger: 0.15 };
+    const filtered = allowedPool.filter(k => weights[k] !== undefined);
+    const total = filtered.reduce((sum, k) => sum + weights[k], 0);
+    let cursor = 0;
+    for (const k of filtered) {
+      cursor += weights[k] / total;
+      if (roll < cursor) return k;
+    }
+    return filtered[filtered.length - 1];
+  }
   if (roll < 0.30) return 'weak';
   if (roll < 0.65) return 'standard';
   if (roll < 0.85) return 'heavy';
@@ -300,7 +313,7 @@ export function spawnNpc(director, playerPositions, roundTime, world) {
   const worldWidth = Number.isFinite(world?.width) ? world.width : 3000;
   const worldHeight = Number.isFinite(world?.height) ? world.height : 2100;
 
-  const archetypeKey = rollNpcArchetype(Math.random());
+  const archetypeKey = rollNpcArchetype(Math.random(), getAllowedArchetypes(roundTime));
 
   // Spawn at a random edge, preferring positions far from players
   const pickEdgePos = () => {
