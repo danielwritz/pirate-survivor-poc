@@ -25,7 +25,7 @@ import {
   WIND_SHIFT_INTERVAL,
   DOUBLOON_DROP_RATIO, RESPAWN_INVULN,
   DOUBLOON_PICKUP_RADIUS, DOUBLOON_MAGNET_RADIUS, DOUBLOON_MAGNET_SPEED,
-  DOUBLOON_TIMEOUT, PASSIVE_DOUBLOON_RATE
+  DOUBLOON_TIMEOUT, PASSIVE_DOUBLOON_RATE, XP_START
 } from '../shared/constants.js';
 
 export { TICK_RATE, TICK_INTERVAL };
@@ -770,7 +770,7 @@ export function resetRound(sim) {
     ship.deaths = 0;
     ship.level = 1;
     ship.xp = 0;
-    ship.xpToNext = 10;
+    ship.xpToNext = XP_START;
     ship.upgrades = [];
     ship.slots = [];
     ship.upgradeOffer = null;
