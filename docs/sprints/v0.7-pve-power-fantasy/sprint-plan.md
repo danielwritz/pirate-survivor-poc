@@ -1,5 +1,7 @@
 # Sprint v0.7 — PvE Power Fantasy
 
+> **Agent start point**: Read [`docs/agent-guide.md`](../../agent-guide.md) first, then return here.
+
 > **Theme**: Make AI enemies feel like a real escalating threat; give players the "captain of a growing war machine" fantasy.
 >
 > **Vertical slice**: By the end of this sprint, a solo player in a multiplayer round should feel the full 10-minute arc — safe early looting, dangerous mid-game, climactic boss fight, satisfying power spike.
@@ -170,3 +172,9 @@ main
 ```
 
 Each feature branch PRs into `release/v0.7`. When all stories pass, `release/v0.7` PRs into `main` with full regression suite.
+
+---
+
+## Review Process
+
+All PRs are reviewed by a separate Codex agent following [docs/review-protocol.md](../../review-protocol.md). The implementing agent must never see the review protocol.

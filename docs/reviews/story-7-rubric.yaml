@@ -1,0 +1,71 @@
+story: 7
+title: "Boss Spawn Announcement"
+pr: 15
+branch: "feature/boss-announcement"
+
+scenarios:
+  - id: "review_boss_spawn_event_emitted"
+    weight: 5
+    description: |
+      When a boss spawns, the server must emit a bossSpawn event containing
+      the boss type and position. This is how clients know a boss appeared.
+    setup: |
+      Trigger a boss spawn (or simulate the boss director creating a boss).
+      Collect emitted events/messages.
+    verify: |
+      - An event with type 'bossSpawn' is emitted
+      - Event contains bossType (string identifying the archetype)
+      - Event contains x and y coordinates (numbers, not NaN)
+      - Event is broadcast to all connected players (or added to broadcast queue)
+    edge_cases:
+      - "If boss spawns at map edge, coordinates should still be valid"
+      - "bossType should be a recognized archetype string, not undefined"
+
+  - id: "review_announcement_has_position"
+    weight: 4
+    description: |
+      The boss position in the event must be accurate so clients can
+      render a directional indicator pointing toward the boss.
+    setup: |
+      Spawn a boss at a known position (e.g., 2500, 1800).
+      Read the emitted event.
+    verify: |
+      - Event x matches the boss's actual x position
+      - Event y matches the boss's actual y position
+      - Position values are numeric (typeof number)
+    edge_cases:
+      - "Position should be the boss's spawn position, not (0,0) or the center of the map"
+
+  - id: "review_announcement_per_boss_only"
+    weight: 3
+    description: |
+      Each boss should produce exactly one spawn announcement.
+      No repeated announcements for the same boss, no announcements
+      for non-boss NPCs.
+    setup: |
+      Spawn a boss. Tick 100 times while the boss is alive.
+      Count bossSpawn events.
+    verify: |
+      - Exactly 1 bossSpawn event was emitted for this boss
+      - Regular NPC spawns do NOT produce bossSpawn events
+    edge_cases:
+      - "After the boss dies and a new boss spawns, a NEW announcement should fire"
+      - "If the boss director defers a spawn (boss alive), no false announcement"
+
+  - id: "review_event_structure_is_standard"
+    weight: 3
+    description: |
+      The event should follow the existing broadcast pattern used in simulation.js
+      so it integrates cleanly with the WebSocket message system.
+    setup: |
+      Check how other events (NPC spawn, round timer, etc.) are structured
+      in simulation.js. Compare the bossSpawn event format.
+    verify: |
+      - Event structure matches existing patterns (same shape as other broadcast events)
+      - Event can be serialized to JSON without error (no circular references, no functions)
+    edge_cases:
+      - "Event should not include the full boss state object (leaking server internals)"
+
+scoring:
+  threshold: 85
+  max_iterations: 3

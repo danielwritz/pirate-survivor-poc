@@ -1,0 +1,87 @@
+story: 4
+title: "Kraken Boss"
+pr: 12
+branch: "feature/kraken-boss"
+
+scenarios:
+  - id: "review_kraken_area_damage"
+    weight: 5
+    description: |
+      The Kraken's core mechanic is area-denial: ships within its radius take
+      periodic damage. This should feel like standing in fire — you need to
+      either commit to the fight or stay out.
+    setup: |
+      Create a Kraken boss at position (1000, 1000) with area radius.
+      Place Player A at (1050, 1050) — inside radius.
+      Place Player B at (2000, 2000) — outside radius.
+      Tick the Kraken AI multiple times.
+    verify: |
+      - Player A's HP decreases after ticks (took area damage)
+      - Player B's HP remains unchanged (outside radius)
+      - Damage is periodic (not instant-kill, applied over multiple ticks)
+    edge_cases:
+      - "Player entering the radius mid-fight should start taking damage immediately"
+      - "Player leaving the radius should stop taking damage"
+      - "Player at exactly the boundary radius — should take damage (inclusive boundary)"
+
+  - id: "review_kraken_is_stationary"
+    weight: 4
+    description: |
+      Unlike other bosses, the Kraken does not move. It's a zone hazard,
+      not a pursuer. Players come to it (or avoid it).
+    setup: |
+      Create a Kraken boss at (1000, 1000).
+      Tick 200 times with players at various positions.
+    verify: |
+      - Kraken's x and y coordinates do not change after any tick
+      - Kraken has no velocity or heading that would cause movement
+    edge_cases:
+      - "Even with players standing right next to it, Kraken stays put"
+      - "Kraken should not be affected by physics/collision pushback"
+
+  - id: "review_kraken_broadcasts_area_event"
+    weight: 3
+    description: |
+      The Kraken's area-denial zones need to be communicated to clients
+      so they can render visual indicators. An areaDenial event must be emitted.
+    setup: |
+      Create a Kraken boss and tick its AI.
+      Collect emitted events.
+    verify: |
+      - An event with type 'areaDenial' (or similar) is emitted
+      - The event includes the center position (x, y)
+      - The event includes the radius
+    edge_cases:
+      - "Event should be emitted on spawn or first tick, not delayed"
+
+  - id: "review_kraken_requires_sustained_dps"
+    weight: 3
+    description: |
+      The Kraken should have enough HP at late-game tiers that a single player
+      can't burst it down instantly. It rewards coordinated group damage.
+    setup: |
+      Create a Kraken at tier 8 with 6 players.
+      Calculate how many "max damage" player attacks it would take to kill it.
+    verify: |
+      - Kraken HP at tier 8 requires at least 10 player cannon hits to kill
+      - Kraken HP is higher than a War Galleon at the same tier (it's the endgame boss)
+    edge_cases:
+      - "At tier 2 (if Kraken could spawn), HP should still be substantial"
+
+  - id: "review_kraken_deep_water_spawn"
+    weight: 2
+    description: |
+      The Kraken should spawn in deep water (away from islands), not on top of
+      a player's position or inside an island.
+    setup: |
+      Create world state with islands at known positions.
+      Spawn a Kraken and check its position.
+    verify: |
+      - Kraken position is not inside any island's bounding area
+      - Kraken position is within the map bounds
+    edge_cases:
+      - "On a map full of islands, Kraken should still find a valid spot"
+
+scoring:
+  threshold: 85
+  max_iterations: 3

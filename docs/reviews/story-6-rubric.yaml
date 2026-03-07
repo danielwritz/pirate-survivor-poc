@@ -1,0 +1,100 @@
+story: 6
+title: "Named Difficulty Stages"
+pr: 14
+branch: "feature/named-stages"
+
+scenarios:
+  - id: "review_stage_boundaries_correct"
+    weight: 5
+    description: |
+      The 4 stages must have exact boundaries: Calm Waters (0-119s),
+      Contested Seas (120-299s), War Zone (300-479s), Kraken Frontier (480-600s).
+      The stage function must return the correct stage at every boundary.
+    setup: |
+      Call getCurrentStage (or equivalent) at times:
+      0, 60, 119, 120, 200, 299, 300, 400, 479, 480, 550, 600.
+    verify: |
+      - t=0: calm_waters (or equivalent name)
+      - t=60: calm_waters
+      - t=119: calm_waters
+      - t=120: contested_seas
+      - t=200: contested_seas
+      - t=299: contested_seas
+      - t=300: war_zone
+      - t=400: war_zone
+      - t=479: war_zone
+      - t=480: kraken_frontier
+      - t=550: kraken_frontier
+      - t=600: kraken_frontier
+    edge_cases:
+      - "t=-1 should return calm_waters or throw (not crash silently)"
+      - "t=601 should return kraken_frontier (not undefined)"
+      - "t=119.9 (float) should still be calm_waters"
+
+  - id: "review_npc_archetype_filtering"
+    weight: 5
+    description: |
+      During Calm Waters, only basic/weak NPCs should spawn. Heavier archetypes
+      should unlock progressively in later stages.
+    setup: |
+      Check the NPC archetype pool returned for each stage.
+      This may require reading npcDirector or the stage-gating logic.
+    verify: |
+      - Calm Waters: only basic NPCs (no heavy, no scavenger)
+      - Contested Seas: basic + heavy NPCs
+      - War Zone: basic + heavy + scavenger NPCs
+      - Kraken Frontier: all NPC types available
+    edge_cases:
+      - "A stage should never have an empty archetype pool (at least basic NPCs always)"
+      - "The filtering should happen at spawn time, not retroactively kill existing NPCs"
+
+  - id: "review_towers_silent_during_calm"
+    weight: 4
+    description: |
+      Towers must not fire during Calm Waters (first 2 minutes). This gives players
+      a safe looting window. Towers should activate in Contested Seas.
+    setup: |
+      Create a world with islands that have towers.
+      Place a player within tower range.
+      Tick at roundTime=60 (Calm Waters) — towers should not fire.
+      Tick at roundTime=130 (Contested Seas) — towers should fire.
+    verify: |
+      - At t=60: zero tower bullets created
+      - At t=130: at least one tower bullet created (tower is active)
+    edge_cases:
+      - "At t=119 (last second of Calm), towers still silent"
+      - "At t=120 (first second of Contested), towers activate"
+
+  - id: "review_stage_transition_events"
+    weight: 4
+    description: |
+      When the stage changes, the server must broadcast a transition event so
+      clients can update the HUD. Each transition happens exactly once.
+    setup: |
+      Advance time from 0 to 600, collecting all emitted events.
+    verify: |
+      - Exactly 3 stageTransition events are emitted (Calm→Contested, Contested→War, War→Kraken)
+      - Each event includes the new stage name
+      - No duplicate transitions (same stage announced twice)
+    edge_cases:
+      - "If roundTime jumps from 100 to 350 in one tick, both transitions should fire"
+      - "The starting stage (calm_waters) may or may not have an initial event — either is acceptable, but it must be consistent"
+
+  - id: "review_stage_function_is_pure"
+    weight: 3
+    description: |
+      The stage calculation function should be pure (in shared/) — it takes
+      roundTime and returns a stage. No side effects, no server dependencies.
+    setup: |
+      Import the stage function from shared/ (not server/).
+      Call it with various times.
+    verify: |
+      - Function is importable from a shared/ module
+      - Function has no side effects (calling it twice with same input returns same result)
+      - Function does not require server state or simulation context
+    edge_cases:
+      - "Function should work when imported directly in a test script (no server bootstrap needed)"
+
+scoring:
+  threshold: 85
+  max_iterations: 3
