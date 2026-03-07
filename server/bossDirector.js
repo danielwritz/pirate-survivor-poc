@@ -330,7 +330,7 @@ export function tickBossDirector(director, playerShips, world, roundTime, dt, sp
     if (events) {
       events.push({
         type: 'bossSpawn',
-        archetype: director.boss.archetype,
+        bossType: director.boss.archetype,
         x: director.boss.ship.x,
         y: director.boss.ship.y
       });
