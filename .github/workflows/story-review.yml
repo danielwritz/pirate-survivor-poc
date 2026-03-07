@@ -1,0 +1,122 @@
+name: Story Review Gate
+
+on:
+  pull_request:
+    branches: [release/v0.7]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: '22.x'
+
+jobs:
+  # ── Baseline: existing tests must pass ──
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  # ── Scenario review: rubric-based acceptance tests ──
+  review:
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Determine story number
+        id: story
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          case "$BRANCH" in
+            feature/boss-director)     echo "number=1" >> "$GITHUB_OUTPUT" ;;
+            feature/war-galleon-boss)   echo "number=2" >> "$GITHUB_OUTPUT" ;;
+            feature/fire-ship-boss)     echo "number=3" >> "$GITHUB_OUTPUT" ;;
+            feature/kraken-boss)        echo "number=4" >> "$GITHUB_OUTPUT" ;;
+            feature/boss-rewards)       echo "number=5" >> "$GITHUB_OUTPUT" ;;
+            feature/named-stages)       echo "number=6" >> "$GITHUB_OUTPUT" ;;
+            feature/boss-announcement)  echo "number=7" >> "$GITHUB_OUTPUT" ;;
+            feature/rebalance-v0.7)     echo "number=8" >> "$GITHUB_OUTPUT" ;;
+            *) echo "number=0" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Check for scenario tests
+        if: steps.story.outputs.number != '0'
+        id: check
+        run: |
+          DIR="tests/review/story-${{ steps.story.outputs.number }}"
+          if [ -d "$DIR" ] && [ "$(ls -A "$DIR"/*.mjs 2>/dev/null)" ]; then
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run scenario tests
+        if: steps.check.outputs.has_tests == 'true'
+        id: scenarios
+        continue-on-error: true
+        run: |
+          node tests/review/runner.mjs ${{ steps.story.outputs.number }} > review-report.json 2>&1
+          cat review-report.json
+
+      - name: Post review
+        if: steps.check.outputs.has_tests == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'review-report.json';
+            
+            let report;
+            try {
+              const raw = fs.readFileSync(path, 'utf8');
+              report = JSON.parse(raw);
+            } catch (e) {
+              // Runner failed to produce valid JSON — post failure review
+              report = { score: 0, passed: false, details: [{ id: 'runner', verdict: 'FAIL', reason: `Runner error: ${e.message}` }] };
+            }
+
+            // Build review body
+            const lines = [
+              `## Story Review — Score: ${report.score}%`,
+              '',
+              `**Verdict: ${report.passed ? '✅ APPROVED' : '❌ CHANGES REQUESTED'}**`,
+              '',
+              '| Scenario | Weight | Score | Verdict | Details |',
+              '|----------|--------|-------|---------|---------|',
+            ];
+            
+            for (const d of report.details || []) {
+              const emoji = d.verdict === 'PASS' ? '✅' : d.verdict === 'PARTIAL' ? '⚠️' : '❌';
+              lines.push(`| ${d.id} | ${d.weight} | ${d.score} | ${emoji} ${d.verdict} | ${d.reason} |`);
+            }
+            
+            lines.push('');
+            lines.push(`> Threshold: 85% · Iteration: check PR review history for count`);
+
+            const event = report.passed ? 'APPROVE' : 'REQUEST_CHANGES';
+            
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event,
+              body: lines.join('\n')
+            });
+      
+      - name: Skip review (no scenario tests)
+        if: steps.story.outputs.number == '0' || steps.check.outputs.has_tests != 'true'
+        run: echo "No scenario tests for this branch — skipping review gate"
