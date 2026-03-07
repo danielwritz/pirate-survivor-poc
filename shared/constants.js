@@ -175,6 +175,13 @@ export const BOSS_HP_BASE = 200;
 export const BOSS_HP_PER_TIER = 80;
 export const BOSS_HP_PER_PLAYER = 40;
 
+// ─── Boss: Kraken ───
+export const KRAKEN_AREA_RADIUS = 160;          // tentacle hazard zone radius (>= 150)
+export const KRAKEN_DMG_PER_TICK = 2.5;         // damage dealt to ships per area pulse
+export const KRAKEN_PULSE_INTERVAL = 1.5;       // seconds between damage pulses
+export const KRAKEN_HP_BASE = 800;              // base HP at tier 0
+export const KRAKEN_HP_PER_TIER = 120;          // additional HP per difficulty tier
+
 // ─── Camera ───
 export const CAMERA_ZOOM_BASE = 2.0;
 export const CAMERA_ZOOM_PER_LOOKOUT = -0.0012;  // zoom out as crow's nest grows

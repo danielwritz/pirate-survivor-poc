@@ -16,7 +16,9 @@ import {
   BOSS_FIRST_SPAWN_TIME, BOSS_SPAWN_INTERVAL,
   BOSS_TIER_DURATION, BOSS_MAX_TIER,
   BOSS_HP_BASE, BOSS_HP_PER_TIER, BOSS_HP_PER_PLAYER,
-  WORLD_EDGE_PAD
+  WORLD_EDGE_PAD,
+  KRAKEN_AREA_RADIUS, KRAKEN_DMG_PER_TICK,
+  KRAKEN_PULSE_INTERVAL, KRAKEN_HP_BASE, KRAKEN_HP_PER_TIER
 } from '../shared/constants.js';
 
 let nextBossId = 90000;
@@ -196,5 +198,48 @@ export function tickBossDirector(director, playerShips, world, roundTime, events
   // Tick active boss AI
   if (isBossAlive(director)) {
     tickBossAi(director.boss, { playerShips, world });
+  }
+}
+
+// ─── Kraken archetype ───
+
+export function createKrakenBoss(x = 0, y = 0, tier = 0) {
+  const maxHp = KRAKEN_HP_BASE + tier * KRAKEN_HP_PER_TIER;
+  return {
+    id: nextBossId++,
+    archetype: 'kraken',
+    x, y, tier,
+    hp: maxHp,
+    maxHp,
+    alive: true,
+    areaEffect: { active: true, radius: KRAKEN_AREA_RADIUS },
+    _pulseTimer: KRAKEN_PULSE_INTERVAL
+  };
+}
+
+export function tickKrakenBoss(boss, ships, dt, events) {
+  if (!boss.alive) return;
+  boss._pulseTimer -= dt;
+  if (boss._pulseTimer > 0) return;
+  boss._pulseTimer = KRAKEN_PULSE_INTERVAL;
+
+  const radiusSq = boss.areaEffect.radius * boss.areaEffect.radius;
+  for (const ship of ships) {
+    if (!ship || !ship.alive) continue;
+    const dx = ship.x - boss.x;
+    const dy = ship.y - boss.y;
+    if (dx * dx + dy * dy <= radiusSq) {
+      ship.hp -= KRAKEN_DMG_PER_TICK;
+    }
+  }
+
+  if (events) {
+    events.push({
+      type: 'areaDenial',
+      id: boss.id,
+      x: boss.x,
+      y: boss.y,
+      radius: boss.areaEffect.radius
+    });
   }
 }
