@@ -126,9 +126,9 @@ export const GOLD_MAGNET_PULL_FACTOR = 0.95;
 export const GOLD_MAGNET_BASE_SPEED = 2.1;
 
 // ─── XP / Levels ───
-export const XP_START = 8;
-export const XP_SCALE = 1.18;
-export const XP_ADD = 3;
+export const XP_START = 32;                   // XP required for the first level-up
+export const XP_SCALE = 1.10;                 // multiplier applied to xpToNext each level
+export const XP_ADD = 3;                      // flat additive per level
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
 // ─── Boss kill rewards ───
@@ -159,8 +159,8 @@ export const STAGE_ARCHETYPE_POOLS = {
 };
 
 // ─── NPC ───
-export const MAX_NPCS = 20;
-export const NPC_SPAWN_INTERVAL_BASE = 3.5;    // seconds between spawns, decreases with time
+export const MAX_NPCS = 25;
+export const NPC_SPAWN_INTERVAL_BASE = 3.0;    // seconds between spawns, decreases with time
 export const NPC_BASE_DOUBLOON_REWARD = 3;
 export const NPC_DOUBLOON_PER_UPGRADE = 2;
 
@@ -186,6 +186,14 @@ export const BUILDING_HP_SIZE_MUL = 1.6;
 export const BUILDING_DMG_CANNON_SCALE = 1.05;
 export const BUILDING_DMG_GUN_SCALE = 0.58;
 export const BUILDING_GOLD_MIN = 2;
+
+// ─── Boss: War Galleon ───
+export const WAR_GALLEON_SIZE_MUL = 3.0;           // ~3x player BASE_SIZE
+export const WAR_GALLEON_CANNON_COUNT = 6;          // 3 cannons per side, 6 total
+export const WAR_GALLEON_BROADSIDE_INTERVAL = 4.0;  // seconds between full broadside volleys
+export const WAR_GALLEON_CANNON_DAMAGE = 12;        // bulletDamage for each cannonball
+export const WAR_GALLEON_HP_PER_TIER = 50;          // HP = 50*tier + 20*player_count
+export const WAR_GALLEON_HP_PER_PLAYER = 20;
 
 // ─── Vision ───
 export const VISION_BASE_OFFSET = 44;

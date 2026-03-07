@@ -13,7 +13,9 @@ import {
   BOSS_HP_BASE,
   BOSS_HP_PER_TIER,
   BOSS_HP_PER_PLAYER,
-  BOSS_MAX_TIER
+  BOSS_MAX_TIER,
+  WAR_GALLEON_HP_PER_TIER,
+  WAR_GALLEON_HP_PER_PLAYER
 } from '../shared/constants.js';
 
 // Minimal player-ship stub for use as playerPositions / playerShips
@@ -29,11 +31,11 @@ describe('boss_first_spawn_at_tier_2', () => {
     const players = [makePlayer()];
 
     // No boss before the threshold
-    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME - 1, null);
+    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME - 1, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(false);
 
     // Boss spawns at exactly BOSS_FIRST_SPAWN_TIME
-    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, null);
+    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(true);
 
     const boss = getActiveBoss(director);
@@ -70,7 +72,8 @@ describe('boss_hp_scales_with_tier_and_players', () => {
     // Spawn at BOSS_FIRST_SPAWN_TIME so tier = floor(150/150)+1 = 2
     spawnBoss(director, players, BOSS_FIRST_SPAWN_TIME, WORLD);
 
-    const expectedHp = computeBossHp(2, 2);
+    // War Galleon archetype uses its own HP formula
+    const expectedHp = WAR_GALLEON_HP_PER_TIER * 2 + WAR_GALLEON_HP_PER_PLAYER * 2;
     expect(director.boss.ship.maxHp).toBe(expectedHp);
     expect(director.boss.ship.hp).toBe(expectedHp);
   });
@@ -87,12 +90,12 @@ describe('boss_single_instance_limit', () => {
     const players = [makePlayer()];
 
     // First spawn
-    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, null);
+    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(true);
     const firstBossId = director.boss.ship.id;
 
     // Attempt to spawn again well past nextBossTime — boss is still alive
-    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME + BOSS_SPAWN_INTERVAL + 1, null);
+    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME + BOSS_SPAWN_INTERVAL + 1, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(true);
     expect(director.boss.ship.id).toBe(firstBossId); // same boss, not replaced
   });
@@ -102,7 +105,7 @@ describe('boss_single_instance_limit', () => {
     const players = [makePlayer()];
 
     // Spawn first boss
-    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, null);
+    tickBossDirector(director, players, WORLD, BOSS_FIRST_SPAWN_TIME, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(true);
 
     // Kill the boss
@@ -110,15 +113,15 @@ describe('boss_single_instance_limit', () => {
 
     // tickBossDirector detects death, sets nextBossTime, clears director.boss
     const timeOfDeath = BOSS_FIRST_SPAWN_TIME + 10;
-    tickBossDirector(director, players, WORLD, timeOfDeath, null);
+    tickBossDirector(director, players, WORLD, timeOfDeath, 0.05, () => {}, null);
     expect(director.boss).toBeNull();
 
     // Before nextBossTime no new spawn
-    tickBossDirector(director, players, WORLD, timeOfDeath + BOSS_SPAWN_INTERVAL - 1, null);
+    tickBossDirector(director, players, WORLD, timeOfDeath + BOSS_SPAWN_INTERVAL - 1, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(false);
 
     // At nextBossTime new boss spawns
-    tickBossDirector(director, players, WORLD, timeOfDeath + BOSS_SPAWN_INTERVAL, null);
+    tickBossDirector(director, players, WORLD, timeOfDeath + BOSS_SPAWN_INTERVAL, 0.05, () => {}, null);
     expect(isBossAlive(director)).toBe(true);
   });
 });
@@ -135,7 +138,7 @@ describe('boss_cadence_per_round', () => {
 
     while (t <= ROUND_DURATION) {
       const wasAlive = isBossAlive(director);
-      tickBossDirector(director, players, WORLD, t, null);
+      tickBossDirector(director, players, WORLD, t, 0.05, () => {}, null);
 
       // Detect new spawn
       if (!wasAlive && isBossAlive(director)) {
