@@ -80,7 +80,7 @@ jobs:
         id: scenarios
         continue-on-error: true
         run: |
-          node tests/review/runner.mjs ${{ steps.story.outputs.number }} > review-report.json 2>&1
+          node tests/review/runner.mjs ${{ steps.story.outputs.number }} > review-report.json || true
           cat review-report.json
 
       - name: Post review

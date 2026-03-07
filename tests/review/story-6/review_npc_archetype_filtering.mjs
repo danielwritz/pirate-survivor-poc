@@ -2,7 +2,7 @@
  * Scenario: review_npc_archetype_filtering (weight: 5)
  * Verify NPC archetype pools are correctly filtered by stage.
  */
-import { getAllowedArchetypes } from '../../shared/stages.js';
+import { getAllowedArchetypes } from '../../../shared/stages.js';
 
 const failures = [];
 

@@ -3,7 +3,7 @@
  * Verify getCurrentStage returns the correct stage at every boundary.
  */
 import { getCurrentStage, STAGE_CALM_WATERS, STAGE_CONTESTED_SEAS,
-  STAGE_WAR_ZONE, STAGE_KRAKEN_FRONTIER } from '../../shared/stages.js';
+  STAGE_WAR_ZONE, STAGE_KRAKEN_FRONTIER } from '../../../shared/stages.js';
 
 const expected = [
   [0,     STAGE_CALM_WATERS],
