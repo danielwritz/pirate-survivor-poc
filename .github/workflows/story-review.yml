@@ -2,7 +2,16 @@ name: Story Review Gate
 
 on:
   pull_request:
-    branches: [release/v0.7]
+    branches:
+      - release/v0.7
+      - feature/boss-director
+      - feature/war-galleon-boss
+      - feature/fire-ship-boss
+      - feature/kraken-boss
+      - feature/boss-rewards
+      - feature/named-stages
+      - feature/boss-announcement
+      - feature/rebalance-v0.7
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -40,7 +49,9 @@ jobs:
       - name: Determine story number
         id: story
         run: |
-          BRANCH="${{ github.head_ref }}"
+          # The base branch tells us which story this PR belongs to
+          # (Codex agents create copilot/* branches targeting feature/* branches)
+          BRANCH="${{ github.base_ref }}"
           case "$BRANCH" in
             feature/boss-director)     echo "number=1" >> "$GITHUB_OUTPUT" ;;
             feature/war-galleon-boss)   echo "number=2" >> "$GITHUB_OUTPUT" ;;
