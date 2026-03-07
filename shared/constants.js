@@ -137,6 +137,15 @@ export const BOSS_KILL_DOUBLOONS_PER_TIER = 10; // additional doubloons per diff
 export const BOSS_SPLASH_RADIUS = 300;          // units — players within this radius get splash
 export const BOSS_SPLASH_PERCENT = 0.3;         // fraction of base reward for splash players
 
+// ─── Boss HUD ───
+export const BOSS_HEALTH_BAR_HEIGHT = 12;
+export const BOSS_HEALTH_BAR_WIDTH_FACTOR = 1.4;
+export const BOSS_WARNING_SIZE = 32;
+export const BOSS_WARNING_PULSE_MIN = 0.85;
+export const BOSS_WARNING_PULSE_MAX = 1.3;
+export const BOSS_WARNING_PULSE_HZ = 1.25;
+export const BOSS_WARNING_EDGE_MARGIN = 22;
+
 // ─── Difficulty Stages ───
 export const STAGE_CALM_WATERS    = 'calm_waters';
 export const STAGE_CONTESTED_SEAS = 'contested_seas';

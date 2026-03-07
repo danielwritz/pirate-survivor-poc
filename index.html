@@ -122,6 +122,8 @@ import {
 import { getLevelConfig } from './src/core/levelConfig.js';
 import { createGameContext } from './src/core/context.js';
 import { DEFAULT_HULL_DESIGN, SHIPYARD_COST } from './src/core/player.js';
+import { drawBossHealthBar } from './src/bossRenderer.js';
+import { createHudManager } from './src/hudManager.js';
 import { drawShipRenderer } from './src/rendering/shipRenderer.js';
 import { rollWindVector, stepShipPhysics, resolveShipCollision } from './shared/physics.js';
 import { ROW_ACCEL_BASE, ROW_ACCEL_PER_ROWER } from './shared/constants.js';
@@ -147,6 +149,7 @@ let audioSystem = null;
 
 const gameContext = createGameContext({ canvas, ctx });
 const { state, player } = gameContext;
+const hudManager = createHudManager();
 
 async function fetchFirstJson(urls, fallbackValue) {
   for (const url of urls) {
@@ -4554,6 +4557,15 @@ function drawEnemyShip(enemy) {
   ctx.lineTo(flagBaseX * z, flagTop + flagH * 0.5);
   ctx.stroke();
   ctx.restore();
+
+  if (enemy.kind === 'boss') {
+    const onScreen = pos.x >= 0 && pos.x <= canvas.width && pos.y >= 0 && pos.y <= canvas.height;
+    if (onScreen) {
+      const halfBeam = Math.max(shape.shoulderHalfBeam, shape.sternHalfBeam);
+      const renderedWidth = halfBeam * 2 * z;
+      drawBossHealthBar(ctx, enemy, pos.x, pos.y, { renderedWidth, zoom: z });
+    }
+  }
 }
 
 function drawCollectorSkiffs() {
@@ -5373,6 +5385,12 @@ function draw() {
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const viewportState = {
+    camera: state.camera,
+    zoom: state.zoom,
+    width: canvas.width,
+    height: canvas.height
+  };
   drawWorld();
   drawRangeIndicators();
 
@@ -5450,17 +5468,10 @@ function draw() {
     ctx.restore();
   }
 
+  const bosses = [];
   for (const e of state.enemies) {
     drawEnemyShip(e);
-
-    if (e.kind === 'boss') {
-      const ep = toScreen(e.x, e.y);
-      ctx.fillStyle = '#f3c8d0';
-      ctx.fillRect(ep.x - e.size * 0.6 * state.zoom, ep.y - (e.size + 10) * state.zoom, e.size * 1.2 * state.zoom, 6 * state.zoom);
-      ctx.fillStyle = '#d74662';
-      const hpRatio = Math.max(0, Math.min(1, e.hp / e.maxHp));
-      ctx.fillRect(ep.x - e.size * 0.6 * state.zoom, ep.y - (e.size + 10) * state.zoom, e.size * 1.2 * hpRatio * state.zoom, 6 * state.zoom);
-    }
+    if (e.kind === 'boss') bosses.push(e);
   }
 
   drawCloudOverlay();
@@ -5494,6 +5505,8 @@ function draw() {
     });
     ctx.textAlign = 'left';
   }
+
+  hudManager.draw(ctx, { bosses, viewportState });
 
   if (state.gameOver) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
