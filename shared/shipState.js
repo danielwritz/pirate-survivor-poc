@@ -19,7 +19,7 @@ import {
   CREW_EFFICIENCY_A, CREW_EFFICIENCY_B, CREW_EFFICIENCY_MIN, CREW_EFFICIENCY_MAX,
   VISION_BASE_OFFSET, VISION_MIN, VISION_MAX,
   REPAIR_RATE_BASE, REPAIR_RATE_PER_CREW,
-  RESPAWN_INVULN
+  RESPAWN_INVULN, XP_START
 } from './constants.js';
 
 // Re-export hull shape + weapon cap utilities from existing modules
@@ -120,7 +120,7 @@ export function createShip(x = 0, y = 0, opts = {}) {
     deaths: 0,
     level: 1,
     xp: 0,
-    xpToNext: 10,
+    xpToNext: XP_START,
 
     // Pending upgrade offer (null or array of 3 upgrade objects)
     upgradeOffer: null,
