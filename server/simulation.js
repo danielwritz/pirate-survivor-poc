@@ -8,6 +8,7 @@
  *                  →  shared/shipState.js     (ship factory, derived stats)
  *                  →  server/upgradeDirector  (XP, levels, upgrade offers)
  *                  →  server/npcDirector      (NPC spawning, AI, difficulty)
+ *                  →  server/bossDirector     (boss spawning, scheduling, HP scaling)
  *                  →  server/worldManager     (islands, buildings, towers)
  */
 
@@ -15,6 +16,7 @@ import { createShip, shipSnapshot } from '../shared/shipState.js';
 import { stepShipPhysics, forwardVector, resolveShipCollision, rollWindVector } from '../shared/physics.js';
 import { tickGunAutoFire, fireCannonBroadside, tickBullets, applyDamage, tickFire, tickRepair } from '../shared/combat.js';
 import { createNpcDirector, tickNpcDirector, getNpcShips, getNpcReward, removeNpc } from './npcDirector.js';
+import { createBossDirector, tickBossDirector, isBossAlive, getActiveBoss, getBossShip, removeBoss } from './bossDirector.js';
 import { createWorldState, damageBuildingAtPoint, tickTowers, applyIslandContact, updateDefenseTier, getWorldSnapshot } from './worldManager.js';
 import { loadCatalog, initStarterLoadout, initStartingUpgradeOffer, awardXp, selectUpgrade } from './upgradeDirector.js';
 import { createRoundVoteState, normalizeRoundCatalog, removeRoundVotesForPlayer, resolveRoundConfig, submitRoundVote as submitVoteSelection } from '../shared/roundConfig.js';
@@ -108,6 +110,7 @@ export async function createSimulation(roundCatalogData = null) {
 
     // Directors
     npcDirector: createNpcDirector(),
+    bossDirector: createBossDirector(),
     worldState: createWorldState(seed, roundConfig),
 
     // Round summary / persistence hooks
@@ -308,6 +311,32 @@ export function tick(sim) {
     allShips.push({ ship, id: npcId });
   }
 
+  // ─── Boss tick ───
+  const roundTime = ROUND_DURATION - sim.roundTimer;
+  tickBossDirector(sim.bossDirector, allPlayerShips, sim.world, roundTime, sim.events);
+
+  // Boss physics + fire
+  const activeBoss = getActiveBoss(sim.bossDirector);
+  if (activeBoss) {
+    const bossShip = activeBoss.ship;
+    const bossInput = bossShip._input || { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
+
+    stepShipPhysics(bossShip, bossInput, sim.wind, sim.world, dt);
+    tickRepair(bossShip, dt);
+
+    const bossFireDied = tickFire(bossShip, dt);
+    if (bossFireDied) {
+      handleBossDeath(sim, bossShip, -1);
+    } else {
+      const bossIslandDmg = applyIslandContact(bossShip, sim.worldState, dt);
+      if (bossIslandDmg > 0) {
+        const died = applyDamage(bossShip, bossIslandDmg, false);
+        if (died) handleBossDeath(sim, bossShip, -1);
+      }
+      if (bossShip.alive) allShips.push({ ship: bossShip, id: bossShip.id });
+    }
+  }
+
   // ─── Gun auto-fire for all ships ───
   for (const entry of allShips) {
     const targets = allShips.filter(t => t.id !== entry.id);
@@ -339,7 +368,9 @@ export function tick(sim) {
     // Actually, buildings are checked separately below
 
     if (died) {
-      if (victimShip.isNpc) {
+      if (victimShip.isBoss) {
+        handleBossDeath(sim, victimShip, bullet.ownerId);
+      } else if (victimShip.isNpc) {
         handleNpcDeath(sim, victimShip.id, victimShip, bullet.ownerId);
       } else {
         handleDeath(sim, victimShip.id, victimShip, bullet.ownerId);
@@ -378,7 +409,6 @@ export function tick(sim) {
   }
 
   // ─── Tower firing ───
-  const roundTime = ROUND_DURATION - sim.roundTimer;
   const defenseLevel = Math.floor(roundTime / 90);
   updateDefenseTier(sim.worldState, roundTime);
   tickTowers(sim.worldState, allPlayerShips, defenseLevel, dt, (bullet) => {
@@ -400,14 +430,16 @@ export function tick(sim) {
       if (result.impactA > 0 && (a.invulnTimer || 0) <= 0) {
         const died = applyDamage(a, result.impactA, false);
         if (died) {
-          if (a.isNpc) handleNpcDeath(sim, a.id, a, b.id);
+          if (a.isBoss) handleBossDeath(sim, a, b.id);
+          else if (a.isNpc) handleNpcDeath(sim, a.id, a, b.id);
           else handleDeath(sim, a.id, a, b.id);
         }
       }
       if (result.impactB > 0 && (b.invulnTimer || 0) <= 0) {
         const died = applyDamage(b, result.impactB, false);
         if (died) {
-          if (b.isNpc) handleNpcDeath(sim, b.id, b, a.id);
+          if (b.isBoss) handleBossDeath(sim, b, a.id);
+          else if (b.isNpc) handleNpcDeath(sim, b.id, b, a.id);
           else handleDeath(sim, b.id, b, a.id);
         }
       }
@@ -610,6 +642,45 @@ function handleNpcDeath(sim, npcId, npcShip, killerId) {
   removeNpc(sim.npcDirector, npcId);
 }
 
+/**
+ * Handle boss death.
+ * Marks the boss as dead and emits kill/explosion events.
+ * The bossDirector will detect the dead boss on the next tick,
+ * schedule the next spawn, and clear director.boss.
+ * Boss kill rewards are handled in Story 5.
+ */
+function handleBossDeath(sim, bossShip, killerId) {
+  if (!bossShip.alive) return; // already handled this tick
+  bossShip.alive = false;
+  bossShip.onFire = false;
+
+  let killerName = '???';
+  if (killerId > 0) {
+    const killerPd = sim.players.get(killerId);
+    if (killerPd) killerName = killerPd.ship.name;
+    const killerNpc = sim.npcDirector.npcs.get(killerId);
+    if (killerNpc) killerName = killerNpc.ship.name;
+  }
+
+  sim.events.push({
+    type: 'kill',
+    killer: killerId,
+    killerName,
+    victim: bossShip.id,
+    victimName: bossShip.name,
+    isBoss: true
+  });
+
+  sim.events.push({
+    type: 'explosion',
+    x: bossShip.x,
+    y: bossShip.y,
+    size: bossShip.size,
+    hullColor: bossShip.hullColor,
+    trimColor: bossShip.trimColor
+  });
+}
+
 function scatterDrops(sim, x, y, totalValue) {
   const numDrops = clamp(Math.ceil(totalValue / 5), 3, 20);
   const perDrop = totalValue / numDrops;
@@ -742,6 +813,7 @@ export function resetRound(sim) {
   sim.world = { width: nextRoundConfig.worldWidth, height: nextRoundConfig.worldHeight };
   sim.worldState = createWorldState(seed, nextRoundConfig);
   sim.npcDirector = createNpcDirector();
+  sim.bossDirector = createBossDirector();
   const spawnCorners = getSpawnCorners(sim);
 
   let idx = 0;
@@ -838,6 +910,14 @@ export function getStateSnapshot(sim) {
     if (npc.ship.alive) {
       npcs[id] = shipSnapshot(npc.ship);
     }
+  }
+
+  // Boss ship (stored alongside NPCs with isBoss flag)
+  const activeBossSnap = getActiveBoss(sim.bossDirector);
+  if (activeBossSnap) {
+    const bossSnap = shipSnapshot(activeBossSnap.ship);
+    bossSnap.isBoss = true;
+    npcs[activeBossSnap.ship.id] = bossSnap;
   }
 
   const bullets = sim.bullets.map(b => ({

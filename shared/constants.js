@@ -166,6 +166,15 @@ export const VISION_MIN = 180;
 export const VISION_MAX = 980;
 export const LOOKOUT_BONUS_MAX = 520;
 
+// ─── Boss ───
+export const BOSS_FIRST_SPAWN_TIME = 150;     // seconds into round when first boss spawns
+export const BOSS_SPAWN_INTERVAL = 135;        // minimum seconds between boss spawn attempts
+export const BOSS_TIER_DURATION = 150;         // seconds per difficulty tier
+export const BOSS_MAX_TIER = 4;
+export const BOSS_HP_BASE = 200;
+export const BOSS_HP_PER_TIER = 80;
+export const BOSS_HP_PER_PLAYER = 40;
+
 // ─── Camera ───
 export const CAMERA_ZOOM_BASE = 2.0;
 export const CAMERA_ZOOM_PER_LOOKOUT = -0.0012;  // zoom out as crow's nest grows
