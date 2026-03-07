@@ -1,0 +1,76 @@
+story: 3
+title: "Fire Ship Boss"
+pr: 11
+branch: "feature/fire-ship-boss"
+
+scenarios:
+  - id: "review_fire_ship_ignites_on_ram"
+    weight: 5
+    description: |
+      The Fire Ship's core mechanic is ram-and-ignite. When it collides with a player,
+      the player must take damage AND catch fire. This is the defining trait.
+    setup: |
+      Create a Fire Ship boss and a player ship at hp=50, onFire=false.
+      Position them to collide (overlapping or within collision radius).
+      Resolve the collision.
+    verify: |
+      - Player HP is less than 50 (took ram damage)
+      - Player onFire is true
+      - Fire duration is extended (>= normal fire duration, ideally 2x)
+    edge_cases:
+      - "If player was already on fire, fire duration should reset/extend, not stack infinitely"
+      - "Player at 1 HP should die from the ram (HP reaches 0)"
+      - "Player with fire resistance upgrade — fire should still apply (boss overrides normal chance)"
+
+  - id: "review_fire_ship_chases_highest_scorer"
+    weight: 4
+    description: |
+      The Fire Ship should aggressively pursue the player with the highest score,
+      creating a risk for leading players and a strategic element.
+    setup: |
+      Create a Fire Ship boss at (0, 0).
+      Player A at (300, 0) with score 500.
+      Player B at (100, 0) with score 100.
+      Tick several times.
+    verify: |
+      - Boss moves toward Player A (the higher scorer), not Player B
+      - After enough ticks, boss is closer to Player A's position
+      - Boss heading/velocity points roughly toward Player A
+    edge_cases:
+      - "If the highest scorer dies/disconnects, boss should switch to next-highest"
+      - "With all players at equal score, boss should pick someone (not freeze)"
+      - "With 0 players, boss should not crash"
+
+  - id: "review_fire_ship_self_destructs"
+    weight: 4
+    description: |
+      After ramming a player, the Fire Ship should destroy itself.
+      It's a kamikaze attacker, not a persistent enemy.
+    setup: |
+      Create a Fire Ship boss and a player.
+      Trigger the ram collision.
+    verify: |
+      - After collision, the Fire Ship boss is dead (HP <= 0 or removed from entity list)
+      - Doubloons are dropped at the collision location
+      - The boss is no longer counted as an active boss (allows next boss to spawn)
+    edge_cases:
+      - "If the Fire Ship is killed by player damage before ramming, it should die normally without the ignite effect"
+      - "Self-destruct should happen on the same tick as the collision, not a tick later"
+
+  - id: "review_fire_ship_speed"
+    weight: 3
+    description: |
+      The Fire Ship should be noticeably fast — faster than player ships — making
+      positioning and evasion the counterplay, not just out-running it.
+    setup: |
+      Create a Fire Ship boss and a max-speed player ship.
+      Compare their movement rates over 100 ticks.
+    verify: |
+      - Fire Ship covers more distance per tick than a base-speed player ship
+      - Fire Ship speed is defined as a constant, not hardcoded
+    edge_cases:
+      - "Speed should be fast but not instant (no teleporting across the map in 1 tick)"
+
+scoring:
+  threshold: 85
+  max_iterations: 3

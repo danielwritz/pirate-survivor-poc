@@ -1,0 +1,111 @@
+story: 1
+title: "Boss Director"
+pr: 9
+branch: "feature/boss-director"
+
+scenarios:
+  - id: "review_boss_spawns_at_correct_time"
+    weight: 5
+    description: |
+      When a round reaches approximately 150 seconds (tier 2), the boss director
+      should spawn its first boss. This is the most critical check — bosses must
+      not spawn too early (trivializing them) or too late (boring mid-game).
+    setup: |
+      Import bossDirector and create a simulation state.
+      Set roundTime to 140, tick forward in 1-second increments to 160.
+      Use 4 players scattered across the map.
+    verify: |
+      - A boss entity was created between t=145 and t=160
+      - The boss has isBoss: true
+      - The boss has HP > 0
+      - No boss was created before t=140
+    edge_cases:
+      - "With 0 players, boss should NOT spawn (no one to fight it)"
+      - "With 1 player, boss should still spawn (solo play is supported)"
+      - "At roundTime exactly 150, spawn should work (boundary precision)"
+
+  - id: "review_boss_hp_scales_correctly"
+    weight: 4
+    description: |
+      Boss HP should increase with both difficulty tier and player count.
+      A solo player facing a tier-2 boss should see a tractable fight.
+      A 10-player lobby at tier 8 should see a serious damage sponge.
+    setup: |
+      Spawn bosses at multiple tier/player combinations:
+      tier=2/players=1, tier=2/players=10, tier=8/players=1, tier=8/players=10.
+    verify: |
+      - HP increases when tier increases (same player count)
+      - HP increases when player count increases (same tier)
+      - The lowest HP (tier=2, players=1) is still > 0 and reasonable (> 50)
+      - The highest HP (tier=8, players=10) is significantly larger (> 5x the lowest)
+    edge_cases:
+      - "With 0 players, HP formula should not produce NaN or negative"
+      - "At maximum tier (10), HP should be large but finite"
+
+  - id: "review_single_boss_at_a_time"
+    weight: 5
+    description: |
+      Only one boss can exist at a time. If the spawn timer triggers while a
+      boss is alive, the spawn must be deferred — not skipped permanently.
+    setup: |
+      Create a boss director, spawn one boss manually.
+      Then trigger the spawn logic again (as if the timer fired).
+    verify: |
+      - Total active bosses remains 1 after the second trigger
+      - After killing the first boss (set HP to 0, run cleanup),
+        the next spawn trigger DOES create a new boss
+    edge_cases:
+      - "Rapidly calling tickBossDirector 100 times in a loop with a living boss should not create duplicates"
+      - "After boss death, the very next spawn window should be eligible (no permanent lockout)"
+
+  - id: "review_boss_cadence_full_round"
+    weight: 4
+    description: |
+      Over a simulated 10-minute round, the boss system should produce
+      3-4 boss encounters total, pacing the round with milestone moments.
+    setup: |
+      Create a full simulation state with 4 players.
+      Advance time from 0 to 600 in 1-second increments (or 50ms ticks).
+      When a boss spawns, immediately kill it after 60 seconds.
+    verify: |
+      - Total bosses spawned is >= 3 and <= 5
+      - First boss appeared between t=120 and t=180
+      - No two bosses were alive simultaneously
+    edge_cases:
+      - "If a boss is never killed (sits alive for 5 minutes), subsequent bosses are deferred but not lost"
+
+  - id: "review_director_pattern_compliance"
+    weight: 3
+    description: |
+      The boss director must follow the established director pattern:
+      factory function, tick function, and query helpers.
+    setup: |
+      Import server/bossDirector.js and inspect its exports.
+    verify: |
+      - A createBossDirector (or similar factory) function is exported
+      - A tickBossDirector (or similar tick) function is exported
+      - At least one query helper is exported (e.g., getActiveBoss, isBossAlive)
+      - The factory returns a state object (not a class instance)
+      - The tick function accepts state + round context and returns/mutates state
+    edge_cases:
+      - "Calling tickBossDirector with a freshly created director should not throw"
+      - "Calling query helpers on a director with no boss should return null/false, not throw"
+
+  - id: "review_constants_not_hardcoded"
+    weight: 3
+    description: |
+      All tuning values (spawn timing, HP formula coefficients, cadence intervals)
+      must come from shared/constants.js, not be hardcoded in bossDirector.js.
+    setup: |
+      Read the source of server/bossDirector.js.
+      Look for numeric literals that appear to be tuning values.
+    verify: |
+      - shared/constants.js has new boss-related constants
+      - server/bossDirector.js imports and uses those constants
+      - No magic numbers for HP, timing, or cadence in the director logic
+    edge_cases:
+      - "Changing a constant in shared/constants.js should change boss behavior without modifying bossDirector.js"
+
+scoring:
+  threshold: 85
+  max_iterations: 3

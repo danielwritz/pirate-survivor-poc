@@ -1,0 +1,77 @@
+story: 5
+title: "Boss Kill Rewards"
+pr: 13
+branch: "feature/boss-rewards"
+
+scenarios:
+  - id: "review_killer_gets_full_reward"
+    weight: 5
+    description: |
+      The player who lands the killing blow on a boss should receive the full
+      doubloon reward and a major upgrade offer. This is the big moment.
+    setup: |
+      Create a boss at tier 4 with 1 HP remaining.
+      Player A deals the killing damage.
+      Track Player A's doubloons before and after.
+    verify: |
+      - Player A's doubloons increase by approximately 50 + 10*4 = 90 (within 80-100)
+      - Player A receives a major upgrade offer (flag set, or upgrade event triggered)
+      - The boss is dead after the kill
+    edge_cases:
+      - "At tier 2, reward should be smaller (50 + 10*2 = 70 range)"
+      - "At tier 10, reward should be large but not game-breaking"
+      - "If player's doubloon count was already high, it should still add correctly (no overflow)"
+
+  - id: "review_splash_rewards_distance"
+    weight: 5
+    description: |
+      Players near the boss kill get a splash reward. Players far away get nothing.
+      The 300-unit radius should be the cutoff.
+    setup: |
+      Kill a tier-4 boss at position (1000, 1000).
+      Player A (killer) at (1000, 1050) — 50 units away.
+      Player B at (1000, 1250) — 250 units away (within splash).
+      Player C at (1000, 1800) — 800 units away (outside splash).
+    verify: |
+      - Player A gets full reward (80-100 doubloons + major offer)
+      - Player B gets splash reward (20-35 doubloons, about 30% of base)
+      - Player C gets exactly 0 additional doubloons
+      - Player B does NOT get a major upgrade offer (only the killer does)
+    edge_cases:
+      - "Player at exactly 300 units should get splash (boundary inclusive)"
+      - "Player at 301 units should get nothing"
+      - "Dead/spectating players should not receive splash rewards"
+
+  - id: "review_reward_formula_scales_with_tier"
+    weight: 3
+    description: |
+      Rewards should scale meaningfully with boss tier. Late-game bosses
+      are harder and should be proportionally more rewarding.
+    setup: |
+      Kill bosses at tiers 2, 4, 6, 8, 10.
+      Record the doubloon reward at each tier.
+    verify: |
+      - Reward at tier 8 is at least 1.5x reward at tier 2
+      - Rewards increase monotonically with tier (never decrease)
+      - The formula is consistent (not random per boss)
+    edge_cases:
+      - "At tier 0 (if possible), reward should still be positive"
+      - "Reward should be an integer (no fractional doubloons)"
+
+  - id: "review_major_upgrade_is_triggered"
+    weight: 4
+    description: |
+      The major upgrade offer should actually be usable — not just a flag, but
+      something that hooks into the existing upgrade system.
+    setup: |
+      Kill a boss and check the killer's state.
+    verify: |
+      - The killer's state has some indication of a pending upgrade offer
+      - The upgrade offer mechanism uses the existing upgradeDirector system
+        (import check — does it reference upgradeDirector or its functions?)
+    edge_cases:
+      - "If the player already has a pending upgrade offer, boss reward should not clobber it"
+
+scoring:
+  threshold: 85
+  max_iterations: 3
