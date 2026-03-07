@@ -290,9 +290,6 @@ export function tick(sim) {
     sim.bullets.push(bullet);
   }, sim.events, sim.roundConfig);
 
-  // ─── Boss director tick ───
-  tickBossDirector(sim.bossDirector, ROUND_DURATION - sim.roundTimer, dt, sim.world, sim.events);
-
   // NPC physics + fire
   for (const [npcId, npc] of sim.npcDirector.npcs) {
     if (!npc.ship.alive) continue;
@@ -320,7 +317,11 @@ export function tick(sim) {
 
   // ─── Boss tick ───
   const roundTime = ROUND_DURATION - sim.roundTimer;
-  tickBossDirector(sim.bossDirector, allPlayerShips, sim.world, roundTime, sim.events);
+  const spawnBossBullet = (bullet) => {
+    bullet.id = sim.nextBulletId++;
+    sim.bullets.push(bullet);
+  };
+  tickBossDirector(sim.bossDirector, allPlayerShips, sim.world, roundTime, dt, spawnBossBullet, sim.events);
 
   // Boss physics + fire
   const activeBoss = getActiveBoss(sim.bossDirector);

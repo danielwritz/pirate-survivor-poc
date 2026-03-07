@@ -10,13 +10,20 @@
  * Single-instance limit: only one boss alive at a time; attempts are deferred if one exists.
  */
 
-import { createShip } from '../shared/shipState.js';
+import { createShip, getCannonRange } from '../shared/shipState.js';
 import { initStarterLoadout, triggerMajorOffer } from './upgradeDirector.js';
+import { syncArmamentDerivedStats } from '../src/core/armament.js';
+import { forwardVector } from '../shared/physics.js';
+import { fireCannonBroadside } from '../shared/combat.js';
 import {
+  BASE_SIZE, BASE_BULLET_SPEED,
   BOSS_FIRST_SPAWN_TIME, BOSS_SPAWN_INTERVAL,
   BOSS_TIER_DURATION, BOSS_MAX_TIER,
   BOSS_HP_BASE, BOSS_HP_PER_TIER, BOSS_HP_PER_PLAYER,
   WORLD_EDGE_PAD,
+  WAR_GALLEON_SIZE_MUL, WAR_GALLEON_CANNON_COUNT,
+  WAR_GALLEON_BROADSIDE_INTERVAL, WAR_GALLEON_CANNON_DAMAGE,
+  WAR_GALLEON_HP_PER_TIER, WAR_GALLEON_HP_PER_PLAYER,
   KRAKEN_AREA_RADIUS, KRAKEN_DMG_PER_TICK,
   KRAKEN_PULSE_INTERVAL, KRAKEN_HP_BASE, KRAKEN_HP_PER_TIER,
   BOSS_KILL_BASE_DOUBLOONS, BOSS_KILL_DOUBLOONS_PER_TIER,
@@ -55,25 +62,153 @@ export function computeBossHp(tier, playerCount) {
   return BOSS_HP_BASE + clampedTier * BOSS_HP_PER_TIER + playerCount * BOSS_HP_PER_PLAYER;
 }
 
+// ─── War Galleon Archetype (Story 2) ───
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI)  d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+/**
+ * Configure a ship as a War Galleon boss.
+ */
+export function applyWarGalleonArchetype(ship, tier = 1, playerCount = 1) {
+  ship.name         = 'War Galleon';
+  ship.isBoss       = true;
+  ship.bossArchetype = 'war_galleon';
+  ship.size = BASE_SIZE * WAR_GALLEON_SIZE_MUL;
+  ship.mass = ship.size * 4;
+  const hp = WAR_GALLEON_HP_PER_TIER * tier + WAR_GALLEON_HP_PER_PLAYER * playerCount;
+  ship.maxHp = hp;
+  ship.hp    = hp;
+  ship.bulletDamage = WAR_GALLEON_CANNON_DAMAGE;
+  ship.bulletSpeed  = BASE_BULLET_SPEED;
+  const cannonsPerSide = WAR_GALLEON_CANNON_COUNT / 2;
+  ship.weaponLayout = {
+    port:      Array(cannonsPerSide).fill('cannon'),
+    starboard: Array(cannonsPerSide).fill('cannon')
+  };
+  ship.cannonPivot  = 180;
+  ship.cannonReload = 1.0;
+  ship.gunners      = 12;
+  ship.cannonMountTimers = {
+    port:      Array(cannonsPerSide).fill(WAR_GALLEON_BROADSIDE_INTERVAL),
+    starboard: Array(cannonsPerSide).fill(WAR_GALLEON_BROADSIDE_INTERVAL)
+  };
+  ship.hullColor = '#2a1f15';
+  ship.trimColor = '#c8a050';
+  ship.sailColor = '#8a0000';
+  syncArmamentDerivedStats(ship);
+  return ship;
+}
+
+function fireMassiveBroadside(ship, aimAngle, spawnBullet) {
+  const cannonsPerSide = WAR_GALLEON_CANNON_COUNT / 2;
+  ship.cannonMountTimers.port      = Array(cannonsPerSide).fill(WAR_GALLEON_BROADSIDE_INTERVAL);
+  ship.cannonMountTimers.starboard = Array(cannonsPerSide).fill(WAR_GALLEON_BROADSIDE_INTERVAL);
+  const firedPort      = fireCannonBroadside(ship, 'port',      aimAngle, spawnBullet);
+  const firedStarboard = fireCannonBroadside(ship, 'starboard', aimAngle, spawnBullet);
+  return firedPort || firedStarboard;
+}
+
+function tickWarGalleonAi(boss, playerShips, dt, spawnBullet, events) {
+  const ship = boss.ship;
+  const ai   = boss.aiState;
+  if (!ship.alive) return;
+
+  const alive = (playerShips || []).filter(p => p && p.alive);
+  const input = {
+    forward: true, brake: false,
+    turnLeft: false, turnRight: false,
+    sailOpen: true, anchored: false
+  };
+
+  ai.broadsideTimer = (ai.broadsideTimer || 0) + dt;
+  ai.modeTimer      = Math.max(0, (ai.modeTimer || 0) - dt);
+
+  let targetX = null, targetY = null;
+  if (alive.length > 0) {
+    const sorted = [...alive].sort((a, b) =>
+      Math.hypot(a.x - ship.x, a.y - ship.y) -
+      Math.hypot(b.x - ship.x, b.y - ship.y)
+    );
+    const n  = Math.min(3, sorted.length);
+    let cx = 0, cy = 0;
+    for (let i = 0; i < n; i++) { cx += sorted[i].x; cy += sorted[i].y; }
+    targetX = cx / n;
+    targetY = cy / n;
+  }
+
+  if (targetX !== null) {
+    const dx           = targetX - ship.x;
+    const dy           = targetY - ship.y;
+    const dist         = Math.hypot(dx, dy);
+    const angleToTarget = Math.atan2(dy, dx);
+    const fwd          = forwardVector(ship.heading);
+    const cannonRange  = getCannonRange(ship);
+
+    if (ai.mode !== 'broadside' && dist < cannonRange * 1.3) {
+      ai.mode      = 'broadside';
+      ai.modeTimer = 8;
+    }
+
+    switch (ai.mode) {
+      case 'approach': {
+        input.forward = true;
+        const hdiff = angleDiff(angleToTarget, ship.heading);
+        if (hdiff > 0.1)       input.turnRight = true;
+        else if (hdiff < -0.1) input.turnLeft  = true;
+        break;
+      }
+      case 'broadside': {
+        const cross        = fwd.x * dy - fwd.y * dx;
+        const perpHeading  = angleToTarget + (cross >= 0 ? -Math.PI / 2 : Math.PI / 2);
+        const hdiff        = angleDiff(perpHeading, ship.heading);
+        if (hdiff > 0.08)       input.turnRight = true;
+        else if (hdiff < -0.08) input.turnLeft  = true;
+        if (dist < cannonRange * 0.5)      input.brake   = true;
+        else if (dist > cannonRange * 1.1) input.forward = true;
+        else                               input.forward  = false;
+        if (ai.broadsideTimer >= WAR_GALLEON_BROADSIDE_INTERVAL && dist < cannonRange) {
+          const firedAny = fireMassiveBroadside(ship, angleToTarget, spawnBullet);
+          if (firedAny) {
+            ai.broadsideTimer = 0;
+            if (events) {
+              events.push({ type: 'bossBroadside', bossId: ship.id, bossType: 'war_galleon', x: ship.x, y: ship.y });
+            }
+          }
+        }
+        if (dist > cannonRange * 1.5 || ai.modeTimer <= 0) {
+          ai.mode      = 'approach';
+          ai.modeTimer = 0;
+        }
+        break;
+      }
+      default:
+        ai.mode = 'approach';
+    }
+  }
+
+  ship._input = input;
+}
+
 // ─── Archetype dispatch interface ───
 
 /**
  * Tick AI for the active boss.
- * Concrete behavior is provided by Stories 2-4; this stub keeps the boss moving forward
- * as a war_galleon placeholder.
  * @param {object} boss - { ship, aiState, archetype }
- * @param {object} state - { playerShips, world }
+ * @param {object} state - { playerShips, world, dt, spawnBullet, events }
  */
 export function tickBossAi(boss, state) {
-  // Placeholder: move forward until the real war_galleon archetype is implemented (Story 2)
-  boss.ship._input = {
-    forward: true,
-    brake: false,
-    turnLeft: false,
-    turnRight: false,
-    sailOpen: true,
-    anchored: false
-  };
+  switch (boss.ship.bossArchetype) {
+    case 'war_galleon':
+      tickWarGalleonAi(boss, state.playerShips, state.dt || 0.05, state.spawnBullet || (() => {}), state.events);
+      break;
+    default:
+      boss.ship._input = { forward: true, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
+  }
 }
 
 // ─── Director lifecycle ───
@@ -120,22 +255,12 @@ export function spawnBoss(director, playerPositions, roundTime, world) {
   }
 
   const tier = Math.min(BOSS_MAX_TIER, Math.floor(roundTime / BOSS_TIER_DURATION) + 1);
-  const hp   = computeBossHp(tier, playerPositions.length);
 
   const ship = createShip(x, y, { id, name: 'War Galleon', isNpc: true });
   initStarterLoadout(ship);
 
-  // Boss-scale modifiers (large, slow, high HP)
-  ship.isBoss        = true;
-  ship.bossArchetype = 'war_galleon';
-  ship.size         *= 1.8;
-  ship.mass         *= 2.2;
-  ship.maxHp         = hp;
-  ship.hp            = hp;
-  ship.baseSpeed    *= 0.75;
-  ship.hullColor     = '#2a1a0e';
-  ship.sailColor     = '#1a1a2a';
-  ship.trimColor     = '#8b6a3a';
+  // Apply the War Galleon archetype (Story 2)
+  applyWarGalleonArchetype(ship, tier, playerPositions.length);
 
   const aiState = {
     mode:      'approach',
@@ -191,7 +316,7 @@ export function getBossShip(director) {
  * @param {number} roundTime     - seconds elapsed in the current round
  * @param {Array}  events        - per-tick event queue (may be null in tests)
  */
-export function tickBossDirector(director, playerShips, world, roundTime, events) {
+export function tickBossDirector(director, playerShips, world, roundTime, dt, spawnBullet, events) {
   // Detect boss death and schedule next spawn
   if (director.boss && !director.boss.ship.alive) {
     director.nextBossTime = roundTime + BOSS_SPAWN_INTERVAL;
@@ -210,15 +335,13 @@ export function tickBossDirector(director, playerShips, world, roundTime, events
         y: director.boss.ship.y
       });
     }
-    // Next attempt is scheduled only after this boss dies (handled above)
-    // Set a far-future guard so a crash-loop doesn't double-spawn this tick
     director.nextBossTime = roundTime + BOSS_SPAWN_INTERVAL;
     return;
   }
 
   // Tick active boss AI
   if (isBossAlive(director)) {
-    tickBossAi(director.boss, { playerShips, world });
+    tickBossAi(director.boss, { playerShips, world, dt, spawnBullet, events });
   }
 }
 

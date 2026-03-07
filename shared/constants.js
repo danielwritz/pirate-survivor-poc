@@ -187,6 +187,14 @@ export const BUILDING_DMG_CANNON_SCALE = 1.05;
 export const BUILDING_DMG_GUN_SCALE = 0.58;
 export const BUILDING_GOLD_MIN = 2;
 
+// ─── Boss: War Galleon ───
+export const WAR_GALLEON_SIZE_MUL = 3.0;           // ~3x player BASE_SIZE
+export const WAR_GALLEON_CANNON_COUNT = 6;          // 3 cannons per side, 6 total
+export const WAR_GALLEON_BROADSIDE_INTERVAL = 4.0;  // seconds between full broadside volleys
+export const WAR_GALLEON_CANNON_DAMAGE = 12;        // bulletDamage for each cannonball
+export const WAR_GALLEON_HP_PER_TIER = 50;          // HP = 50*tier + 20*player_count
+export const WAR_GALLEON_HP_PER_PLAYER = 20;
+
 // ─── Vision ───
 export const VISION_BASE_OFFSET = 44;
 export const VISION_MIN = 180;
