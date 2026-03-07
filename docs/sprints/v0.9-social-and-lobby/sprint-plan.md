@@ -1,5 +1,7 @@
 # Sprint v0.9 — Social & Lobby (Outline)
 
+> **Agent start point**: Read [`docs/agent-guide.md`](../../agent-guide.md) first, then return here.
+
 > **Theme**: Give players a home between rounds and social features that build community.
 >
 > **Prerequisites**: v0.8 (ranked leagues, chat moderation) complete.
@@ -51,3 +53,4 @@ main
 - [ ] At least 5 cosmetic titles are earnable
 - [ ] AFK players are kicked after configurable timeout
 - [ ] All v0.7 + v0.8 regression scenarios still pass
+- [ ] All PRs reviewed per [docs/review-protocol.md](../../review-protocol.md)
