@@ -1,0 +1,77 @@
+story: 2
+title: "War Galleon Boss"
+pr: 10
+branch: "feature/war-galleon-boss"
+
+scenarios:
+  - id: "review_war_galleon_broadside_fires"
+    weight: 5
+    description: |
+      The War Galleon's signature attack is a broadside volley. When it enters
+      broadside mode with a player in arc, it should fire multiple heavy
+      cannonballs that deal significant damage collectively.
+    setup: |
+      Create a War Galleon boss entity in broadside/attack state.
+      Place a player ship within the boss's cannon arc at close range.
+      Tick the boss AI once.
+    verify: |
+      - At least 4 heavy cannonballs (bullets) are created
+      - Total potential damage from all bullets is >= 30
+      - Bullets originate from the boss's position (not the player's)
+      - Bullets travel toward the player's general direction
+    edge_cases:
+      - "If no player is in cannon arc, broadside should NOT fire (wasted volley)"
+      - "If player is directly behind the boss (outside arc), no bullets target them"
+      - "Multiple players in arc should all be threatened (bullets spread)"
+
+  - id: "review_war_galleon_size_and_stats"
+    weight: 3
+    description: |
+      The War Galleon should be visually and mechanically imposing — significantly
+      larger than a player ship, with HP that makes it a multi-engagement fight.
+    setup: |
+      Create a War Galleon boss at tier 4 with 6 players.
+      Also create a player ship at level 10 for comparison.
+    verify: |
+      - Boss size is >= 2.5x the player ship's size
+      - Boss HP is substantially higher than a level-10 player's maxHp
+      - Boss has the archetype identifier 'war_galleon'
+    edge_cases:
+      - "At tier 2 (first boss), size should still be noticeably larger than a level-5 player"
+      - "Boss should have valid position coordinates (not NaN, not negative)"
+
+  - id: "review_war_galleon_approaches_players"
+    weight: 4
+    description: |
+      The War Galleon should navigate toward player clusters, not wander randomly.
+      It should feel like it's hunting the group.
+    setup: |
+      Create a War Galleon boss at position (0, 0).
+      Place 3 players clustered around (500, 500) and 1 player at (2000, 2000).
+      Tick the boss AI several times.
+    verify: |
+      - After multiple ticks, the boss's position is closer to (500, 500) than its start
+      - The boss is moving toward the cluster, not the lone outlier
+      - Boss velocity/heading points approximately toward the cluster center
+    edge_cases:
+      - "With only 1 player, boss should move toward that player"
+      - "With 0 players, boss should not crash (stay stationary or patrol)"
+
+  - id: "review_broadside_cooldown"
+    weight: 3
+    description: |
+      The War Galleon should fire broadsides on a cooldown (~4 seconds), not every tick.
+      Rapid-fire broadsides would be unfair and probably a bug.
+    setup: |
+      Create a War Galleon with a player in arc.
+      Tick 200 times (10 seconds at 20Hz).
+    verify: |
+      - Total broadside volleys fired is between 2 and 3 (not 200)
+      - There is a cooldown period between volleys where no bullets spawn
+    edge_cases:
+      - "After exactly 1 cooldown period, the next broadside should fire"
+      - "Cooldown should reset properly after each volley"
+
+scoring:
+  threshold: 85
+  max_iterations: 3

@@ -514,8 +514,65 @@ export function createGameAudioSystem(config) {
       });
     }
 
-    function bindUi() {
-      if (!button) return;
+    /**
+     * Boss spawn announcement stinger — a deep ominous horn + rumble that plays
+     * at full volume regardless of the boss position (global alert).
+     */
+    function playBossSpawnSfx() {
+      safeRun(() => {
+        if (!audio.ready || audio.muted) return;
+        const now = audio.ctx.currentTime;
+
+        // Low sub-bass rumble
+        const sub = audio.ctx.createOscillator();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(48, now);
+        sub.frequency.exponentialRampToValueAtTime(30, now + 1.8);
+        const subGain = audio.ctx.createGain();
+        subGain.gain.setValueAtTime(0.0001, now);
+        subGain.gain.linearRampToValueAtTime(0.28, now + 0.06);
+        subGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+        sub.connect(subGain);
+        subGain.connect(audio.master);
+        sub.start(now);
+        sub.stop(now + 1.85);
+
+        // Mid-range horn tone (sawtooth falling pitch)
+        const horn = audio.ctx.createOscillator();
+        horn.type = 'sawtooth';
+        horn.frequency.setValueAtTime(220, now + 0.04);
+        horn.frequency.exponentialRampToValueAtTime(110, now + 1.0);
+        const hornGain = audio.ctx.createGain();
+        hornGain.gain.setValueAtTime(0.0001, now + 0.04);
+        hornGain.gain.linearRampToValueAtTime(0.18, now + 0.1);
+        hornGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+        const hornLp = audio.ctx.createBiquadFilter();
+        hornLp.type = 'lowpass';
+        hornLp.frequency.value = 900;
+        hornLp.Q.value = 1.2;
+        horn.connect(hornLp);
+        hornLp.connect(hornGain);
+        hornGain.connect(audio.master);
+        horn.start(now + 0.04);
+        horn.stop(now + 1.25);
+
+        // Short high transient "strike" at the start
+        const strike = audio.ctx.createOscillator();
+        strike.type = 'triangle';
+        strike.frequency.setValueAtTime(380, now);
+        strike.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+        const strikeGain = audio.ctx.createGain();
+        strikeGain.gain.setValueAtTime(0.0001, now);
+        strikeGain.gain.linearRampToValueAtTime(0.22, now + 0.006);
+        strikeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+        strike.connect(strikeGain);
+        strikeGain.connect(audio.master);
+        strike.start(now);
+        strike.stop(now + 0.22);
+      });
+    }
+
+    function bindUi() {      if (!button) return;
       button.addEventListener('click', () => {
         unlockAudio();
         setSfxMuted(!audio.muted);
@@ -535,6 +592,7 @@ export function createGameAudioSystem(config) {
     playGunVolleySfx,
     playCannonVolleySfx,
     playGunImpactSfx,
-    playCannonImpactSfx
+    playCannonImpactSfx,
+    playBossSpawnSfx
   };
 }

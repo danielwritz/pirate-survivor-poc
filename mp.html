@@ -113,6 +113,53 @@
     .kill-feed div { color: #d6ecff; margin-bottom: 3px; opacity: 1; transition: opacity 0.5s; }
     .kill-feed .fade { opacity: 0; }
 
+    /* Boss spawn announcement banner */
+    #bossAnnouncement {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      z-index: 50;
+      pointer-events: none;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(6, 16, 24, 0.88);
+      border: 2px solid rgba(255, 80, 60, 0.7);
+      border-radius: 10px;
+      padding: 14px 28px 12px;
+      text-align: center;
+      box-shadow: 0 0 28px rgba(255, 80, 60, 0.35);
+      transition: opacity 0.4s, transform 0.3s;
+      opacity: 0;
+    }
+    #bossAnnouncement.visible {
+      display: flex;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    #bossAnnouncement.fade {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.92);
+    }
+    #bossAnnounceName {
+      font-size: 20px;
+      font-weight: bold;
+      color: #ff6040;
+      text-shadow: 0 0 12px rgba(255, 80, 60, 0.7);
+      letter-spacing: 1px;
+    }
+    #bossAnnounceSub {
+      font-size: 13px;
+      color: #ffd887;
+    }
+    #bossAnnounceArrow {
+      font-size: 24px;
+      color: #ff8060;
+      line-height: 1;
+    }
+
     .chat-panel {
       position: fixed;
       bottom: 10px;
@@ -438,6 +485,13 @@
 <div class="timer" id="timer">10:00</div>
 <div class="kill-feed" id="killFeed"></div>
 
+<!-- Boss spawn announcement -->
+<div id="bossAnnouncement">
+  <div id="bossAnnounceName">⚔ Boss Incoming</div>
+  <div id="bossAnnounceArrow">↑</div>
+  <div id="bossAnnounceSub">A powerful enemy approaches!</div>
+</div>
+
 <!-- Leaderboard (top 3, right side, mid-screen) -->
 <div class="leaderboard" id="leaderboard"></div>
 
@@ -588,6 +642,10 @@ const autoFireStatusEl = document.getElementById('autoFireStatus');
 const fpsIndicatorEl = document.getElementById('fpsIndicator');
 const leaderboardEl = document.getElementById('leaderboard');
 const killFeedEl = document.getElementById('killFeed');
+const bossAnnouncementEl = document.getElementById('bossAnnouncement');
+const bossAnnounceNameEl = document.getElementById('bossAnnounceName');
+const bossAnnounceSubEl = document.getElementById('bossAnnounceSub');
+const bossAnnounceArrowEl = document.getElementById('bossAnnounceArrow');
 const scoreboardEl = document.getElementById('scoreboard');
 const scoreBodyEl = document.getElementById('scoreBody');
 const globalScoreBodyEl = document.getElementById('globalScoreBody');
@@ -758,6 +816,7 @@ function connect() {
         if (msg.events) {
           for (const ev of msg.events) {
             if (ev.type === 'kill') addKillFeed(ev.killerName, ev.victimName);
+            if (ev.type === 'bossSpawn') showBossAnnouncement(ev.bossType, ev.x, ev.y);
             if (ev.type === 'roundReset') { addSystemMessage('New round started!'); hideUpgradeOffer(); }
             if (ev.type === 'roundEnded') {
               latestRoundSummary = ev.summary || latestRoundSummary;
@@ -1709,6 +1768,54 @@ function addKillFeed(killer, victim) {
   setTimeout(() => div.classList.add('fade'), 4000);
   setTimeout(() => div.remove(), 5000);
   while (killFeedEl.children.length > 8) killFeedEl.removeChild(killFeedEl.firstChild);
+}
+
+// ─── Boss announcement ───
+const BOSS_DISPLAY_NAMES = {
+  war_galleon: 'War Galleon',
+  fire_ship:   'Fire Ship',
+  kraken:      'Kraken'
+};
+
+let _bossAnnounceTimer = null;
+
+function showBossAnnouncement(bossType, bossX, bossY) {
+  const name = BOSS_DISPLAY_NAMES[bossType] ?? String(bossType);
+
+  // Direction arrow: angle from player to boss (in screen space)
+  let arrowChar = '⬆';
+  const me = currState?.players?.[myId];
+  if (me && typeof bossX === 'number' && typeof bossY === 'number') {
+    const dx = bossX - me.x;
+    const dy = bossY - me.y;
+    const angle = Math.atan2(dy, dx); // radians, 0 = right
+    // Map angle to one of 8 arrow characters (floor avoids out-of-bounds when result = 8)
+    const directions = ['➡', '↘', '⬇', '↙', '⬅', '↖', '⬆', '↗'];
+    const idx = Math.floor(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+    arrowChar = directions[idx];
+  }
+
+  bossAnnounceNameEl.textContent = `⚔ ${name} Approaching!`;
+  bossAnnounceArrowEl.textContent = arrowChar;
+  bossAnnounceSubEl.textContent = 'Prepare for battle, captain!';
+
+  // Play audio cue
+  if (audioSys) audioSys.playBossSpawnSfx();
+
+  // Also show in chat log
+  addSystemMessage(`⚠ A ${name} has appeared!`);
+
+  // Show the banner
+  bossAnnouncementEl.classList.remove('fade');
+  bossAnnouncementEl.classList.add('visible');
+
+  if (_bossAnnounceTimer) clearTimeout(_bossAnnounceTimer);
+  // Start fade-out after 4 s, remove after animation
+  _bossAnnounceTimer = setTimeout(() => {
+    bossAnnouncementEl.classList.add('fade');
+    setTimeout(() => bossAnnouncementEl.classList.remove('visible', 'fade'), 500);
+    _bossAnnounceTimer = null;
+  }, 4000);
 }
 
 // ─── Interpolation helper ───

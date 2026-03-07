@@ -131,6 +131,33 @@ export const XP_SCALE = 1.18;
 export const XP_ADD = 3;
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
+// ─── Boss kill rewards ───
+export const BOSS_KILL_BASE_DOUBLOONS = 50;   // doubloons awarded at tier 0
+export const BOSS_KILL_DOUBLOONS_PER_TIER = 10; // additional doubloons per difficulty tier
+export const BOSS_SPLASH_RADIUS = 300;          // units — players within this radius get splash
+export const BOSS_SPLASH_PERCENT = 0.3;         // fraction of base reward for splash players
+
+// ─── Difficulty Stages ───
+export const STAGE_CALM_WATERS    = 'calm_waters';
+export const STAGE_CONTESTED_SEAS = 'contested_seas';
+export const STAGE_WAR_ZONE       = 'war_zone';
+export const STAGE_KRAKEN_FRONTIER = 'kraken_frontier';
+
+export const STAGE_BOUNDARIES = [
+  { stage: STAGE_CALM_WATERS,     start:   0, end: 120 },
+  { stage: STAGE_CONTESTED_SEAS,  start: 120, end: 300 },
+  { stage: STAGE_WAR_ZONE,        start: 300, end: 480 },
+  { stage: STAGE_KRAKEN_FRONTIER, start: 480, end: 600 }
+];
+
+/** Archetype keys allowed per stage */
+export const STAGE_ARCHETYPE_POOLS = {
+  [STAGE_CALM_WATERS]:     ['weak', 'standard'],
+  [STAGE_CONTESTED_SEAS]:  ['weak', 'standard', 'heavy'],
+  [STAGE_WAR_ZONE]:        ['weak', 'standard', 'heavy', 'scavenger'],
+  [STAGE_KRAKEN_FRONTIER]: ['weak', 'standard', 'heavy', 'scavenger']
+};
+
 // ─── NPC ───
 export const MAX_NPCS = 20;
 export const NPC_SPAWN_INTERVAL_BASE = 3.5;    // seconds between spawns, decreases with time
@@ -166,8 +193,32 @@ export const VISION_MIN = 180;
 export const VISION_MAX = 980;
 export const LOOKOUT_BONUS_MAX = 520;
 
+// ─── Boss ───
+export const BOSS_FIRST_SPAWN_TIME = 150;     // seconds into round when first boss spawns
+export const BOSS_SPAWN_INTERVAL = 135;        // minimum seconds between boss spawn attempts
+export const BOSS_TIER_DURATION = 150;         // seconds per difficulty tier
+export const BOSS_MAX_TIER = 4;
+export const BOSS_HP_BASE = 200;
+export const BOSS_HP_PER_TIER = 80;
+export const BOSS_HP_PER_PLAYER = 40;
+
+// ─── Boss: Kraken ───
+export const KRAKEN_AREA_RADIUS = 160;          // tentacle hazard zone radius (>= 150)
+export const KRAKEN_DMG_PER_TICK = 2.5;         // damage dealt to ships per area pulse
+export const KRAKEN_PULSE_INTERVAL = 1.5;       // seconds between damage pulses
+export const KRAKEN_HP_BASE = 800;              // base HP at tier 0
+export const KRAKEN_HP_PER_TIER = 120;          // additional HP per difficulty tier
+
 // ─── Camera ───
 export const CAMERA_ZOOM_BASE = 2.0;
 export const CAMERA_ZOOM_PER_LOOKOUT = -0.0012;  // zoom out as crow's nest grows
 export const CAMERA_ZOOM_MIN = 0.6;
 export const CAMERA_ZOOM_MAX = 2.4;
+
+// ─── Fire Ship Boss ───
+export const FIRE_SHIP_SPEED_MUL = 1.35;          // 35% faster than base NPC speed
+export const FIRE_SHIP_SIZE_MUL = 0.80;            // slightly smaller than standard
+export const FIRE_SHIP_HP_BASE = 60;               // base HP (scales with tier + player count)
+export const FIRE_SHIP_RAM_DAMAGE = 55;            // flat ram damage applied to target on collision
+export const FIRE_SHIP_FIRE_DURATION_MUL = 2.0;   // fire duration multiplier (2× base)
+export const FIRE_SHIP_DOUBLOON_REWARD = 25;       // base doubloon drop on death (scales with tier)

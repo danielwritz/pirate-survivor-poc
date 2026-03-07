@@ -9,6 +9,7 @@ import {
   BUILDING_DMG_CANNON_SCALE, BUILDING_DMG_GUN_SCALE, BUILDING_GOLD_MIN,
   ISLAND_CONTACT_SPEED_MUL, ISLAND_CONTACT_DMG_BASE, ISLAND_CONTACT_DMG_MASS
 } from '../shared/constants.js';
+import { getCurrentStage, STAGE_CALM_WATERS } from '../shared/stages.js';
 
 /**
  * Create world state for a new round.
@@ -95,7 +96,10 @@ export function damageBuildingAtPoint(worldState, bx, by, dmg, isHeavy, prevBx, 
  * @param {number} dt
  * @param {function} spawnBullet - callback(bullet)
  */
-export function tickTowers(worldState, ships, defenseLevel, dt, spawnBullet) {
+export function tickTowers(worldState, ships, defenseLevel, dt, spawnBullet, roundTime = 0) {
+  // Towers are silent during Calm Waters stage
+  if (getCurrentStage(roundTime) === STAGE_CALM_WATERS) return;
+
   const stats = getTowerStats(defenseLevel);
 
   for (const island of worldState.islands) {
