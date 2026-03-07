@@ -15,6 +15,7 @@ import { createShip, shipSnapshot } from '../shared/shipState.js';
 import { stepShipPhysics, forwardVector, resolveShipCollision, rollWindVector } from '../shared/physics.js';
 import { tickGunAutoFire, fireCannonBroadside, tickBullets, applyDamage, tickFire, tickRepair } from '../shared/combat.js';
 import { createNpcDirector, tickNpcDirector, getNpcShips, getNpcReward, removeNpc } from './npcDirector.js';
+import { createBossDirector, tickBossDirector } from './bossDirector.js';
 import { createWorldState, damageBuildingAtPoint, tickTowers, applyIslandContact, updateDefenseTier, getWorldSnapshot } from './worldManager.js';
 import { loadCatalog, initStarterLoadout, initStartingUpgradeOffer, awardXp, selectUpgrade } from './upgradeDirector.js';
 import { createRoundVoteState, normalizeRoundCatalog, removeRoundVotesForPlayer, resolveRoundConfig, submitRoundVote as submitVoteSelection } from '../shared/roundConfig.js';
@@ -108,6 +109,7 @@ export async function createSimulation(roundCatalogData = null) {
 
     // Directors
     npcDirector: createNpcDirector(),
+    bossDirector: createBossDirector(),
     worldState: createWorldState(seed, roundConfig),
 
     // Round summary / persistence hooks
@@ -282,6 +284,9 @@ export function tick(sim) {
     bullet.id = sim.nextBulletId++;
     sim.bullets.push(bullet);
   }, sim.events, sim.roundConfig);
+
+  // ─── Boss director tick ───
+  tickBossDirector(sim.bossDirector, ROUND_DURATION - sim.roundTimer, dt, sim.world, sim.events);
 
   // NPC physics + fire
   for (const [npcId, npc] of sim.npcDirector.npcs) {
@@ -742,6 +747,7 @@ export function resetRound(sim) {
   sim.world = { width: nextRoundConfig.worldWidth, height: nextRoundConfig.worldHeight };
   sim.worldState = createWorldState(seed, nextRoundConfig);
   sim.npcDirector = createNpcDirector();
+  sim.bossDirector = createBossDirector();
   const spawnCorners = getSpawnCorners(sim);
 
   let idx = 0;
