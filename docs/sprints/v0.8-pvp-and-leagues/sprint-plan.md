@@ -1,5 +1,7 @@
 # Sprint v0.8 — PvP & Ranked Leagues (Outline)
 
+> **Agent start point**: Read [`docs/agent-guide.md`](../../agent-guide.md) first, then return here.
+
 > **Theme**: Make player-vs-player combat rewarding and introduce competitive progression across rounds.
 >
 > **Prerequisites**: v0.7 (boss system, named stages) complete.
@@ -53,3 +55,4 @@ main
 - [ ] Chat moderation scenarios pass
 - [ ] PvP feels competitive but not toxic (playtest)
 - [ ] All v0.7 regression scenarios still pass
+- [ ] All PRs reviewed per [docs/review-protocol.md](../../review-protocol.md)
