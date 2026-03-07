@@ -11,14 +11,16 @@
  */
 
 import { createShip } from '../shared/shipState.js';
-import { initStarterLoadout } from './upgradeDirector.js';
+import { initStarterLoadout, triggerMajorOffer } from './upgradeDirector.js';
 import {
   BOSS_FIRST_SPAWN_TIME, BOSS_SPAWN_INTERVAL,
   BOSS_TIER_DURATION, BOSS_MAX_TIER,
   BOSS_HP_BASE, BOSS_HP_PER_TIER, BOSS_HP_PER_PLAYER,
   WORLD_EDGE_PAD,
   KRAKEN_AREA_RADIUS, KRAKEN_DMG_PER_TICK,
-  KRAKEN_PULSE_INTERVAL, KRAKEN_HP_BASE, KRAKEN_HP_PER_TIER
+  KRAKEN_PULSE_INTERVAL, KRAKEN_HP_BASE, KRAKEN_HP_PER_TIER,
+  BOSS_KILL_BASE_DOUBLOONS, BOSS_KILL_DOUBLOONS_PER_TIER,
+  BOSS_SPLASH_RADIUS, BOSS_SPLASH_PERCENT
 } from '../shared/constants.js';
 
 let nextBossId = 90000;
@@ -242,4 +244,25 @@ export function tickKrakenBoss(boss, ships, dt, events) {
       radius: boss.areaEffect.radius
     });
   }
+}
+
+// ─── Boss kill rewards ───
+
+export function distributeBossKillRewards(boss, killerShip, allPlayerShips, tier) {
+  const baseDoubloons = BOSS_KILL_BASE_DOUBLOONS + BOSS_KILL_DOUBLOONS_PER_TIER * tier;
+
+  killerShip.doubloons = (killerShip.doubloons || 0) + baseDoubloons;
+  triggerMajorOffer(killerShip);
+
+  const splashDoubloons = Math.floor(baseDoubloons * BOSS_SPLASH_PERCENT);
+  for (const ship of allPlayerShips) {
+    if (ship.id === killerShip.id) continue;
+    const dx = ship.x - boss.x;
+    const dy = ship.y - boss.y;
+    if (Math.sqrt(dx * dx + dy * dy) <= BOSS_SPLASH_RADIUS) {
+      ship.doubloons = (ship.doubloons || 0) + splashDoubloons;
+    }
+  }
+
+  return { killerDoubloons: baseDoubloons, splashDoubloons };
 }

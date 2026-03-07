@@ -131,6 +131,12 @@ export const XP_SCALE = 1.18;
 export const XP_ADD = 3;
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
+// ─── Boss kill rewards ───
+export const BOSS_KILL_BASE_DOUBLOONS = 50;   // doubloons awarded at tier 0
+export const BOSS_KILL_DOUBLOONS_PER_TIER = 10; // additional doubloons per difficulty tier
+export const BOSS_SPLASH_RADIUS = 300;          // units — players within this radius get splash
+export const BOSS_SPLASH_PERCENT = 0.3;         // fraction of base reward for splash players
+
 // ─── NPC ───
 export const MAX_NPCS = 20;
 export const NPC_SPAWN_INTERVAL_BASE = 3.5;    // seconds between spawns, decreases with time
