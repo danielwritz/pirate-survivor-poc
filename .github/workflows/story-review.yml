@@ -2,16 +2,7 @@ name: Story Review Gate
 
 on:
   pull_request:
-    branches:
-      - release/v0.7
-      - feature/boss-director
-      - feature/war-galleon-boss
-      - feature/fire-ship-boss
-      - feature/kraken-boss
-      - feature/boss-rewards
-      - feature/named-stages
-      - feature/boss-announcement
-      - feature/rebalance-v0.7
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -46,29 +37,17 @@ jobs:
           cache: 'npm'
       - run: npm ci
 
-      - name: Determine story number
+      - name: Extract story ID from PR title
         id: story
         run: |
-          # The base branch tells us which story this PR belongs to
-          # (Codex agents create copilot/* branches targeting feature/* branches)
-          BRANCH="${{ github.base_ref }}"
-          case "$BRANCH" in
-            feature/boss-director)     echo "number=1" >> "$GITHUB_OUTPUT" ;;
-            feature/war-galleon-boss)   echo "number=2" >> "$GITHUB_OUTPUT" ;;
-            feature/fire-ship-boss)     echo "number=3" >> "$GITHUB_OUTPUT" ;;
-            feature/kraken-boss)        echo "number=4" >> "$GITHUB_OUTPUT" ;;
-            feature/boss-rewards)       echo "number=5" >> "$GITHUB_OUTPUT" ;;
-            feature/named-stages)       echo "number=6" >> "$GITHUB_OUTPUT" ;;
-            feature/boss-announcement)  echo "number=7" >> "$GITHUB_OUTPUT" ;;
-            feature/rebalance-v0.7)     echo "number=8" >> "$GITHUB_OUTPUT" ;;
-            *) echo "number=0" >> "$GITHUB_OUTPUT" ;;
-          esac
+          STORY_ID=$(echo "${{ github.event.pull_request.title }}" | grep -oP 'STORY-\d+' || echo "")
+          echo "story_id=$STORY_ID" >> "$GITHUB_OUTPUT"
 
       - name: Check for scenario tests
-        if: steps.story.outputs.number != '0'
+        if: steps.story.outputs.story_id != ''
         id: check
         run: |
-          DIR="tests/review/story-${{ steps.story.outputs.number }}"
+          DIR="tests/review/${{ steps.story.outputs.story_id }}"
           if [ -d "$DIR" ] && [ "$(ls -A "$DIR"/*.mjs 2>/dev/null)" ]; then
             echo "has_tests=true" >> "$GITHUB_OUTPUT"
           else
@@ -80,7 +59,7 @@ jobs:
         id: scenarios
         continue-on-error: true
         run: |
-          node tests/review/runner.mjs ${{ steps.story.outputs.number }} > review-report.json || true
+          node tests/review/runner.mjs "${{ steps.story.outputs.story_id }}" > review-report.json || true
           cat review-report.json
 
       - name: Post review
@@ -90,17 +69,15 @@ jobs:
           script: |
             const fs = require('fs');
             const path = 'review-report.json';
-            
+
             let report;
             try {
               const raw = fs.readFileSync(path, 'utf8');
               report = JSON.parse(raw);
             } catch (e) {
-              // Runner failed to produce valid JSON — post failure review
               report = { score: 0, passed: false, details: [{ id: 'runner', verdict: 'FAIL', reason: `Runner error: ${e.message}` }] };
             }
 
-            // Build review body
             const lines = [
               `## Story Review — Score: ${report.score}%`,
               '',
@@ -109,17 +86,17 @@ jobs:
               '| Scenario | Weight | Score | Verdict | Details |',
               '|----------|--------|-------|---------|---------|',
             ];
-            
+
             for (const d of report.details || []) {
               const emoji = d.verdict === 'PASS' ? '✅' : d.verdict === 'PARTIAL' ? '⚠️' : '❌';
               lines.push(`| ${d.id} | ${d.weight} | ${d.score} | ${emoji} ${d.verdict} | ${d.reason} |`);
             }
-            
+
             lines.push('');
-            lines.push(`> Threshold: 85% · Iteration: check PR review history for count`);
+            lines.push(`> Threshold: 85%`);
 
             const event = report.passed ? 'APPROVE' : 'REQUEST_CHANGES';
-            
+
             await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -127,7 +104,7 @@ jobs:
               event,
               body: lines.join('\n')
             });
-      
-      - name: Skip review (no scenario tests)
-        if: steps.story.outputs.number == '0' || steps.check.outputs.has_tests != 'true'
-        run: echo "No scenario tests for this branch — skipping review gate"
+
+      - name: Skip review (no scenario tests found)
+        if: steps.story.outputs.story_id == '' || steps.check.outputs.has_tests != 'true'
+        run: echo "No scenario tests found for '${{ steps.story.outputs.story_id }}' — skipping review gate"
