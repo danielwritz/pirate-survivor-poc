@@ -10,16 +10,18 @@ import { clamp } from '../src/core/math.js';
 import {
   PACE,
   ROW_ACCEL_BASE, ROW_ACCEL_PER_ROWER,
-  SAIL_PUSH_BASE, SAIL_PUSH_SIZE_FACTOR,
+  SAIL_PUSH_BASE, SAIL_PUSH_SIZE_FACTOR, SAIL_UPWIND_FACTOR,
   TURN_BASE, TURN_RUDDER, TURN_ROWER,
   BRAKE_DRAG, IDLE_DRAG,
   INERTIA_BASE_MASS, INERTIA_DIVISOR, ACCEL_MASS_DIVISOR,
   WIND_RESIST_PER_ROWER, WIND_RESIST_MAX,
   WIND_DRIFT_FACTOR, WIND_DRIFT_PACE,
   SPEED_CAP_OFFSET,
+  WIND_STRENGTH_BASE, WIND_STRENGTH_RANGE,
   WORLD_EDGE_PAD,
-  COLLISION_RADIUS_MUL, IMPACT_COOLDOWN, MIN_IMPACT_SPEED, RESTITUTION,
-  RAM_MULTIPLIER, RAM_SELF_REDUCTION
+  COLLISION_RADIUS_MUL, IMPACT_COOLDOWN, MIN_IMPACT_SPEED, MIN_IMPACT_SPEED_DIFF, RESTITUTION,
+  RAM_BOW_THRESHOLD, RAM_DAMAGE_SCALE, RAM_MULTIPLIER, RAM_SELF_REDUCTION,
+  RAM_SPEED_ADVANTAGE_FACTOR, RAM_SPEED_BASE, RAM_SPEED_FACTOR
 } from './constants.js';
 
 // ─── Helpers ───
@@ -28,8 +30,30 @@ export function forwardVector(heading) {
   return { x: Math.cos(heading), y: Math.sin(heading) };
 }
 
+export function rollWindVector(random = Math.random) {
+  const angle = random() * Math.PI * 2;
+  const strength = WIND_STRENGTH_BASE + random() * WIND_STRENGTH_RANGE;
+  return {
+    x: Math.cos(angle) * strength,
+    y: Math.sin(angle) * strength,
+    strength,
+    angle
+  };
+}
+
 function getInertia(mass) {
   return 1 + Math.max(0, (mass - INERTIA_BASE_MASS) / INERTIA_DIVISOR);
+}
+
+function getRamBonus(attacker, defender, bowDot, relNormalSpeed) {
+  if (!attacker.ram || bowDot <= RAM_BOW_THRESHOLD) return 0;
+
+  const bowFactor = clamp((bowDot - RAM_BOW_THRESHOLD) / (1 - RAM_BOW_THRESHOLD), 0, 1);
+  const speedAdvantage = Math.max(0, (attacker.speed || 0) - (defender.speed || 0));
+  const closingFactor = Math.max(0, RAM_SPEED_BASE + relNormalSpeed * RAM_SPEED_FACTOR + speedAdvantage * RAM_SPEED_ADVANTAGE_FACTOR);
+  const rawBonus = (attacker.ramDamage || 0) * bowFactor * closingFactor * RAM_DAMAGE_SCALE;
+
+  return rawBonus * RAM_MULTIPLIER;
 }
 
 // ─── Main movement step ───
@@ -69,10 +93,9 @@ export function stepShipPhysics(ship, input, wind, world, dt) {
   // ─── Sail push ───
   if (ship.sailOpen && wind) {
     const alignment = fwd.x * wind.x + fwd.y * wind.y;
-    if (alignment > 0) {
-      const push = alignment * (SAIL_PUSH_BASE + (ship.size || 16) * SAIL_PUSH_SIZE_FACTOR);
-      ship.speed += (push / accelDiv) * pace;
-    }
+    const sailScalar = SAIL_PUSH_BASE + (ship.size || 16) * SAIL_PUSH_SIZE_FACTOR;
+    const sailEffect = alignment >= 0 ? alignment : alignment * SAIL_UPWIND_FACTOR;
+    ship.speed += ((sailEffect * sailScalar) / accelDiv) * pace;
   }
 
   // ─── Wind drift (lateral push) ───
@@ -92,7 +115,9 @@ export function stepShipPhysics(ship, input, wind, world, dt) {
   ship.speed = clamp(ship.speed, 0, maxSpeed);
 
   // ─── Steering ───
-  const turnInput = (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0);
+  const turnInput = Number.isFinite(input.turn)
+    ? clamp(input.turn, -1, 1)
+    : (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0);
   if (turnInput !== 0) {
     const steerDiv = 1 + Math.max(0, ((ship.mass || 28) - INERTIA_BASE_MASS) / 40);  // SP uses /40
     const turnRate = (TURN_BASE + (ship.rudder || 0) * TURN_RUDDER + (ship.rowers || 0) * TURN_ROWER)
@@ -157,6 +182,9 @@ export function resolveShipCollision(shipA, shipB, world) {
 
   if (relNormalSpeed < MIN_IMPACT_SPEED) return null;
 
+  const speedDiff = Math.abs((shipA.speed || 0) - (shipB.speed || 0));
+  if (speedDiff < MIN_IMPACT_SPEED_DIFF) return null;
+
   // Impact damage
   let impactA = 0;
   let impactB = 0;
@@ -171,16 +199,16 @@ export function resolveShipCollision(shipA, shipB, world) {
     const bowDotB = -(fwdB.x * nx + fwdB.y * ny);  // >0 = B is bow-on
 
     // Ram bonus for A hitting B
-    if (shipA.ram && bowDotA > 0.5) {
-      const ramBonus = (shipA.ramDamage || 0) * bowDotA * (0.5 + shipA.speed * 0.3);
-      impactB += ramBonus * RAM_MULTIPLIER;
+    if (shipA.ram && bowDotA > RAM_BOW_THRESHOLD) {
+      const ramBonus = getRamBonus(shipA, shipB, bowDotA, relNormalSpeed);
+      impactB += ramBonus;
       impactA *= RAM_SELF_REDUCTION;  // ramming ship takes less self-damage
     }
 
     // Ram bonus for B hitting A
-    if (shipB.ram && bowDotB > 0.5) {
-      const ramBonus = (shipB.ramDamage || 0) * bowDotB * (0.5 + shipB.speed * 0.3);
-      impactA += ramBonus * RAM_MULTIPLIER;
+    if (shipB.ram && bowDotB > RAM_BOW_THRESHOLD) {
+      const ramBonus = getRamBonus(shipB, shipA, bowDotB, relNormalSpeed);
+      impactA += ramBonus;
       impactB *= RAM_SELF_REDUCTION;
     }
 

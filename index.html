@@ -123,6 +123,8 @@ import { getLevelConfig } from './src/core/levelConfig.js';
 import { createGameContext } from './src/core/context.js';
 import { DEFAULT_HULL_DESIGN, SHIPYARD_COST } from './src/core/player.js';
 import { drawShipRenderer } from './src/rendering/shipRenderer.js';
+import { rollWindVector, stepShipPhysics, resolveShipCollision } from './shared/physics.js';
+import { ROW_ACCEL_BASE, ROW_ACCEL_PER_ROWER } from './shared/constants.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -2658,38 +2660,16 @@ function ensureIslandDefenses() {
 }
 
 function simulateVessel(entity, dt, input) {
-  const fwd = { x: Math.cos(entity.heading), y: Math.sin(entity.heading) };
-  const windMag = Math.hypot(state.wind.x, state.wind.y) || 1;
-  const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
-
-  const rowPower = input.rowing ? (0.12 + entity.rowers * 0.06) : 0;
-  const sailAlignment = entity.sailOpen ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
-  const sailPush = entity.sailOpen ? sailAlignment * (0.1 + entity.size * 0.0015) : 0;
-  const drag = input.brake ? 0.052 : 0.018;
-  const accel = (rowPower + sailPush) / Math.max(1, entity.mass / 16);
-  const pace = dt * 12;
-
-  entity.speed += accel * pace;
-  entity.speed -= drag * entity.speed * pace;
-  entity.speed = clamp(entity.speed, 0, entity.baseSpeed + 1.6);
-
-  const steer = 0.011 + entity.rudder * 0.005 + entity.rowers * 0.0015;
-  const speedFactor = 0.3 + Math.min(1.1, entity.speed / 2.3);
   const turnInput = Number.isFinite(input.turn)
     ? clamp(input.turn, -1, 1)
     : ((input.turnRight ? 1 : 0) - (input.turnLeft ? 1 : 0));
-  if (Math.abs(turnInput) > 0.0001) {
-    entity.heading += steer * speedFactor * pace * turnInput;
-  }
-
-  const rowerMitigation = Math.min(0.82, entity.rowers * 0.14);
-  const wx = state.wind.x * (1 - rowerMitigation) * 0.72;
-  const wy = state.wind.y * (1 - rowerMitigation) * 0.72;
-
-  entity.x += fwd.x * entity.speed * pace + wx * dt * 5.2;
-  entity.y += fwd.y * entity.speed * pace + wy * dt * 5.2;
-  entity.x = clamp(entity.x, 24, state.world.width - 24);
-  entity.y = clamp(entity.y, 24, state.world.height - 24);
+  stepShipPhysics(entity, {
+    forward: !!input.rowing,
+    brake: !!input.brake,
+    turn: turnInput,
+    sailOpen: entity.sailOpen,
+    anchored: false
+  }, state.wind, state.world, dt);
 }
 
 function resolveIslandCollisions(entity, dt, playerCollision = false) {
@@ -3496,119 +3476,36 @@ function resolveVesselCollision(a, b, dt) {
 
   const nx = dx / d;
   const ny = dy / d;
-  const overlap = minDist - d;
-
-  const massA = Math.max(1, a.mass);
-  const massB = Math.max(1, b.mass);
-  const totalMass = massA + massB;
-  const anchoredA = a === player && player.anchorDropped;
-  const anchoredB = b === player && player.anchorDropped;
-  if (anchoredA && !anchoredB) {
-    b.x += nx * overlap;
-    b.y += ny * overlap;
-    a.speed = 0;
-  } else if (anchoredB && !anchoredA) {
-    a.x -= nx * overlap;
-    a.y -= ny * overlap;
-    b.speed = 0;
-  } else {
-    const pushScale = 1.18;
-    a.x -= nx * overlap * pushScale * (massB / totalMass);
-    a.y -= ny * overlap * pushScale * (massB / totalMass);
-    b.x += nx * overlap * pushScale * (massA / totalMass);
-    b.y += ny * overlap * pushScale * (massA / totalMass);
-  }
-
-  a.x = clamp(a.x, 24, state.world.width - 24);
-  a.y = clamp(a.y, 24, state.world.height - 24);
-  b.x = clamp(b.x, 24, state.world.width - 24);
-  b.y = clamp(b.y, 24, state.world.height - 24);
-
-  const va = vesselForward(a);
-  const vb = vesselForward(b);
-  const relNormalSpeed = (va.x * a.speed - vb.x * b.speed) * nx + (va.y * a.speed - vb.y * b.speed) * ny;
-  if (relNormalSpeed <= 0) return;
-
-  const impactRelativeSpeedMin = 0.55;
-  const impactSpeedDiffMin = 0.28;
-  const impactDamageMin = 0.35;
-  const speedDiff = Math.abs((a.speed || 0) - (b.speed || 0));
-  const canDealImpactDamage = relNormalSpeed >= impactRelativeSpeedMin && speedDiff >= impactSpeedDiffMin;
-
-  const aBowIntoB = va.x * nx + va.y * ny;
-  const bBowIntoA = -(vb.x * nx + vb.y * ny);
-  const ramAttackA = !!a.ram && aBowIntoB > 0.35 && (a.speed || 0) > (b.speed || 0) + 0.15;
-  const ramAttackB = !!b.ram && bBowIntoA > 0.35 && (b.speed || 0) > (a.speed || 0) + 0.15;
-  const ramSpeedBonus = clamp((relNormalSpeed - 0.75) * 0.95, 0, 1.2);
-
-  const restitution = 0.24;
-  const impulse = (1 + restitution) * relNormalSpeed / (1 / massA + 1 / massB);
-  a.speed = Math.max(0, a.speed - (impulse / massA) * 0.58);
-  b.speed = Math.max(0, b.speed - (impulse / massB) * 0.58);
-
-  a.heading += (-ny * 0.018) + (Math.random() - 0.5) * 0.02;
-  b.heading += (ny * 0.018) + (Math.random() - 0.5) * 0.02;
+  const result = resolveShipCollision(a, b, state.world);
+  if (!result) return;
 
   const hitAX = a.x + nx * collisionRadius(a) * 0.72;
   const hitAY = a.y + ny * collisionRadius(a) * 0.72;
   const hitBX = b.x - nx * collisionRadius(b) * 0.72;
   const hitBY = b.y - ny * collisionRadius(b) * 0.72;
 
-  if (!canDealImpactDamage) return;
-
-  a.impactTimer = Math.max(0, (a.impactTimer || 0) - dt);
-  b.impactTimer = Math.max(0, (b.impactTimer || 0) - dt);
-
-  if ((a.impactTimer || 0) <= 0) {
-    const impactOnA = vesselImpactPower(b, -nx, -ny);
-    const crushA = Math.max(0, relNormalSpeed * (massB / Math.max(1, massA)) * 0.55);
-    let dmgA = Math.max(0, impactOnA * 0.00104 + crushA * 0.32 - massA * 0.0045);
-    if (b.ram || b.kind === 'rammer') dmgA *= 1.34;
-    if ((b.ram || b.kind === 'rammer') && relNormalSpeed > 0.7) dmgA = Math.max(dmgA, 1.2);
-    if (ramAttackB) {
-      dmgA *= 1.55 + ramSpeedBonus * 0.9;
-      dmgA += relNormalSpeed * 0.65;
+  if (result.impactA > 0) {
+    if (a === player) {
+      const bossImpactScale = b.kind === 'boss' ? 1.45 : 1;
+      damagePlayer(result.impactA * bossImpactScale);
+    } else {
+      a.hp -= result.impactA;
     }
-    if (ramAttackA) {
-      dmgA *= 0.24;
-    }
-    if (dmgA >= impactDamageMin) {
-      if (a === player) {
-        const bossImpactScale = b.kind === 'boss' ? 1.45 : 1;
-        damagePlayer(dmgA * bossImpactScale);
-      }
-      else a.hp -= dmgA;
-      addHullFractureMark(a, hitAX, hitAY, 0.8 + dmgA * 0.38 + (b.ram ? 0.45 : 0));
-      spawnImpactDebris(hitAX, hitAY, -nx, -ny, true, a);
-      spawnDeckBurst(hitAX, hitAY, -nx, -ny, true);
-      a.impactTimer = 0.28;
-    }
+    addHullFractureMark(a, hitAX, hitAY, 0.8 + result.impactA * 0.38 + (b.ram ? 0.45 : 0));
+    spawnImpactDebris(hitAX, hitAY, -nx, -ny, true, a);
+    spawnDeckBurst(hitAX, hitAY, -nx, -ny, true);
   }
 
-  if ((b.impactTimer || 0) <= 0) {
-    const impactOnB = vesselImpactPower(a, nx, ny);
-    const crushB = Math.max(0, relNormalSpeed * (massA / Math.max(1, massB)) * 0.55);
-    let dmgB = Math.max(0, impactOnB * 0.00104 + crushB * 0.32 - massB * 0.0045);
-    if (a.ram || a.kind === 'rammer') dmgB *= 1.34;
-    if ((a.ram || a.kind === 'rammer') && relNormalSpeed > 0.7) dmgB = Math.max(dmgB, 1.2);
-    if (ramAttackA) {
-      dmgB *= 1.55 + ramSpeedBonus * 0.9;
-      dmgB += relNormalSpeed * 0.65;
+  if (result.impactB > 0) {
+    if (b === player) {
+      const bossImpactScale = a.kind === 'boss' ? 1.45 : 1;
+      damagePlayer(result.impactB * bossImpactScale);
+    } else {
+      b.hp -= result.impactB;
     }
-    if (ramAttackB) {
-      dmgB *= 0.24;
-    }
-    if (dmgB >= impactDamageMin) {
-      if (b === player) {
-        const bossImpactScale = a.kind === 'boss' ? 1.45 : 1;
-        damagePlayer(dmgB * bossImpactScale);
-      }
-      else b.hp -= dmgB;
-      addHullFractureMark(b, hitBX, hitBY, 0.8 + dmgB * 0.38 + (a.ram ? 0.45 : 0));
-      spawnImpactDebris(hitBX, hitBY, nx, ny, true, b);
-      spawnDeckBurst(hitBX, hitBY, nx, ny, true);
-      b.impactTimer = 0.28;
-    }
+    addHullFractureMark(b, hitBX, hitBY, 0.8 + result.impactB * 0.38 + (a.ram ? 0.45 : 0));
+    spawnImpactDebris(hitBX, hitBY, nx, ny, true, b);
+    spawnDeckBurst(hitBX, hitBY, nx, ny, true);
   }
 }
 
@@ -3964,10 +3861,9 @@ function update(dt) {
   state.wind.timer += dt;
   if (state.wind.timer > cfg.windShift) {
     state.wind.timer = 0;
-    const angle = Math.random() * Math.PI * 2;
-    const strength = 0.2 + Math.random() * 0.35;
-    state.wind.x = Math.cos(angle) * strength;
-    state.wind.y = Math.sin(angle) * strength;
+    const nextWind = rollWindVector();
+    state.wind.x = nextWind.x;
+    state.wind.y = nextWind.y;
   }
 
   const controlsEnabled = !state.gameOver;
@@ -3977,44 +3873,16 @@ function update(dt) {
   const turnRight = controlsEnabled && (keys.has('d') || keys.has('arrowright'));
   const anchored = !!player.anchorDropped;
 
-  const fwd = getForwardVector();
-  const windMag = Math.hypot(state.wind.x, state.wind.y) || 1;
-  const windDir = { x: state.wind.x / windMag, y: state.wind.y / windMag };
-
-  const rowPower = (!anchored && forwardPressed) ? (0.14 + player.rowers * 0.075) : 0;
+  const rowPower = (!anchored && forwardPressed) ? (ROW_ACCEL_BASE + player.rowers * ROW_ACCEL_PER_ROWER) : 0;
   state.rowEffort = clamp(rowPower / 0.55, 0, 1);
-  const sailAlignment = (!anchored && player.sailOpen) ? Math.max(0, fwd.x * windDir.x + fwd.y * windDir.y) : 0;
-  const sailPush = player.sailOpen ? sailAlignment * (0.11 + player.size * 0.0018) : 0;
-  const drag = brakePressed ? 0.06 : 0.018;
-  const pace = dt * 12;
-
-  const inertia = 1 + Math.max(0, (player.mass - 28) / 44);
-  const accel = (rowPower + sailPush) / Math.max(1, player.mass / 16) / inertia;
-  if (!anchored) {
-    player.speed += accel * pace;
-    player.speed -= drag * player.speed * pace;
-    player.speed = Math.max(0, Math.min(player.baseSpeed + 1.9, player.speed));
-  } else {
-    player.speed = 0;
-  }
-
-  const steerAuthorityBase = 0.012 + player.rudder * 0.006 + player.rowers * 0.002;
-  const steerAuthority = steerAuthorityBase / (1 + Math.max(0, (player.mass - 28) / 40)) * (1 - player.maneuverPenalty);
-  const speedFactor = 0.3 + Math.min(1.2, player.speed / 2.4);
-  if (turnLeft) player.heading -= steerAuthority * speedFactor * pace;
-  if (turnRight) player.heading += steerAuthority * speedFactor * pace;
-
-  const rowerMitigation = Math.min(0.85, player.rowers * 0.16);
-  const wx = state.wind.x * (1 - rowerMitigation) * 0.18;
-  const wy = state.wind.y * (1 - rowerMitigation) * 0.18;
-
-  if (!anchored) {
-    player.x += fwd.x * player.speed * pace + wx * dt * 2.8;
-    player.y += fwd.y * player.speed * pace + wy * dt * 2.8;
-  }
-
-  player.x = Math.max(24, Math.min(state.world.width - 24, player.x));
-  player.y = Math.max(24, Math.min(state.world.height - 24, player.y));
+  stepShipPhysics(player, {
+    forward: forwardPressed,
+    brake: brakePressed,
+    turnLeft,
+    turnRight,
+    sailOpen: player.sailOpen,
+    anchored
+  }, state.wind, state.world, dt);
   resolveIslandCollisions(player, dt, true);
   spawnVesselWakeParticles(player.x, player.y, player.heading, player.size, player.speed, player.baseSpeed + 0.4, 1);
 

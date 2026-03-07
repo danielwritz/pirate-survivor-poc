@@ -12,11 +12,12 @@
  */
 
 import { createShip, shipSnapshot } from '../shared/shipState.js';
-import { stepShipPhysics, forwardVector, resolveShipCollision } from '../shared/physics.js';
+import { stepShipPhysics, forwardVector, resolveShipCollision, rollWindVector } from '../shared/physics.js';
 import { tickGunAutoFire, fireCannonBroadside, tickBullets, applyDamage, tickFire, tickRepair } from '../shared/combat.js';
 import { createNpcDirector, tickNpcDirector, getNpcShips, getNpcReward, removeNpc } from './npcDirector.js';
 import { createWorldState, damageBuildingAtPoint, tickTowers, applyIslandContact, updateDefenseTier, getWorldSnapshot } from './worldManager.js';
 import { loadCatalog, initStarterLoadout, initStartingUpgradeOffer, awardXp, selectUpgrade } from './upgradeDirector.js';
+import { createRoundVoteState, normalizeRoundCatalog, removeRoundVotesForPlayer, resolveRoundConfig, submitRoundVote as submitVoteSelection } from '../shared/roundConfig.js';
 import { clamp } from '../src/core/math.js';
 import {
   TICK_RATE, TICK_INTERVAL, ROUND_DURATION,
@@ -30,15 +31,37 @@ import {
 export { TICK_RATE, TICK_INTERVAL };
 
 // ─── Spawn points ───
-const SPAWN_CORNERS = [
-  { x: 200, y: 200 }, { x: 3400, y: 200 },
-  { x: 200, y: 2400 }, { x: 3400, y: 2400 },
-  { x: 1800, y: 200 }, { x: 1800, y: 2400 },
-  { x: 200, y: 1300 }, { x: 3400, y: 1300 },
-  { x: 900, y: 650 }, { x: 2700, y: 1950 }
-];
+function buildSpawnCorners(worldWidth, worldHeight) {
+  const edgeInsetX = Math.max(140, Math.min(200, Math.round(worldWidth * 0.07)));
+  const edgeInsetY = Math.max(140, Math.min(200, Math.round(worldHeight * 0.09)));
+  const quarterX = Math.round(worldWidth * 0.25);
+  const midX = Math.round(worldWidth * 0.5);
+  const threeQuarterX = Math.round(worldWidth * 0.75);
+  const quarterY = Math.round(worldHeight * 0.3);
+  const midY = Math.round(worldHeight * 0.5);
+  const threeQuarterY = Math.round(worldHeight * 0.7);
 
-const ROUND_RESULTS_DURATION = 12;
+  return [
+    { x: edgeInsetX, y: edgeInsetY },
+    { x: worldWidth - edgeInsetX, y: edgeInsetY },
+    { x: edgeInsetX, y: worldHeight - edgeInsetY },
+    { x: worldWidth - edgeInsetX, y: worldHeight - edgeInsetY },
+    { x: midX, y: edgeInsetY },
+    { x: midX, y: worldHeight - edgeInsetY },
+    { x: edgeInsetX, y: midY },
+    { x: worldWidth - edgeInsetX, y: midY },
+    { x: quarterX, y: quarterY },
+    { x: threeQuarterX, y: threeQuarterY }
+  ];
+}
+
+function getSpawnCorners(sim) {
+  return buildSpawnCorners(sim.world.width, sim.world.height);
+}
+
+function getResultsDuration(sim) {
+  return sim.roundCatalog?.resultsDuration || 20;
+}
 
 function roundToThousandths(value) {
   return Math.round(value * 1000) / 1000;
@@ -57,19 +80,25 @@ export function calculateRoundPlayerScore(playerKills, deaths, doubloons) {
 
 // ─── Simulation factory ───
 
-export async function createSimulation() {
+export async function createSimulation(roundCatalogData = null) {
   // Load upgrade catalog before anything else
   await loadCatalog();
 
   const seed = Date.now();
+  const roundCatalog = normalizeRoundCatalog(roundCatalogData || {});
+  const roundVoteState = createRoundVoteState(roundCatalog, false);
+  const roundConfig = resolveRoundConfig(roundCatalog, roundVoteState);
 
   return {
     time: 0,
     roundTimer: ROUND_DURATION,
     roundPhase: 'playing',
     resultsTimer: 0,
-    world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
-    wind: { x: 0.35, y: -0.12, timer: 0 },
+    roundCatalog,
+    roundVoteState,
+    roundConfig,
+    world: { width: roundConfig.worldWidth, height: roundConfig.worldHeight },
+    wind: { x: 0.42, y: -0.14, timer: 0 },
     players: new Map(),           // playerId → { ship, input }
     bullets: [],
     drops: [],                    // { x, y, value, vx, vy, age }
@@ -79,7 +108,7 @@ export async function createSimulation() {
 
     // Directors
     npcDirector: createNpcDirector(),
-    worldState: createWorldState(seed),
+    worldState: createWorldState(seed, roundConfig),
 
     // Round summary / persistence hooks
     roundSummary: null,
@@ -96,7 +125,8 @@ export async function createSimulation() {
 
 export function addPlayer(sim, name) {
   const id = sim.nextPlayerId++;
-  const spawn = SPAWN_CORNERS[(sim.players.size) % SPAWN_CORNERS.length];
+  const spawnCorners = getSpawnCorners(sim);
+  const spawn = spawnCorners[(sim.players.size) % spawnCorners.length];
   const ship = createShip(spawn.x, spawn.y, { id, name: name || `Player ${id}` });
 
   // Apply starter loadout
@@ -115,6 +145,14 @@ export function addPlayer(sim, name) {
 
 export function removePlayer(sim, id) {
   sim.players.delete(id);
+  sim.roundVoteState = removeRoundVotesForPlayer(sim.roundCatalog, sim.roundVoteState, id);
+}
+
+export function submitRoundVote(sim, playerId, categoryId, choiceId) {
+  if (sim.roundPhase !== 'results') return false;
+  if (!sim.players.has(playerId)) return false;
+  sim.roundVoteState = submitVoteSelection(sim.roundCatalog, sim.roundVoteState, playerId, categoryId, choiceId);
+  return true;
 }
 
 export function setPlayerInput(sim, id, input) {
@@ -209,10 +247,9 @@ export function tick(sim) {
   sim.wind.timer += dt;
   if (sim.wind.timer >= WIND_SHIFT_INTERVAL) {
     sim.wind.timer = 0;
-    const angle = Math.random() * Math.PI * 2;
-    const strength = 0.2 + Math.random() * 0.35;
-    sim.wind.x = Math.cos(angle) * strength;
-    sim.wind.y = Math.sin(angle) * strength;
+    const nextWind = rollWindVector();
+    sim.wind.x = nextWind.x;
+    sim.wind.y = nextWind.y;
   }
 
   // Gather all ships for combat/collision
@@ -244,7 +281,7 @@ export function tick(sim) {
   tickNpcDirector(sim.npcDirector, allPlayerShips, sim.world, sim.worldState.islands, sim.drops, dt, ROUND_DURATION - sim.roundTimer, (bullet) => {
     bullet.id = sim.nextBulletId++;
     sim.bullets.push(bullet);
-  }, sim.events);
+  }, sim.events, sim.roundConfig);
 
   // NPC physics + fire
   for (const [npcId, npc] of sim.npcDirector.npcs) {
@@ -414,7 +451,8 @@ function startRoundResults(sim) {
   if (sim.roundPhase !== 'playing') return;
   sim.roundTimer = 0;
   sim.roundPhase = 'results';
-  sim.resultsTimer = ROUND_RESULTS_DURATION;
+  sim.roundVoteState = createRoundVoteState(sim.roundCatalog, true);
+  sim.resultsTimer = getResultsDuration(sim);
   sim.roundSummary = buildRoundSummary(sim);
 
   if (typeof sim.onRoundEnded === 'function') {
@@ -426,9 +464,10 @@ function startRoundResults(sim) {
 
   sim.events.push({
     type: 'roundEnded',
-    duration: ROUND_RESULTS_DURATION,
+    duration: getResultsDuration(sim),
     summary: sim.roundSummary,
-    persistentLeaderboard: sim.persistentLeaderboard
+    persistentLeaderboard: sim.persistentLeaderboard,
+    roundVoteState: sim.roundVoteState
   });
 }
 
@@ -589,12 +628,19 @@ function scatterDrops(sim, x, y, totalValue) {
 }
 
 function respawnShip(sim, ship) {
+  const spawnCorners = getSpawnCorners(sim);
+  const respawnInsetX = Math.max(140, Math.min(180, Math.round(sim.world.width * 0.06)));
+  const respawnInsetY = Math.max(140, Math.min(180, Math.round(sim.world.height * 0.08)));
+  const searchStepX = Math.max(260, Math.round((sim.world.width - respawnInsetX * 2) / 6));
+  const searchStepY = Math.max(240, Math.round((sim.world.height - respawnInsetY * 2) / 5));
+  const jitterRadius = Math.max(160, Math.min(240, Math.round(Math.min(sim.world.width, sim.world.height) * 0.08)));
+
   // Find position farthest from all living entities
-  let bestPos = SPAWN_CORNERS[0];
+  let bestPos = spawnCorners[0];
   let bestMinDist = 0;
 
-  for (let x = 200; x < sim.world.width; x += 400) {
-    for (let y = 200; y < sim.world.height; y += 400) {
+  for (let x = respawnInsetX; x < sim.world.width - respawnInsetX; x += searchStepX) {
+    for (let y = respawnInsetY; y < sim.world.height - respawnInsetY; y += searchStepY) {
       let minDist = Infinity;
       for (const [, pd] of sim.players) {
         if (!pd.ship.alive || pd.ship.id === ship.id) continue;
@@ -609,8 +655,8 @@ function respawnShip(sim, ship) {
     }
   }
 
-  ship.x = clamp(bestPos.x + (Math.random() - 0.5) * 320, 150, sim.world.width - 150);
-  ship.y = clamp(bestPos.y + (Math.random() - 0.5) * 320, 150, sim.world.height - 150);
+  ship.x = clamp(bestPos.x + (Math.random() - 0.5) * jitterRadius, respawnInsetX, sim.world.width - respawnInsetX);
+  ship.y = clamp(bestPos.y + (Math.random() - 0.5) * jitterRadius, respawnInsetY, sim.world.height - respawnInsetY);
   ship.heading = Math.random() * Math.PI * 2;
   ship.speed = 0;
   ship.hp = ship.maxHp;
@@ -681,21 +727,26 @@ function tickDrops(sim, playerShips, dt) {
 
 export function resetRound(sim) {
   const seed = Date.now();
+  const nextRoundConfig = resolveRoundConfig(sim.roundCatalog, sim.roundVoteState);
   sim.time = 0;
   sim.roundTimer = ROUND_DURATION;
   sim.roundPhase = 'playing';
   sim.resultsTimer = 0;
   sim.roundSummary = null;
-  sim.wind = { x: 0.35, y: -0.12, timer: 0 };
+  sim.wind = { x: 0.42, y: -0.14, timer: 0 };
   sim.bullets = [];
   sim.drops = [];
   sim.roundSeed = seed;
-  sim.worldState = createWorldState(seed);
+  sim.roundConfig = nextRoundConfig;
+  sim.roundVoteState = createRoundVoteState(sim.roundCatalog, false);
+  sim.world = { width: nextRoundConfig.worldWidth, height: nextRoundConfig.worldHeight };
+  sim.worldState = createWorldState(seed, nextRoundConfig);
   sim.npcDirector = createNpcDirector();
+  const spawnCorners = getSpawnCorners(sim);
 
   let idx = 0;
   for (const [, pd] of sim.players) {
-    const spawn = SPAWN_CORNERS[idx % SPAWN_CORNERS.length];
+    const spawn = spawnCorners[idx % spawnCorners.length];
     const ship = pd.ship;
     ship.x = spawn.x;
     ship.y = spawn.y;
@@ -760,7 +811,7 @@ export function resetRound(sim) {
     idx++;
   }
 
-  sim.events.push({ type: 'roundReset', seed });
+  sim.events.push({ type: 'roundReset', seed, roundConfig: sim.roundConfig });
 }
 
 // ─── State snapshot ───
@@ -813,6 +864,8 @@ export function getStateSnapshot(sim) {
     roundTimer: Math.round(sim.roundTimer * 10) / 10,
     wind: { x: Math.round(sim.wind.x * 1000) / 1000, y: Math.round(sim.wind.y * 1000) / 1000 },
     world: sim.world,
+    roundConfig: sim.roundConfig,
+    roundVoteState: sim.roundVoteState,
     roundSeed: sim.roundSeed,
     roundSummary: sim.roundSummary,
     persistentLeaderboard: sim.persistentLeaderboard,

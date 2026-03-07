@@ -15,8 +15,8 @@ import {
  * @param {number} seed - Random seed
  * @returns {object} - World state
  */
-export function createWorldState(seed) {
-  const world = generateWorld(seed);
+export function createWorldState(seed, roundConfig = null) {
+  const world = generateWorld(seed, roundConfig || undefined);
   world.defenseTier = 0;
   world.defenseRng = createRng(seed + 777);
   return world;

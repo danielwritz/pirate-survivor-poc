@@ -14,9 +14,9 @@ import { fireCannonBroadside } from '../shared/combat.js';
 import { getGunRange, getCannonRange } from '../shared/shipState.js';
 import { scaleNpcWithUpgrades, initStarterLoadout } from './upgradeDirector.js';
 import {
-  MAX_NPCS, NPC_SPAWN_INTERVAL_BASE,
   NPC_BASE_DOUBLOON_REWARD, NPC_DOUBLOON_PER_UPGRADE,
-  WORLD_WIDTH, WORLD_HEIGHT, WORLD_EDGE_PAD
+  MAX_NPCS, NPC_SPAWN_INTERVAL_BASE,
+  WORLD_EDGE_PAD
 } from '../shared/constants.js';
 
 let nextNpcId = 10000;
@@ -24,11 +24,25 @@ let nextNpcId = 10000;
 // ─── NPC Archetypes ───
 
 const ARCHETYPE = {
+  weak: {
+    name: 'Sloop',
+    speedMul: 0.96,
+    extraGunners: 0,
+    extraCannons: 0,
+    sizeMul: 0.82,
+    massMul: 0.72,
+    hpMul: 0.68,
+    rewardMul: 0.7,
+    hullColor: '#5a4334',
+    sailColor: '#ddd3c2',
+    personality: 'aggressor'
+  },
   standard: {
     name: 'Pirate',
     speedMul: 1.0,
     extraGunners: 0,
     extraCannons: 0,
+    rewardMul: 1.0,
     hullColor: '#5f4630',
     sailColor: '#e8dcc8',
     personality: 'aggressor'
@@ -41,6 +55,7 @@ const ARCHETYPE = {
     sizeMul: 1.25,
     massMul: 1.5,
     hpMul: 2.1,
+    rewardMul: 1.35,
     hullColor: '#4a3828',
     sailColor: '#c8b89a',
     personality: 'hunter'
@@ -50,6 +65,7 @@ const ARCHETYPE = {
     speedMul: 1.15,
     extraGunners: 0,
     extraCannons: 0,
+    rewardMul: 0.95,
     hullColor: '#4a5a30',
     sailColor: '#c8d89a',
     personality: 'scavenger'
@@ -57,6 +73,12 @@ const ARCHETYPE = {
 };
 
 const NPC_COLORWAYS = {
+  weak: [
+    { hull: '#5a4334', trim: '#c6ab86', sail: '#ddd3c2' },
+    { hull: '#58483c', trim: '#bac5b0', sail: '#d5ddd1' },
+    { hull: '#605046', trim: '#d1b7a4', sail: '#e5d7cb' },
+    { hull: '#51424f', trim: '#c7b7d9', sail: '#ddd6e8' }
+  ],
   standard: [
     { hull: '#5f4630', trim: '#d9b78d', sail: '#e8dcc8' },
     { hull: '#6a3f33', trim: '#d7b28a', sail: '#efe3cf' },
@@ -76,6 +98,46 @@ const NPC_COLORWAYS = {
     { hull: '#3f565c', trim: '#a6c7d0', sail: '#c7e0e7' }
   ]
 };
+
+export function rollNpcArchetype(roll = Math.random()) {
+  if (roll < 0.30) return 'weak';
+  if (roll < 0.65) return 'standard';
+  if (roll < 0.85) return 'heavy';
+  return 'scavenger';
+}
+
+export function applyNpcArchetype(ship, archetypeKey, appearanceSeed = 0, currentUpgradeCount = 0) {
+  const archetype = ARCHETYPE[archetypeKey] || ARCHETYPE.standard;
+
+  ship.name = archetype.name;
+  if (archetype.sizeMul) ship.size *= archetype.sizeMul;
+  if (archetype.massMul) ship.mass *= archetype.massMul;
+  if (archetype.hpMul) {
+    ship.maxHp *= archetype.hpMul;
+    ship.hp = ship.maxHp;
+  }
+  ship.baseSpeed *= archetype.speedMul;
+
+  if (archetype.extraGunners) {
+    ship.gunners = Math.max(1, ship.gunners + archetype.extraGunners);
+    ship.crew = Math.max(ship.rowers + ship.gunners + ship.repairCrew, ship.crew + archetype.extraGunners);
+  }
+
+  const colorways = NPC_COLORWAYS[archetypeKey] || NPC_COLORWAYS.standard;
+  const colorway = colorways[Math.abs((appearanceSeed + currentUpgradeCount) % colorways.length)];
+  ship.hullColor = colorway?.hull || archetype.hullColor;
+  ship.trimColor = colorway?.trim || ship.trimColor;
+  ship.sailColor = colorway?.sail || archetype.sailColor;
+  ship.invulnTimer = 0;
+
+  return archetype;
+}
+
+export function computeNpcReward(archetypeKey, upgradeCount, rewardVariance = Math.random()) {
+  const archetype = ARCHETYPE[archetypeKey] || ARCHETYPE.standard;
+  const baseReward = NPC_BASE_DOUBLOON_REWARD + upgradeCount * NPC_DOUBLOON_PER_UPGRADE + Math.floor(rewardVariance * 3);
+  return Math.max(2, Math.round(baseReward * (archetype.rewardMul || 1)));
+}
 
 // ─── Helpers ───
 
@@ -233,22 +295,21 @@ export function createNpcDirector() {
   };
 }
 
-export function spawnNpc(director, playerPositions, roundTime) {
+export function spawnNpc(director, playerPositions, roundTime, world) {
   const id = nextNpcId++;
+  const worldWidth = Number.isFinite(world?.width) ? world.width : 3000;
+  const worldHeight = Number.isFinite(world?.height) ? world.height : 2100;
 
-  // Archetype distribution: 50% standard, 25% heavy, 25% scavenger
-  const roll = Math.random();
-  const archetypeKey = roll < 0.50 ? 'standard' : roll < 0.75 ? 'heavy' : 'scavenger';
-  const archetype = ARCHETYPE[archetypeKey];
+  const archetypeKey = rollNpcArchetype(Math.random());
 
   // Spawn at a random edge, preferring positions far from players
   const pickEdgePos = () => {
     const edge = Math.floor(Math.random() * 4);
     switch (edge) {
-      case 0: return { x: WORLD_EDGE_PAD + 30,                y: WORLD_EDGE_PAD + Math.random() * (WORLD_HEIGHT - WORLD_EDGE_PAD * 2) };
-      case 1: return { x: WORLD_WIDTH - WORLD_EDGE_PAD - 30,  y: WORLD_EDGE_PAD + Math.random() * (WORLD_HEIGHT - WORLD_EDGE_PAD * 2) };
-      case 2: return { x: WORLD_EDGE_PAD + Math.random() * (WORLD_WIDTH - WORLD_EDGE_PAD * 2), y: WORLD_EDGE_PAD + 30 };
-      default: return { x: WORLD_EDGE_PAD + Math.random() * (WORLD_WIDTH - WORLD_EDGE_PAD * 2), y: WORLD_HEIGHT - WORLD_EDGE_PAD - 30 };
+      case 0: return { x: WORLD_EDGE_PAD + 30, y: WORLD_EDGE_PAD + Math.random() * (worldHeight - WORLD_EDGE_PAD * 2) };
+      case 1: return { x: worldWidth - WORLD_EDGE_PAD - 30, y: WORLD_EDGE_PAD + Math.random() * (worldHeight - WORLD_EDGE_PAD * 2) };
+      case 2: return { x: WORLD_EDGE_PAD + Math.random() * (worldWidth - WORLD_EDGE_PAD * 2), y: WORLD_EDGE_PAD + 30 };
+      default: return { x: WORLD_EDGE_PAD + Math.random() * (worldWidth - WORLD_EDGE_PAD * 2), y: worldHeight - WORLD_EDGE_PAD - 30 };
     }
   };
 
@@ -267,20 +328,9 @@ export function spawnNpc(director, playerPositions, roundTime) {
     x = bestX; y = bestY;
   }
 
-  const ship = createShip(x, y, { id, name: archetype.name, isNpc: true });
+  const ship = createShip(x, y, { id, name: 'Pirate', isNpc: true });
   initStarterLoadout(ship);
-
-  if (archetype.sizeMul) ship.size *= archetype.sizeMul;
-  if (archetype.massMul) ship.mass *= archetype.massMul;
-  if (archetype.hpMul)   { ship.maxHp *= archetype.hpMul; ship.hp = ship.maxHp; }
-  ship.baseSpeed *= archetype.speedMul;
-  if (archetype.extraGunners) { ship.gunners += archetype.extraGunners; ship.crew += archetype.extraGunners; }
-  const colorways = NPC_COLORWAYS[archetypeKey] || NPC_COLORWAYS.standard;
-  const colorway = colorways[Math.abs((id + director.currentUpgradeCount) % colorways.length)];
-  ship.hullColor  = colorway?.hull || archetype.hullColor;
-  ship.trimColor  = colorway?.trim || ship.trimColor;
-  ship.sailColor  = colorway?.sail || archetype.sailColor;
-  ship.invulnTimer = 0;
+  const archetype = applyNpcArchetype(ship, archetypeKey, id, director.currentUpgradeCount);
 
   const threat = Math.min(4, 1 + Math.floor(director.currentUpgradeCount / 2));
   const flagPalettes = [
@@ -295,7 +345,7 @@ export function spawnNpc(director, playerPositions, roundTime) {
   ship.flagStripes = threat;
 
   scaleNpcWithUpgrades(ship, director.currentUpgradeCount);
-  ship._doubloonReward = NPC_BASE_DOUBLOON_REWARD + director.currentUpgradeCount * NPC_DOUBLOON_PER_UPGRADE + Math.floor(Math.random() * 3);
+  ship._doubloonReward = computeNpcReward(archetypeKey, director.currentUpgradeCount, Math.random());
 
   const aiState = {
     personality:   archetype.personality,
@@ -319,15 +369,17 @@ export function removeNpc(director, npcId) {
   director.npcs.delete(npcId);
 }
 
-export function tickNpcDirector(director, playerShips, world, islands, drops, dt, roundTime, spawnBullet, events) {
+export function tickNpcDirector(director, playerShips, world, islands, drops, dt, roundTime, spawnBullet, events, roundConfig = null) {
   director.currentUpgradeCount = Math.floor(roundTime / 60);
 
-  const spawnInterval = Math.max(1.5, NPC_SPAWN_INTERVAL_BASE - roundTime * 0.004);
+  const enemyCap = Math.max(1, Math.floor(roundConfig?.enemyCap || MAX_NPCS));
+  const spawnBase = Number.isFinite(roundConfig?.enemySpawnIntervalBase) ? roundConfig.enemySpawnIntervalBase : NPC_SPAWN_INTERVAL_BASE;
+  const spawnInterval = Math.max(1.5, spawnBase - roundTime * 0.004);
   director.spawnTimer -= dt;
-  if (director.spawnTimer <= 0 && director.npcs.size < MAX_NPCS && playerShips.length > 0) {
+  if (director.spawnTimer <= 0 && director.npcs.size < enemyCap && playerShips.length > 0) {
     director.spawnTimer = spawnInterval;
     const positions = playerShips.map(s => ({ x: s.x, y: s.y }));
-    spawnNpc(director, positions, roundTime);
+    spawnNpc(director, positions, roundTime, world);
   }
 
   for (const [, npc] of director.npcs) {

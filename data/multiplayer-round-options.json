@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "resultsDuration": 20,
+  "baseConfig": {
+    "worldWidth": 3000,
+    "worldHeight": 2100,
+    "enemyCap": 20,
+    "enemySpawnIntervalBase": 3.5,
+    "islandCount": 18,
+    "islandMargin": 200,
+    "islandSpacing": 280,
+    "islandSizeScale": 1
+  },
+  "voteCategories": [
+    {
+      "id": "enemyDensity",
+      "label": "Enemy Density",
+      "defaultChoiceId": "normal",
+      "choices": [
+        { "id": "more", "label": "More enemies", "effects": { "enemyCapDelta": 6, "enemySpawnIntervalDelta": -0.35 } },
+        { "id": "normal", "label": "Normal", "effects": {} },
+        { "id": "less", "label": "Less enemies", "effects": { "enemyCapDelta": -6, "enemySpawnIntervalDelta": 0.45 } }
+      ]
+    },
+    {
+      "id": "mapSize",
+      "label": "Map Size",
+      "defaultChoiceId": "normal",
+      "choices": [
+        { "id": "bigger", "label": "Bigger map", "effects": { "worldScale": 1.15 } },
+        { "id": "normal", "label": "Normal", "effects": {} },
+        { "id": "smaller", "label": "Smaller map", "effects": { "worldScale": 0.85 } }
+      ]
+    },
+    {
+      "id": "islandCount",
+      "label": "Island Count",
+      "defaultChoiceId": "normal",
+      "choices": [
+        { "id": "more", "label": "More islands", "effects": { "islandCountDelta": 4 } },
+        { "id": "normal", "label": "Normal", "effects": {} },
+        { "id": "less", "label": "Less islands", "effects": { "islandCountDelta": -4 } }
+      ]
+    },
+    {
+      "id": "islandSize",
+      "label": "Island Size",
+      "defaultChoiceId": "normal",
+      "choices": [
+        { "id": "bigger", "label": "Bigger islands", "effects": { "islandSizeScaleMul": 1.18, "islandSpacingDelta": 18 } },
+        { "id": "normal", "label": "Normal", "effects": {} },
+        { "id": "smaller", "label": "Smaller islands", "effects": { "islandSizeScaleMul": 0.84, "islandSpacingDelta": -18 } }
+      ]
+    }
+  ]
+}

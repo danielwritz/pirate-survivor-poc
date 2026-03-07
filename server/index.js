@@ -44,6 +44,7 @@ import {
   setPlayerInput,
   playerFireCannon,
   playerSelectUpgrade,
+  submitRoundVote,
   tick,
   getStateSnapshot,
   TICK_RATE,
@@ -185,6 +186,9 @@ wss.on('connection', (ws) => {
           type: 'joined',
           id: playerId,
           roundSeed: sim.roundSeed,
+          roundConfig: sim.roundConfig,
+          roundCatalog: sim.roundCatalog,
+          roundVoteState: sim.roundVoteState,
           startingOffer,
           startingPicksRemaining,
           spectator: !!joinedPd?.spectator,
@@ -257,6 +261,15 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+
+      case 'roundVote': {
+        if (playerId === null) return;
+        const categoryId = typeof msg.categoryId === 'string' ? msg.categoryId.trim() : '';
+        const choiceId = typeof msg.choiceId === 'string' ? msg.choiceId.trim() : '';
+        if (!categoryId || !choiceId) return;
+        submitRoundVote(sim, playerId, categoryId, choiceId);
+        break;
+      }
     }
   });
 
@@ -283,7 +296,8 @@ function broadcastState() {
 async function start() {
   leaderboardStore = createLeaderboardStore(LEADERBOARD_DB_PATH);
   chatStore = createChatStore(CHAT_DB_PATH);
-  sim = await createSimulation();
+  const roundCatalog = JSON.parse(await readFile(join(ROOT, 'data', 'multiplayer-round-options.json'), 'utf-8'));
+  sim = await createSimulation(roundCatalog);
   sim.activePlayerLimit = ACTIVE_PLAYER_LIMIT;
   sim.persistentLeaderboard = leaderboardStore.getTopScores(GLOBAL_LEADERBOARD_LIMIT);
   chatHistory = chatStore.getHistory(CHAT_HISTORY_LIMIT);

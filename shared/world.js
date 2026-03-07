@@ -35,20 +35,25 @@ export function createRng(seed) {
  * Both server and client call this with the same seed to get the same world.
  *
  * @param {number} seed - Random seed for this round
+ * @param {object} roundConfig - Tunable world dimensions and island settings
  * @returns {object} - { islands: [...], seed }
  */
-export function generateWorld(seed) {
+export function generateWorld(seed, roundConfig = {}) {
   const rng = createRng(seed);
   const islands = [];
+  const worldWidth = Number.isFinite(roundConfig?.worldWidth) ? roundConfig.worldWidth : WORLD_WIDTH;
+  const worldHeight = Number.isFinite(roundConfig?.worldHeight) ? roundConfig.worldHeight : WORLD_HEIGHT;
+  const islandCount = Number.isFinite(roundConfig?.islandCount) ? roundConfig.islandCount : ISLAND_COUNT;
+  const margin = Number.isFinite(roundConfig?.islandMargin) ? roundConfig.islandMargin : 200;
+  const minSpacing = Number.isFinite(roundConfig?.islandSpacing) ? roundConfig.islandSpacing : 280;
+  const islandSizeScale = Number.isFinite(roundConfig?.islandSizeScale) ? roundConfig.islandSizeScale : 1;
 
   // Place islands with spacing
-  const margin = 200;
-  const minSpacing = 280;
-  const attempts = ISLAND_COUNT * 8;
+  const attempts = islandCount * 10;
 
-  for (let a = 0; a < attempts && islands.length < ISLAND_COUNT; a++) {
-    const x = margin + rng() * (WORLD_WIDTH - margin * 2);
-    const y = margin + rng() * (WORLD_HEIGHT - margin * 2);
+  for (let a = 0; a < attempts && islands.length < islandCount; a++) {
+    const x = margin + rng() * (worldWidth - margin * 2);
+    const y = margin + rng() * (worldHeight - margin * 2);
 
     // Check spacing
     let tooClose = false;
@@ -61,15 +66,15 @@ export function generateWorld(seed) {
     // Size class
     const sizeRoll = rng();
     let radius;
-    if (sizeRoll < 0.5) radius = 28 + rng() * 36;           // small
-    else if (sizeRoll < 0.85) radius = 50 + rng() * 76;     // medium
-    else radius = 96 + rng() * 82;                           // large
+    if (sizeRoll < 0.5) radius = (28 + rng() * 36) * islandSizeScale;           // small
+    else if (sizeRoll < 0.85) radius = (50 + rng() * 76) * islandSizeScale;     // medium
+    else radius = (96 + rng() * 82) * islandSizeScale;                           // large
 
     const island = createIsland(islands.length, x, y, radius, rng);
     islands.push(island);
   }
 
-  return { islands, seed };
+  return { islands, seed, width: worldWidth, height: worldHeight, config: roundConfig };
 }
 
 function createIsland(id, x, y, radius, rng) {

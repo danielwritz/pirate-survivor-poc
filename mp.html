@@ -6,16 +6,58 @@
   <title>Pirate Survivor — Multiplayer</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #0e2a42; color: #e8f5ff; font-family: system-ui, sans-serif; }
-    canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at 30% 30%, #14547e, #0e2a42 70%); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #020202; color: #e8f5ff; font-family: system-ui, sans-serif; }
+    canvas { display: block; width: 100vw; height: 100vh; background: #020202; }
 
     .hud { position: fixed; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none; }
-    .hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 16px; }
-    .hud-left { display: flex; flex-direction: column; gap: 3px; max-width: 460px; }
+    .hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 16px; gap: 12px; }
+    .hud-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: min(360px, calc(100vw - 140px));
+      padding: 10px 12px;
+      background: rgba(6,16,24,0.68);
+      border: 1px solid rgba(42,74,98,0.55);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      backdrop-filter: blur(4px);
+    }
+    .hud-title {
+      font-size: 10px;
+      color: #7aa8c2;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      line-height: 1;
+    }
     .timer { font-size: 22px; font-weight: bold; color: #ffd887; text-shadow: 0 1px 4px rgba(0,0,0,0.7); position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 10; pointer-events: none; background: rgba(6,16,24,0.55); padding: 4px 18px; border-radius: 20px; border: 1px solid rgba(255,216,135,0.18); }
-    .player-count { font-size: 13px; color: #9fc2d9; }
-    .my-stats { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; color: #c8dce8; margin-top: 4px; max-width: 440px; }
-    .my-stats span { margin-right: 0; }
+    .player-count {
+      font-size: 13px;
+      color: #cfe6f5;
+      line-height: 1.3;
+    }
+    .my-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      font-size: 13px;
+      color: #c8dce8;
+    }
+    .my-stats span {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 32px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(42,74,98,0.48);
+      background: rgba(12,34,51,0.82);
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .status-auto-on { color: #ffcc44; }
+    .status-auto-off { color: #8fa9b8; }
+    .status-fps { color: #a8d8a8; }
     .doubloons { color: #ffd887; }
     .kills { color: #7fdb8a; }
     .deaths { color: #f59b80; }
@@ -166,6 +208,16 @@
     }
 
     @media (max-width: 900px) {
+      .hud-top {
+        padding: 8px;
+      }
+      .hud-left {
+        width: min(320px, calc(100vw - 16px));
+        padding: 9px 10px;
+      }
+      .my-stats {
+        grid-template-columns: 1fr;
+      }
       .chat-panel {
         width: calc(100vw - 16px);
         left: 8px;
@@ -175,11 +227,14 @@
       .players-list {
         max-height: 78px;
       }
+      .join-guide-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 50; background: rgba(6,16,24,0.92); }
     .overlay.hidden { display: none; }
-    .join-box { text-align: center; }
+    .join-box { text-align: center; width: min(720px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 6px; }
     .join-box h1 { font-size: 28px; margin-bottom: 16px; color: #ffd887; }
     .join-box input { padding: 10px 14px; font-size: 16px; border: 1px solid #2a4a62; background: #0c2233; color: #e8f5ff; border-radius: 6px; width: 220px; text-align: center; }
     .join-box button { display: block; margin: 14px auto 0; padding: 10px 28px; font-size: 16px; background: #1a5a3a; color: #e8f5ff; border: 1px solid #2a8a5a; border-radius: 6px; cursor: pointer; }
@@ -188,6 +243,44 @@
     .join-box .solo-btn:hover { background: rgba(42,74,98,0.35); border-color: #4f9cc8; color: #d6ecff; }
     .join-box .divider { margin: 10px auto 0; font-size: 11px; color: #3a6a82; letter-spacing: 1px; text-transform: uppercase; }
     .join-box .status { margin-top: 12px; font-size: 14px; color: #9fc2d9; }
+    .join-guide {
+      margin: 18px auto 0;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(42,74,98,0.7);
+      background: rgba(8,20,32,0.88);
+      text-align: left;
+    }
+    .join-guide-title {
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #7aa8c2;
+      margin-bottom: 10px;
+    }
+    .join-guide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .join-guide-card {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(42,74,98,0.46);
+      background: rgba(12,34,51,0.76);
+    }
+    .join-guide-card h2 {
+      font-size: 12px;
+      color: #ffd887;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .join-guide-card p {
+      font-size: 13px;
+      color: #d6ecff;
+      line-height: 1.45;
+    }
 
     .hint { position: fixed; right: 14px; bottom: 12px; z-index: 10; color: #5a8aa6; font-size: 12px; text-align: right; pointer-events: none; }
 
@@ -253,7 +346,7 @@
       align-items: center;
       justify-content: center;
       background: rgba(6,16,24,0.7);
-      pointer-events: none;
+      pointer-events: auto;
     }
     .phase-overlay.hidden { display: none; }
     .phase-panel {
@@ -275,6 +368,39 @@
     .phase-card td { color: #d6ecff; padding: 4px; }
     .phase-card tr.me td { color: #ffd887; font-weight: 700; }
     .phase-empty { color: #7aa8c2; font-size: 13px; }
+    .phase-vote-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr); gap: 14px; margin-top: 14px; }
+    .vote-category { border-top: 1px solid rgba(42,74,98,0.5); padding-top: 10px; margin-top: 10px; }
+    .vote-category:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    .vote-category-title { font-size: 13px; color: #d6ecff; margin-bottom: 8px; }
+    .vote-choice-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .vote-btn {
+      appearance: none;
+      border: 1px solid rgba(72,108,132,0.9);
+      background: rgba(12,34,51,0.82);
+      color: #d6ecff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    .vote-btn:hover { border-color: #7aa8c2; background: rgba(20,48,68,0.9); }
+    .vote-btn.selected { border-color: #ffd887; background: rgba(74,54,24,0.95); color: #fff0c2; }
+    .vote-btn.winner { border-color: #7fdb8a; }
+    .vote-count { color: #9fc2d9; margin-left: 6px; }
+    .vote-help { color: #7aa8c2; font-size: 12px; margin-bottom: 8px; }
+    .phase-json {
+      margin: 0;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(42,74,98,0.55);
+      background: rgba(5,12,18,0.92);
+      color: #c9dfef;
+      font: 12px/1.45 Consolas, 'Courier New', monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .phase-json-note { color: #7aa8c2; font-size: 12px; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -285,6 +411,7 @@
 <div class="hud">
   <div class="hud-top">
     <div class="hud-left">
+      <div class="hud-title">Your Ship</div>
       <div class="player-count" id="playerCount">0 players</div>
       <div class="my-stats" id="myStats">
         <span class="global-score" id="myGlobalScore">★ 0</span>
@@ -292,6 +419,8 @@
         <span class="doubloons" id="myDoubloons">🪙 0</span>
         <span class="kills" id="myKills">⚔️ 0</span>
         <span class="deaths" id="myDeaths">💀 0</span>
+        <span class="status-auto-on" id="autoFireStatus">[F] AUTO FIRE</span>
+        <span class="status-fps" id="fpsIndicator">FPS 0</span>
       </div>
     </div>
   </div>
@@ -365,6 +494,27 @@
     <div class="divider">or</div>
     <button class="solo-btn" id="soloBtn">🏴‍☠️ Solo Adventure</button>
     <div class="status" id="connStatus">Connecting…</div>
+    <div class="join-guide">
+      <div class="join-guide-title">Before You Sail</div>
+      <div class="join-guide-grid">
+        <div class="join-guide-card">
+          <h2>Move</h2>
+          <p>Use <strong>W</strong> to row, <strong>A</strong> and <strong>D</strong> to steer, <strong>S</strong> to brake, <strong>Space</strong> to open or close sails, and <strong>X</strong> to drop anchor.</p>
+        </div>
+        <div class="join-guide-card">
+          <h2>Fight</h2>
+          <p>Point your broadside with the mouse and click to fire cannons. Press <strong>F</strong> to toggle auto-fire. Keep enemies on your port or starboard side to land volleys.</p>
+        </div>
+        <div class="join-guide-card">
+          <h2>Goal</h2>
+          <p>Stay alive, sink enemy ships, and finish the round with as many doubloons as possible. Strong rounds come from doubloons plus good PvP kill-to-death performance.</p>
+        </div>
+        <div class="join-guide-card">
+          <h2>Doubloons And Upgrades</h2>
+          <p>Collect floating doubloons from kills and pickups by sailing into them. When you earn enough doubloons, you level up and choose one of three upgrades with <strong>1</strong>, <strong>2</strong>, or <strong>3</strong>.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -388,6 +538,18 @@
           <thead><tr><th>Player</th><th>Lifetime</th><th>Best</th><th>Rounds</th></tr></thead>
           <tbody id="persistentScoreBody"></tbody>
         </table>
+      </div>
+    </div>
+    <div class="phase-vote-grid">
+      <div class="phase-card">
+        <h3>Next Round Vote</h3>
+        <div class="vote-help">Vote between rounds to tune enemy count, map size, island count, and island size for the next lobby-style round.</div>
+        <div id="roundVotePanel"></div>
+      </div>
+      <div class="phase-card">
+        <h3>Next Round JSON</h3>
+        <div class="phase-json-note">Source: /data/multiplayer-round-options.json</div>
+        <pre class="phase-json" id="roundConfigJson">{}</pre>
       </div>
     </div>
   </div>
@@ -422,6 +584,8 @@ const myGlobalScoreEl = document.getElementById('myGlobalScore');
 const myDoubloonsEl = document.getElementById('myDoubloons');
 const myKillsEl = document.getElementById('myKills');
 const myDeathsEl = document.getElementById('myDeaths');
+const autoFireStatusEl = document.getElementById('autoFireStatus');
+const fpsIndicatorEl = document.getElementById('fpsIndicator');
 const leaderboardEl = document.getElementById('leaderboard');
 const killFeedEl = document.getElementById('killFeed');
 const scoreboardEl = document.getElementById('scoreboard');
@@ -453,6 +617,8 @@ const phaseTitle = document.getElementById('phaseTitle');
 const phaseSub = document.getElementById('phaseSub');
 const roundScoreBody = document.getElementById('roundScoreBody');
 const persistentScoreBody = document.getElementById('persistentScoreBody');
+const roundVotePanel = document.getElementById('roundVotePanel');
+const roundConfigJsonEl = document.getElementById('roundConfigJson');
 
 // ─── State ───
 let ws = null;
@@ -467,6 +633,8 @@ let stateTime = 0;
 const SERVER_TICK_MS = 50;
 let worldData = null;       // Client-side generated world (islands from seed)
 let currentSeed = null;
+let currentRoundConfig = null;
+let currentRoundCatalog = null;
 let pendingOffer = null;       // Active upgrade offer or null
 let villageDebugEnabled = false;
 let startingPicksRemaining = 0; // Countdown for the 3-pick starting bonus sequence
@@ -479,6 +647,7 @@ let playersListExpanded = window.matchMedia('(min-width: 901px)').matches;
 let destroyedVillageFxSeen = new Set();
 const shipDamageMarkState = new Map(); // shipId -> { marks: Array<{x,y,size,rot,sides,state,fadeEndMs}> }
 const SHIP_DAMAGE_PATCH_LINGER_MS = 2200;
+let lastRoundVoteRenderKey = '';
 
 // Input
 const input = { forward: false, brake: false, turnLeft: false, turnRight: false, sailOpen: true, anchored: false };
@@ -521,7 +690,9 @@ function connect() {
         }
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
-          worldData = generateWorld(currentSeed);
+          currentRoundConfig = msg.roundConfig || currentRoundConfig;
+          currentRoundCatalog = msg.roundCatalog || currentRoundCatalog;
+          worldData = generateWorld(currentSeed, currentRoundConfig || undefined);
           destroyedVillageFxSeen.clear();
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
@@ -538,6 +709,8 @@ function connect() {
       case 'state':
         prevState = currState;
         currState = msg;
+        currentRoundConfig = msg.roundConfig || currentRoundConfig;
+        currentRoundCatalog = msg.roundCatalog || currentRoundCatalog;
         if (Array.isArray(msg.persistentLeaderboard)) {
           persistentLeaderboard = msg.persistentLeaderboard;
         }
@@ -578,7 +751,7 @@ function connect() {
         }
         if (msg.roundSeed && msg.roundSeed !== currentSeed) {
           currentSeed = msg.roundSeed;
-          worldData = generateWorld(currentSeed);
+          worldData = generateWorld(currentSeed, currentRoundConfig || undefined);
           destroyedVillageFxSeen.clear();
           initClouds(worldData.width || 4000, worldData.height || 4000);
         }
@@ -1430,13 +1603,14 @@ function updatePhaseOverlay(st) {
   const inResults = st?.roundPhase === 'results';
   if (!inResults) {
     phaseOverlay.classList.add('hidden');
+    lastRoundVoteRenderKey = '';
     return;
   }
 
   phaseOverlay.classList.remove('hidden');
   phaseTitle.textContent = 'Main Chain — Round Complete';
   const t = Math.max(0, Math.ceil(st.phaseTimer || 0));
-  phaseSub.textContent = `Returning to next round in ${t}s`;
+  phaseSub.textContent = `Vote on the next round loadout and map in ${t}s`;
 
   const summaryPlayers = (latestRoundSummary?.players || []).slice();
   summaryPlayers.sort((a, b) => {
@@ -1474,7 +1648,58 @@ function updatePhaseOverlay(st) {
       </tr>`;
     }).join('');
   }
+
+  updateRoundVotePanel(st.roundVoteState || null);
 }
+
+function updateRoundVotePanel(roundVoteState) {
+  if (!roundVotePanel || !roundConfigJsonEl) return;
+
+  const voteCategories = Array.isArray(currentRoundCatalog?.voteCategories) ? currentRoundCatalog.voteCategories : [];
+  const selections = roundVoteState?.selections || {};
+  const playerSelections = selections[String(myId)] || {};
+  const nextRoundConfig = roundVoteState?.nextRoundConfig || currentRoundConfig || {};
+  const renderKey = JSON.stringify({ voteCategories, roundVoteState, myId, currentRoundConfig });
+  if (renderKey === lastRoundVoteRenderKey) return;
+  lastRoundVoteRenderKey = renderKey;
+
+  if (voteCategories.length === 0) {
+    roundVotePanel.innerHTML = '<div class="phase-empty">Voting options unavailable.</div>';
+    roundConfigJsonEl.textContent = JSON.stringify(nextRoundConfig, null, 2);
+    return;
+  }
+
+  roundVotePanel.innerHTML = voteCategories.map((category) => {
+    const tallies = roundVoteState?.tallies?.[category.id] || {};
+    const winner = roundVoteState?.winners?.[category.id] || category.defaultChoiceId;
+    return `
+      <div class="vote-category">
+        <div class="vote-category-title">${esc(category.label)}</div>
+        <div class="vote-choice-row">
+          ${category.choices.map((choice) => {
+            const selected = playerSelections[category.id] === choice.id;
+            const winnerClass = winner === choice.id ? ' winner' : '';
+            const selectedClass = selected ? ' selected' : '';
+            const votes = Math.floor(tallies[choice.id] || 0);
+            return `<button class="vote-btn${selectedClass}${winnerClass}" data-vote-category="${esc(category.id)}" data-vote-choice="${esc(choice.id)}">${esc(choice.label)}<span class="vote-count">${votes}</span></button>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  roundConfigJsonEl.textContent = JSON.stringify(nextRoundConfig, null, 2);
+}
+
+phaseOverlay.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-vote-category][data-vote-choice]');
+  if (!button || !ws || ws.readyState !== 1) return;
+  if (currState?.roundPhase !== 'results') return;
+  ws.send(JSON.stringify({
+    type: 'roundVote',
+    categoryId: button.dataset.voteCategory,
+    choiceId: button.dataset.voteChoice
+  }));
+});
 
 // ─── Kill feed ───
 function addKillFeed(killer, victim) {
@@ -1528,6 +1753,29 @@ function stableNumericSeed(id) {
 // ─── Rendering ───
 function toScreen(wx, wy, cam, zoom) {
   return { x: (wx - cam.x) * zoom, y: (wy - cam.y) * zoom };
+}
+
+function getWorldScreenRect(world, cam, zoom) {
+  const tl = toScreen(0, 0, cam, zoom);
+  const br = toScreen(world.width, world.height, cam, zoom);
+  return {
+    x: tl.x,
+    y: tl.y,
+    width: br.x - tl.x,
+    height: br.y - tl.y
+  };
+}
+
+function clampCameraToWorld(world, targetX, targetY, zoom) {
+  const viewportWidth = canvas.width / zoom;
+  const viewportHeight = canvas.height / zoom;
+  const maxX = Math.max(0, world.width - viewportWidth);
+  const maxY = Math.max(0, world.height - viewportHeight);
+
+  return {
+    x: clamp(targetX, 0, maxX),
+    y: clamp(targetY, 0, maxY)
+  };
 }
 
 // ─── Island rendering ───
@@ -1894,10 +2142,16 @@ function draw() {
   const baseZoom = 2.4;
   const bonusZoom = (viewShip.lookoutRangeBonus || 0) * -0.003;
   const zoom = Math.max(1.3, Math.min(3.0, baseZoom + bonusZoom));
-  const cam = {
-    x: viewShip.x - canvas.width / (2 * zoom),
-    y: viewShip.y - canvas.height / (2 * zoom)
-  };
+  const cam = clampCameraToWorld(
+    st.world,
+    viewShip.x - canvas.width / (2 * zoom),
+    viewShip.y - canvas.height / (2 * zoom),
+    zoom
+  );
+  const worldRect = getWorldScreenRect(st.world, cam, zoom);
+
+  ctx.fillStyle = '#020202';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Tick particles
   tickParticles(dt);
@@ -1918,18 +2172,23 @@ function draw() {
   // Cap particles
   while (particles.length > 600) particles.shift();
 
-  // Water grid
-  drawWaterGrid(cam, zoom);
-
-  // Wake particles (below ships)
+  // Water grid + low-layer particles stay inside the playable world.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(worldRect.x, worldRect.y, worldRect.width, worldRect.height);
+  ctx.clip();
+  drawWaterGrid(cam, zoom, st.world);
   drawParticles(cam, zoom, 'below');
+  ctx.restore();
 
   // World boundary
-  const tl = toScreen(0, 0, cam, zoom);
-  const br = toScreen(st.world.width, st.world.height, cam, zoom);
-  ctx.strokeStyle = 'rgba(80,140,180,0.3)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  ctx.save();
+  ctx.strokeStyle = '#cf2f2f';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 8]);
+  ctx.lineDashOffset = -((st.time || 0) * 22);
+  ctx.strokeRect(worldRect.x, worldRect.y, worldRect.width, worldRect.height);
+  ctx.restore();
 
   // Islands
   drawIslands(cam, zoom, st.worldBuildings);
@@ -2057,18 +2316,6 @@ function draw() {
     }
   }
 
-  // FPS counter + auto-fire badge
-  ctx.save();
-  ctx.font = '11px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(6, 6, 104, 36);
-  ctx.fillStyle = '#a8d8a8';
-  ctx.fillText(`${_fps} FPS`, 10, 20);
-  ctx.fillStyle = autoFireEnabled ? '#ffcc44' : '#6a8898';
-  ctx.fillText(`[F] ${autoFireEnabled ? 'AUTO FIRE ●' : 'manual fire'}`, 10, 34);
-  ctx.restore();
-
   // Scoreboard
   if (tabHeld && st.roundPhase === 'playing') {
     scoreboardEl.classList.add('visible');
@@ -2078,12 +2325,12 @@ function draw() {
   }
 }
 
-function drawWaterGrid(cam, zoom) {
+function drawWaterGrid(cam, zoom, world) {
   const tileSize = 32;
-  const startTX = Math.floor(cam.x / tileSize);
-  const startTY = Math.floor(cam.y / tileSize);
-  const endTX = Math.ceil((cam.x + canvas.width / zoom) / tileSize);
-  const endTY = Math.ceil((cam.y + canvas.height / zoom) / tileSize);
+  const startTX = Math.max(0, Math.floor(cam.x / tileSize));
+  const startTY = Math.max(0, Math.floor(cam.y / tileSize));
+  const endTX = Math.min(Math.ceil(world.width / tileSize), Math.ceil((cam.x + canvas.width / zoom) / tileSize));
+  const endTY = Math.min(Math.ceil(world.height / tileSize), Math.ceil((cam.y + canvas.height / zoom) / tileSize));
   const time = performance.now() / 1000;
   const wind = currState?.wind || { x: 0.7, y: 0.2 };
   const windMag = Math.hypot(wind.x, wind.y) || 1;
@@ -2653,6 +2900,14 @@ function updateHud(st) {
     if (myGlobalScoreEl) myGlobalScoreEl.textContent = '★ 0';
     xpFillEl.style.width = '0%';
     xpTextEl.textContent = '0/10';
+  }
+
+  if (autoFireStatusEl) {
+    autoFireStatusEl.textContent = `[F] ${autoFireEnabled ? 'AUTO FIRE' : 'MANUAL FIRE'}`;
+    autoFireStatusEl.className = autoFireEnabled ? 'status-auto-on' : 'status-auto-off';
+  }
+  if (fpsIndicatorEl) {
+    fpsIndicatorEl.textContent = `FPS ${_fps}`;
   }
 
   const roundRows = Object.entries(st.players)

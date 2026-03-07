@@ -41,7 +41,7 @@ export function createGameState() {
     particles: [],
     gameOver: false,
     upgradesOffered: null,
-    wind: { x: 0.35, y: -0.12, timer: 0 },
+    wind: { x: 0.42, y: -0.14, timer: 0 },
     world: { width: 3600, height: 2600 },
     camera: { x: 0, y: 0 },
     zoom: 2.0,

@@ -2833,3 +2833,36 @@
 [2026-03-06T02:11:59.111Z] Pirate Survivor server running on http://localhost:3000
 [2026-03-06T02:11:59.111Z] Open http://localhost:3000 in your browser to play.
 [2026-03-06T02:11:59.108Z] Chat persistence mode: memory
+[2026-03-06T20:12:04.035Z] Leaderboard DB path: :memory:
+[2026-03-06T20:12:04.037Z] Leaderboard persistence mode: memory
+[2026-03-06T20:12:04.037Z] Chat DB path: :memory:
+[2026-03-06T20:12:04.037Z] Chat persistence mode: memory
+[2026-03-06T20:12:04.037Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-06T20:12:04.037Z] Loaded 0 chat messages for replay.
+[2026-03-06T20:12:04.040Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-06T20:12:04.040Z] Open http://localhost:3000 in your browser to play.
+[2026-03-06T20:12:04.040Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-06T20:12:36.514Z] 404 /favicon.ico
+[2026-03-06T20:12:38.771Z] Player 1 (test) joined. Total: 1
+[2026-03-06T20:12:38.794Z] 404 /favicon.ico
+[2026-03-06T20:16:55.510Z] Player 2 (test2) joined. Total: 2
+[2026-03-06T20:16:55.527Z] 404 /favicon.ico
+[2026-03-06T20:18:55.260Z] Player 3 (TEST5) joined. Total: 3
+[2026-03-06T20:18:55.276Z] 404 /favicon.ico
+[2026-03-06T20:24:32.871Z] Player 3 disconnected. Remaining: 2
+[2026-03-06T20:33:38.430Z] Player 1 disconnected. Remaining: 1
+[2026-03-06T20:33:39.982Z] 404 /favicon.ico
+[2026-03-06T20:33:40.766Z] Player 4 (TESTG) joined. Total: 2
+[2026-03-06T20:38:01.621Z] Player 2 disconnected. Remaining: 1
+[2026-03-06T20:38:04.489Z] Player 5 (testggg) joined. Total: 2
+[2026-03-06T20:38:04.506Z] 404 /favicon.ico
+[2026-03-06T20:40:12.176Z] Player 4 disconnected. Remaining: 1
+[2026-03-06T20:41:00.726Z] Player 5 disconnected. Remaining: 0
+[2026-03-06T20:41:02.333Z] Player 6 (Pirate) joined. Total: 1
+[2026-03-06T20:41:02.360Z] 404 /favicon.ico
+[2026-03-06T20:41:37.783Z] Player 7 (Pirate) joined. Total: 2
+[2026-03-06T20:41:37.811Z] 404 /favicon.ico
+[2026-03-06T22:45:53.440Z] Player 7 disconnected. Remaining: 1
+[2026-03-06T22:45:57.329Z] Player 6 disconnected. Remaining: 0
+[2026-03-07T02:02:02.216Z] Player 8 (Pirate) joined. Total: 1
+[2026-03-07T02:22:55.901Z] Player 8 disconnected. Remaining: 0

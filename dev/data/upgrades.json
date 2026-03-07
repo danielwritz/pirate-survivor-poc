@@ -262,7 +262,7 @@
     {
       "id": "iron-ram-prow",
       "name": "Iron Ram Prow",
-      "desc": "Deadlier collisions, ram visual",
+      "desc": "High-speed bow-first collisions hit much harder",
       "rules": [
         { "op": "set", "path": "player.ram", "value": true },
         { "op": "add", "path": "player.ramDamage", "value": 38 },

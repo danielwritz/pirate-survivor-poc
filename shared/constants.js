@@ -9,10 +9,12 @@ export const TICK_INTERVAL = 1 / TICK_RATE;
 export const ROUND_DURATION = 10 * 60;        // 10 minutes
 
 // ─── World ───
-export const WORLD_WIDTH = 3600;
-export const WORLD_HEIGHT = 2600;
+export const WORLD_WIDTH = 3000;
+export const WORLD_HEIGHT = 2100;
 export const WORLD_EDGE_PAD = 24;
 export const WIND_SHIFT_INTERVAL = 18;
+export const WIND_STRENGTH_BASE = 0.24;
+export const WIND_STRENGTH_RANGE = 0.4;
 
 // ─── Ship defaults ───
 export const BASE_SPEED = 2.6;
@@ -34,8 +36,9 @@ export const ROW_ACCEL_BASE = 0.14;
 export const ROW_ACCEL_PER_ROWER = 0.075;
 export const ENEMY_ROW_ACCEL_BASE = 0.12;
 export const ENEMY_ROW_ACCEL_PER_ROWER = 0.06;
-export const SAIL_PUSH_BASE = 0.11;
-export const SAIL_PUSH_SIZE_FACTOR = 0.0018;
+export const SAIL_PUSH_BASE = 0.15;
+export const SAIL_PUSH_SIZE_FACTOR = 0.0024;
+export const SAIL_UPWIND_FACTOR = 0.42;
 export const TURN_BASE = 0.036;
 export const TURN_RUDDER = 0.006;
 export const TURN_ROWER = 0.002;
@@ -93,10 +96,16 @@ export const FIRE_DURATION_BASE = 3.0;        // seconds
 
 // ─── Collision ───
 export const COLLISION_RADIUS_MUL = 0.72;
-export const IMPACT_COOLDOWN = 0.28;
+export const IMPACT_COOLDOWN = 0.18;
 export const MIN_IMPACT_SPEED = 0.55;
+export const MIN_IMPACT_SPEED_DIFF = 0.3;
 export const RESTITUTION = 0.24;
-export const RAM_MULTIPLIER = 1.55;
+export const RAM_BOW_THRESHOLD = 0.42;
+export const RAM_DAMAGE_SCALE = 0.075;
+export const RAM_SPEED_BASE = 0.18;
+export const RAM_SPEED_FACTOR = 0.72;
+export const RAM_SPEED_ADVANTAGE_FACTOR = 0.28;
+export const RAM_MULTIPLIER = 1.15;
 export const RAM_SELF_REDUCTION = 0.24;
 
 // ─── HP / Repair ───
@@ -123,13 +132,13 @@ export const XP_ADD = 3;
 export const PASSIVE_DOUBLOON_RATE = 0.5;     // doubloons/second for staying alive
 
 // ─── NPC ───
-export const MAX_NPCS = 10;
-export const NPC_SPAWN_INTERVAL_BASE = 4.0;    // seconds between spawns, decreases with time
+export const MAX_NPCS = 20;
+export const NPC_SPAWN_INTERVAL_BASE = 3.5;    // seconds between spawns, decreases with time
 export const NPC_BASE_DOUBLOON_REWARD = 3;
 export const NPC_DOUBLOON_PER_UPGRADE = 2;
 
 // ─── Islands ───
-export const ISLAND_COUNT = 24;
+export const ISLAND_COUNT = 18;
 export const ISLAND_CONTACT_SPEED_MUL = 0.25;
 export const ISLAND_CONTACT_DMG_BASE = 3.5;
 export const ISLAND_CONTACT_DMG_MASS = 0.03;
