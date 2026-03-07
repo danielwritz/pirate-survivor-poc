@@ -1,0 +1,89 @@
+story: 8
+title: "Rebalance Pass"
+pr: 16
+branch: "feature/rebalance-v0.7"
+
+scenarios:
+  - id: "review_level_pacing_checkpoints"
+    weight: 5
+    description: |
+      A player should progress through levels at a pace that matches the
+      4-stage structure: modest power in Calm Waters, growing through
+      Contested Seas, powerful by War Zone, dominant by Kraken Frontier.
+    setup: |
+      Simulate a player earning XP at a reasonable rate (killing ~1 NPC every 5-10 seconds).
+      Track their level at t=120, t=300, t=480, t=600.
+    verify: |
+      - At t=120 (end of Calm Waters): level ~3-6
+      - At t=300 (end of Contested Seas): level ~10-14
+      - At t=480 (end of War Zone): level ~16-19
+      - At t=600 (end of round): level ~18-22
+      - Levels should be monotonically increasing
+    edge_cases:
+      - "A player who earns no XP should stay at level 1"
+      - "A player who chain-kills from second 1 should not hit level 20 before minute 3"
+
+  - id: "review_power_ratio_early_vs_late"
+    weight: 4
+    description: |
+      A max-level ship should feel dramatically more powerful than a level-1 ship.
+      This is the core power fantasy — you started weak and ended strong.
+    setup: |
+      Create a ship at level 1 and a ship at level 20.
+      Compare: maxHp, size, weapon slots.
+    verify: |
+      - Level 20 maxHp is at least 2.5x level 1 maxHp
+      - Level 20 size is noticeably larger (at least 1.5x level 1 size)
+      - Level 20 has more weapon slots than level 1
+    edge_cases:
+      - "Level 20 should not be SO powerful that late-game NPCs are zero threat"
+
+  - id: "review_npc_threat_scales_late_game"
+    weight: 4
+    description: |
+      Late-game NPCs (tier 8-10) should still pose a real threat to leveled players.
+      If a level-18 player can ignore tier-10 NPCs, the rebalance failed.
+    setup: |
+      Create a tier-10 NPC (with 10 upgrades applied).
+      Create a level-18 player ship.
+      Simulate a few seconds of combat.
+    verify: |
+      - The NPC deals meaningful damage to the player (reduces HP by at least 10% in a few seconds)
+      - The NPC is not so weak that it dies in one hit from the player
+      - The NPC has enough HP to survive at least 3 player cannon hits
+    edge_cases:
+      - "A tier-1 NPC facing a level-18 player SHOULD be a pushover (that's correct)"
+      - "A tier-10 NPC facing a level-1 player should kill them quickly"
+
+  - id: "review_existing_tests_still_pass"
+    weight: 5
+    description: |
+      This is a constants-only story. Changing constants can break existing tests
+      that depend on specific values. All pre-existing tests must still pass.
+    setup: |
+      Run npm test.
+    verify: |
+      - All pre-existing tests pass (not just new ones)
+      - No test file has been deleted or gutted
+      - No test assertions have been weakened to accommodate the new constants
+    edge_cases:
+      - "If a test was changed, the change should make it MORE specific, not less"
+
+  - id: "review_constants_only_no_new_systems"
+    weight: 3
+    description: |
+      This story should ONLY modify constants in shared/constants.js.
+      No new files, no new systems, no structural code changes.
+    setup: |
+      Inspect the PR diff.
+    verify: |
+      - Changes are limited to shared/constants.js and test files
+      - No new source files were created in server/ or shared/
+      - No new exports, classes, or functions were added to production code
+    edge_cases:
+      - "New test files (tests/rebalance.test.js) are acceptable"
+      - "Minor test expectation updates in existing test files are acceptable"
+
+scoring:
+  threshold: 85
+  max_iterations: 3
