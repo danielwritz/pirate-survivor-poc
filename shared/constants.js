@@ -171,3 +171,11 @@ export const CAMERA_ZOOM_BASE = 2.0;
 export const CAMERA_ZOOM_PER_LOOKOUT = -0.0012;  // zoom out as crow's nest grows
 export const CAMERA_ZOOM_MIN = 0.6;
 export const CAMERA_ZOOM_MAX = 2.4;
+
+// ─── Fire Ship Boss ───
+export const FIRE_SHIP_SPEED_MUL = 1.35;          // 35% faster than base NPC speed
+export const FIRE_SHIP_SIZE_MUL = 0.80;            // slightly smaller than standard
+export const FIRE_SHIP_HP_BASE = 60;               // base HP (scales with tier + player count)
+export const FIRE_SHIP_RAM_DAMAGE = 55;            // flat ram damage applied to target on collision
+export const FIRE_SHIP_FIRE_DURATION_MUL = 2.0;   // fire duration multiplier (2× base)
+export const FIRE_SHIP_DOUBLOON_REWARD = 25;       // base doubloon drop on death (scales with tier)
