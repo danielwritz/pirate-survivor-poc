@@ -167,65 +167,88 @@ const runtimeUpgradeCatalog = createUpgradeCatalog(runtimeUpgradeDescriptor);
 const GUN_PIVOT_DEG = 30;
 const GUN_PIVOT_RAD = GUN_PIVOT_DEG * (Math.PI / 180);
 const DEFAULT_STARTER_PRESET_ID = 'balanced-brig';
-const STARTER_SHIP_PRESETS = [
+
+// ─── Persistent save system ───
+const SAVE_KEY = 'pirate_survivor_save';
+function loadSave() {
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { return {}; }
+}
+function writeSave(data) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch {}
+}
+const _save = loadSave();
+let persistentDoubloons = _save.doubloons || 0;
+const unlockedShips = new Set(_save.unlocked || ['balanced-brig', 'iron-broadside', 'swift-cutter']);
+
+// ─── Full ship roster (3 free starters + 4 unlockable with unique weapons) ───
+// specialType: 'ghostCannon' | 'scattershot' | 'fireBomb' | 'chainShot'
+const SHIP_ROSTER = [
   {
-    id: 'balanced-brig',
-    name: 'Balanced Brig',
+    id: 'balanced-brig', name: 'Balanced Brig', cost: 0,
     desc: 'Reliable mixed broadside with steady crew coverage.',
-    hullDesign: {
-      bodyHalfLenMul: 0.56,
-      bodyHalfBeamMul: 0.66,
-      sternBeamMul: 0.94,
-      bowTipMul: 0.6,
-      sternTipMul: 0.42
-    },
-    gunPerSide: 2,
-    cannonPerSide: 1,
-    rowers: 1,
-    gunners: 4,
-    repairCrew: 1,
-    crew: 6,
-    cannonPivot: 0
+    theme: 'The reliable workhorse.',
+    hullDesign: { bodyHalfLenMul: 0.56, bodyHalfBeamMul: 0.66, sternBeamMul: 0.94, bowTipMul: 0.6, sternTipMul: 0.42 },
+    gunPerSide: 2, cannonPerSide: 1, rowers: 1, gunners: 4, repairCrew: 1, crew: 6, cannonPivot: 0
   },
   {
-    id: 'iron-broadside',
-    name: 'Iron Broadside',
+    id: 'iron-broadside', name: 'Iron Broadside', cost: 0,
     desc: 'Cannon-heavy hull built to punish side-on engagements.',
-    hullDesign: {
-      bodyHalfLenMul: 0.62,
-      bodyHalfBeamMul: 0.84,
-      sternBeamMul: 1.04,
-      bowTipMul: 0.45,
-      sternTipMul: 0.28
-    },
-    gunPerSide: 2,
-    cannonPerSide: 1,
-    rowers: 0,
-    gunners: 5,
-    repairCrew: 1,
-    crew: 6,
-    cannonPivot: 0
+    theme: 'Raw broadside power.',
+    hullDesign: { bodyHalfLenMul: 0.62, bodyHalfBeamMul: 0.84, sternBeamMul: 1.04, bowTipMul: 0.45, sternTipMul: 0.28 },
+    gunPerSide: 1, cannonPerSide: 2, rowers: 0, gunners: 5, repairCrew: 1, crew: 6, cannonPivot: 0
   },
   {
-    id: 'swift-cutter',
-    name: 'Swift Cutter',
+    id: 'swift-cutter', name: 'Swift Cutter', cost: 0,
     desc: 'Fast skirmisher with musket-focused pressure.',
-    hullDesign: {
-      bodyHalfLenMul: 0.78,
-      bodyHalfBeamMul: 0.46,
-      sternBeamMul: 0.62,
-      bowTipMul: 0.98,
-      sternTipMul: 0.6
-    },
-    gunPerSide: 2,
-    cannonPerSide: 1,
-    rowers: 2,
-    gunners: 3,
-    repairCrew: 0,
-    crew: 5,
-    cannonPivot: 0
+    theme: 'Speed and volleys.',
+    hullDesign: { bodyHalfLenMul: 0.78, bodyHalfBeamMul: 0.46, sternBeamMul: 0.62, bowTipMul: 0.98, sternTipMul: 0.6 },
+    gunPerSide: 3, cannonPerSide: 0, rowers: 2, gunners: 3, repairCrew: 0, crew: 5, cannonPivot: 0
+  },
+  {
+    id: 'specter', name: 'The Specter', cost: 250,
+    desc: 'Ghost cannons pierce through multiple enemy hulls in a single shot.',
+    theme: 'Ghost rounds pass through every ship they hit.',
+    hullColor: '#1a3a4e', trimColor: '#0a6a7e', sailColor: '#88dcc8',
+    hullDesign: { bodyHalfLenMul: 0.64, bodyHalfBeamMul: 0.54, sternBeamMul: 0.80, bowTipMul: 0.78, sternTipMul: 0.46 },
+    gunPerSide: 1, cannonPerSide: 0, specialPerSide: 2, specialType: 'ghostCannon',
+    rowers: 1, gunners: 4, repairCrew: 1, crew: 6, cannonPivot: 18
+  },
+  {
+    id: 'hellfire', name: 'Hellfire Brigantine', cost: 350,
+    desc: 'Fire bombs ignite enemies on impact and spread blazing fire.',
+    theme: 'Area denial — one bomb can light up a whole fleet.',
+    hullColor: '#4e1a0e', trimColor: '#a03000', sailColor: '#ff7030',
+    hullDesign: { bodyHalfLenMul: 0.58, bodyHalfBeamMul: 0.74, sternBeamMul: 0.96, bowTipMul: 0.52, sternTipMul: 0.36 },
+    gunPerSide: 1, cannonPerSide: 0, specialPerSide: 2, specialType: 'fireBomb',
+    rowers: 0, gunners: 4, repairCrew: 2, crew: 6, cannonPivot: 12
+  },
+  {
+    id: 'corsair', name: 'The Corsair', cost: 200,
+    desc: 'Scattershot devastates at close range with a wide pellet spread.',
+    theme: 'Point-blank mayhem — close the gap and unload.',
+    hullColor: '#4a3c18', trimColor: '#8a6818', sailColor: '#f5d040',
+    hullDesign: { bodyHalfLenMul: 0.74, bodyHalfBeamMul: 0.50, sternBeamMul: 0.72, bowTipMul: 0.88, sternTipMul: 0.54 },
+    gunPerSide: 0, cannonPerSide: 0, specialPerSide: 3, specialType: 'scattershot',
+    rowers: 2, gunners: 4, repairCrew: 0, crew: 6, cannonPivot: 0
+  },
+  {
+    id: 'man-o-war', name: "Man o' War", cost: 500,
+    desc: 'Chain shot tangles rigging, crippling enemy speed for seconds.',
+    theme: 'Slow them, then destroy them.',
+    hullColor: '#1a1a30', trimColor: '#2e2e7e', sailColor: '#c0c0f0',
+    hullDesign: { bodyHalfLenMul: 0.64, bodyHalfBeamMul: 0.90, sternBeamMul: 1.08, bowTipMul: 0.42, sternTipMul: 0.26 },
+    gunPerSide: 2, cannonPerSide: 0, specialPerSide: 2, specialType: 'chainShot',
+    rowers: 0, gunners: 6, repairCrew: 2, crew: 8, cannonPivot: 8
   }
 ];
+
+// Maps old name to full roster for backward compat
+const STARTER_SHIP_PRESETS = SHIP_ROSTER;
+
+// Weapon types that behave like cannons (use cannonTimer / cannonReload)
+const CANNON_LIKE_TYPES = new Set(['cannon', 'ghostCannon', 'fireBomb', 'chainShot']);
+// Weapon types that behave like guns (use gunTimer / gunReload)
+const GUN_LIKE_TYPES = new Set(['gun', 'scattershot']);
 
 function resizeCanvas() {
   const w = Math.max(900, window.innerWidth);
@@ -245,7 +268,7 @@ function pointerOnCanvas(e) {
   };
 }
 
-const DEVTOOLS_ENEMY_KINDS = ['pirate', 'raider', 'rammer', 'boss'];
+const DEVTOOLS_ENEMY_KINDS = ['pirate', 'raider', 'rammer', 'skiff', 'boss'];
 
 function ensureDevtoolsState() {
   if (!state.devtools) {
@@ -348,6 +371,11 @@ function applyStarterShipPreset(presetId) {
   player.crew = Math.max(committedCrew, preset.crew || committedCrew);
   player.cannonPivot = clamp(preset.cannonPivot || 0, 0, 30);
 
+  // Apply ship theme colors if defined
+  if (preset.hullColor) player.hullColor = preset.hullColor;
+  if (preset.trimColor) player.trimColor = preset.trimColor;
+  if (preset.sailColor) player.sailColor = preset.sailColor;
+
   ensurePlayerWeaponLayout();
   const caps = getShipWeaponCaps(player, player.cannonCapacityBonus);
   const slotCount = Math.max(1, player.weaponLayout.port.length);
@@ -362,11 +390,22 @@ function applyStarterShipPreset(presetId) {
   const laneFromPreset = () => {
     const lane = new Array(slotCount).fill('empty');
     let used = 0;
+    // Special weapons (ghostCannon, fireBomb, chainShot, scattershot) go in first
+    const specials = Math.max(0, preset.specialPerSide || 0);
+    const specType = preset.specialType || null;
+    if (specType && specials > 0) {
+      for (let i = 0; i < specials && used < order.length; i++) {
+        lane[order[used]] = specType;
+        used += 1;
+      }
+    }
+    // Standard cannons
     const cannons = Math.min(caps.maxCannonsPerSide, preset.cannonPerSide || 0);
-    for (let i = 0; i < cannons && i < order.length; i++) {
-      lane[order[i]] = 'cannon';
+    for (let i = 0; i < cannons && used < order.length; i++) {
+      lane[order[used]] = 'cannon';
       used += 1;
     }
+    // Standard guns
     const guns = Math.max(0, preset.gunPerSide || 0);
     for (let i = 0; i < guns && used < order.length; i++) {
       lane[order[used]] = 'gun';
@@ -387,7 +426,7 @@ function applyStarterShipPreset(presetId) {
   sy.pendingCost = 0;
   sy.starterPresetId = preset.id;
   sy.starterPresetChosen = true;
-  sy.message = `Starter preset loaded: ${preset.name}. Tweak it or launch.`;
+  sy.message = `${preset.name} selected. Tweak it or launch.`;
   return true;
 }
 
@@ -521,6 +560,14 @@ function pickShipyardWeaponSlot(px, py) {
 canvas.addEventListener('pointerdown', (e) => {
   const p = pointerOnCanvas(e);
 
+  if (state.gameOver) {
+    const r = state.gameOverReturnRect;
+    if (r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
+      resetForNewRun();
+    }
+    return;
+  }
+
   if (state.mode === 'combat') {
     const devtools = ensureDevtoolsState();
     devtools.cursorWorld = screenToWorld(p.x, p.y);
@@ -542,7 +589,21 @@ canvas.addEventListener('pointerdown', (e) => {
   if (sy.freeEdit) {
     for (const rect of sy.starterPresetRects || []) {
       if (isPointInRect(p.x, p.y, rect)) {
-        applyStarterShipPreset(rect.id);
+        if (rect.isUnlocked) {
+          applyStarterShipPreset(rect.id);
+        } else if (rect.canAfford) {
+          // Unlock the ship
+          persistentDoubloons -= rect.cost;
+          unlockedShips.add(rect.id);
+          const sv = loadSave();
+          sv.doubloons = persistentDoubloons;
+          sv.unlocked = [...unlockedShips];
+          writeSave(sv);
+          applyStarterShipPreset(rect.id);
+          sy.message = `Unlocked ${SHIP_ROSTER.find(s => s.id === rect.id)?.name}!`;
+        } else {
+          sy.message = `Need ${rect.cost} doubloons to unlock. Earn more by playing!`;
+        }
         return;
       }
     }
@@ -801,7 +862,8 @@ function firePlayerCannonsAtCursor(sideSign) {
   let dirYAcc = 0;
 
   for (let i = 0; i < totalSlots; i++) {
-    if (lane[i] !== 'cannon') continue;
+    const slotType = lane[i];
+    if (!CANNON_LIKE_TYPES.has(slotType)) continue;
     if ((timerLane[i] || 0) > 0.001) continue;
 
     const mount = getHullSideMount(shape, i, totalSlots, sideSign, 0.12, 0.88);
@@ -814,21 +876,27 @@ function firePlayerCannonsAtCursor(sideSign) {
 
     const mountWorldAngle = player.heading + Math.atan2(mount.ny, mount.nx);
     const adjust = clamp(angleDiff(targetAngle, mountWorldAngle), -pivotRad, pivotRad);
-    const dir = mountWorldAngle + adjust + (Math.random() - 0.5) * 0.1;
+    const spread = (Math.random() - 0.5) * 0.1;
+    const dir = mountWorldAngle + adjust + spread;
     const dirX = Math.cos(dir);
     const dirY = Math.sin(dir);
 
+    // Build bullet based on slot type
+    let bulletProps = {};
+    if (slotType === 'ghostCannon') {
+      bulletProps = { vx: dirX * (player.bulletSpeed + 0.55), vy: dirY * (player.bulletSpeed + 0.55), dmg: player.bulletDamage + 5, maxRange: ranges.cannon, weaponType: 'ghostCannon', piercing: true, hitEnemies: new Set() };
+    } else if (slotType === 'fireBomb') {
+      bulletProps = { vx: dirX * (player.bulletSpeed * 0.52), vy: dirY * (player.bulletSpeed * 0.52), dmg: player.bulletDamage + 3, maxRange: ranges.cannon * 0.80, weaponType: 'fireBomb', isBomb: true };
+    } else if (slotType === 'chainShot') {
+      bulletProps = { vx: dirX * (player.bulletSpeed + 0.25), vy: dirY * (player.bulletSpeed + 0.25), dmg: player.bulletDamage + 6, maxRange: ranges.cannon * 0.90, weaponType: 'chainShot', isChain: true };
+    } else {
+      bulletProps = { vx: dirX * (player.bulletSpeed + 0.45), vy: dirY * (player.bulletSpeed + 0.45), dmg: player.bulletDamage + 4, maxRange: ranges.cannon };
+    }
+
     state.bullets.push({
-      x: spawnX,
-      y: spawnY,
-      vx: dirX * (player.bulletSpeed + 0.45),
-      vy: dirY * (player.bulletSpeed + 0.45),
-      dmg: player.bulletDamage + 4,
-      heavy: true,
-      owner: 'player',
-      sourceSize: player.size,
-      maxRange: ranges.cannon,
-      travel: 0
+      x: spawnX, y: spawnY,
+      heavy: true, owner: 'player', sourceSize: player.size, travel: 0,
+      ...bulletProps
     });
 
     timerLane[i] = reload;
@@ -876,7 +944,7 @@ function drawCursorCannonReloadIndicators(cursorScreenX, cursorScreenY) {
 
   const cannonIndices = [];
   for (let i = 0; i < lane.length; i++) {
-    if (lane[i] === 'cannon') cannonIndices.push(i);
+    if (CANNON_LIKE_TYPES.has(lane[i])) cannonIndices.push(i);
   }
   if (!cannonIndices.length) return;
 
@@ -937,13 +1005,13 @@ function getPlayerWeaponCounts() {
   let starCannons = 0;
 
   for (let i = 0; i < port.length; i++) {
-    if (port[i] === 'gun') gunTotal += 1;
-    if (port[i] === 'cannon') {
+    if (GUN_LIKE_TYPES.has(port[i])) gunTotal += 1;
+    if (CANNON_LIKE_TYPES.has(port[i])) {
       cannonTotal += 1;
       portCannons += 1;
     }
-    if (star[i] === 'gun') gunTotal += 1;
-    if (star[i] === 'cannon') {
+    if (GUN_LIKE_TYPES.has(star[i])) gunTotal += 1;
+    if (CANNON_LIKE_TYPES.has(star[i])) {
       cannonTotal += 1;
       starCannons += 1;
     }
@@ -1292,6 +1360,78 @@ function updateShipValueTier() {
   state.shipValueTier = clamp(Math.floor(getShipValueScore() / 120), 0, 14);
 }
 
+function resetForNewRun() {
+  // Reset player fields in-place (can't reassign const)
+  Object.assign(player, {
+    x: 1800, y: 1300,
+    hp: 20, maxHp: 20,
+    size: 16,
+    heading: -Math.PI / 2,
+    speed: 0,
+    baseSpeed: 2.6,
+    gunReload: 1.35, cannonReload: 3.4,
+    gunTimer: 1.35, cannonTimer: 3.4,
+    bulletDamage: 9, bulletSpeed: 6,
+    rowers: 0, gunners: 2, repairCrew: 0,
+    cannons: 0, cannonCapacityBonus: 0, cannonPivot: 0,
+    crew: 2, rudder: 0,
+    sailOpen: true, anchorDropped: false,
+    collectorSkiffs: [], salvageSkiffCount: 0,
+    lookoutRangeBonus: 0, hullArmorTier: 0,
+    ram: false, ramDamage: 46, mass: 28,
+    hullLength: 1, hullBeam: 1, bowSharpness: 1, sternTaper: 1,
+    impactTimer: 0, repairSuppressed: 0, damageSeed: 1337,
+    slots: [],
+    hullColor: '#5f4630', sailColor: '#f0f7ff', trimColor: '#d9b78d',
+    mastScale: 1, maneuverPenalty: 0,
+    weaponLayout: { port: [], starboard: [] },
+    hullDesign: { bodyHalfLenMul: 0.58, bodyHalfBeamMul: 0.72, sternBeamMul: 1, bowTipMul: 0.55, sternTipMul: 0.4 },
+    upgrades: [],
+    kills: 0, doubloons: 0,
+    level: 1, xp: 0,
+    onFire: false, fireTimer: 0, fireDamageTimer: 0,
+    chainSlowTimer: 0, chainSlowOrigSpeed: null,
+  });
+  // Reset transient state
+  state.time = 0;
+  state.gold = 100;
+  state.level = 1;
+  state.xp = 0;
+  state.xpToNext = 10;
+  state.stageIndex = 0;
+  state.stageTimer = 0;
+  state.difficultyTier = 0;
+  state.bossTimer = 0;
+  state.bossesDefeated = 0;
+  state.enemies = [];
+  state.bullets = [];
+  state.drops = [];
+  state.particles = [];
+  state.gameOver = false;
+  state.playerSunk = false;
+  state.upgradesOffered = null;
+  state.difficultyFromSize = 0;
+  state.defenseTier = 0;
+  state.shipValueTier = 0;
+  state.anchorNoticeTimer = 0;
+  state.anchorNoticeText = '';
+  state.playerAim = null;
+  state.bossSpawnedThisStage = false;
+  state.swarmPhase = 'calm';
+  state.swarmTimer = 0;
+  state.swarmCycle = 0;
+  state.islands = [];
+  state.clouds = [];
+  state.camera = { x: 0, y: 0 };
+  state.zoom = 2.0;
+  state.zoomUserOffset = 0;
+  state.wind = { x: 0.42, y: -0.14, timer: 0 };
+  state.rowEffort = 0;
+  state.earnedDoubloons = 0;
+  state.finalScore = 0;
+  setShipyardMode(true);
+}
+
 function setShipyardMode(freeEdit) {
   ensurePlayerWeaponLayout();
   state.mode = 'shipyard';
@@ -1436,6 +1576,9 @@ function launchFromShipyard() {
   state.stageTimer = 0;
   state.bossTimer = 0;
   state.bossSpawnedThisStage = false;
+  state.swarmPhase = 'calm';
+  state.swarmTimer = 0;
+  state.swarmCycle = 0;
   state.enemies = [];
   state.bullets = [];
   state.particles = [];
@@ -2054,6 +2197,7 @@ function spawnBuildingFireFx(building, intensity = 0.5) {
 
 function enemyThreatTier(kind, stageIndex, difficultyTier) {
   if (kind === 'boss') return 5;
+  if (kind === 'skiff') return 1;
   const raw = 1 + Math.floor((stageIndex * 0.65 + difficultyTier) * 0.5);
   return clamp(raw + (kind === 'raider' ? 1 : 0), 1, 4);
 }
@@ -2069,6 +2213,16 @@ function getEnemyVisualStyle(enemyId, kind, squadId, stageIndex, difficultyTier)
       flagAccent: '#ffe0ea',
       flagStripes: 5,
       teamHue: 342
+    };
+  }
+  if (kind === 'skiff') {
+    return {
+      hullColor: '#2a2a1e',
+      sailColor: '#5a5040',
+      flagColor: '#8a7a30',
+      flagAccent: '#c8b86a',
+      flagStripes: 1,
+      teamHue: 48
     };
   }
 
@@ -2214,6 +2368,23 @@ function getEnemyAiProfile(enemy) {
       sideSwitchBonus: 0.2,
       fireCommitTime: 0.2,
       avoidEmergencyThreshold: 1.28
+    };
+  }
+  if (enemy.kind === 'skiff') {
+    return {
+      preferredRange: 0.05,
+      broadsideBlend: 0.0,
+      approachBlend: 0.0,
+      shoreWeight: 80,
+      vesselWeight: 60,
+      turnScale: 0.5,
+      rowThreshold: 1.0,
+      brakeRangeScale: 0.1,
+      brakeTurnThreshold: 0.3,
+      fireWindowRangeSizeMul: 1.0,
+      sideSwitchBonus: 0.0,
+      fireCommitTime: 0.0,
+      avoidEmergencyThreshold: 0.9
     };
   }
 
@@ -2592,7 +2763,7 @@ function initWorld() {
     });
   }
 
-  startDirectlyWithStarterShip();
+  setShipyardMode(true);
 }
 
 function buildIslandPolygons(island) {
@@ -2977,11 +3148,12 @@ function spawnEnemyAt(x, y, forcedKind = null) {
   let kind = forcedKind;
   if (!kind) {
     const t = Math.random();
-    kind = 'pirate';
-    if (t > 0.66) kind = 'raider';
+    kind = 'skiff';
+    if (t > 0.45) kind = 'pirate';
+    if (t > 0.68) kind = 'raider';
     if (t > 0.9) kind = 'rammer';
   }
-  if (!['pirate', 'raider', 'rammer'].includes(kind)) kind = 'pirate';
+  if (!['pirate', 'raider', 'rammer', 'skiff'].includes(kind)) kind = 'pirate';
 
   const quality = 1 + state.difficultyTier * 0.045 + state.stageIndex * 0.02 + state.shipValueTier * 0.015 + Math.random() * 0.24;
   const profileSeed = Math.random();
@@ -2993,9 +3165,9 @@ function spawnEnemyAt(x, y, forcedKind = null) {
   const sternTaper = 0.78 + Math.random() * 0.42;
 
   const base = (12 + state.level * 1.2) * difficultyMult;
-  const size = ((kind === 'raider' ? 18 : kind === 'rammer' ? 13 : 15) + state.difficultyFromSize * 0.45) * (0.95 + Math.random() * 0.15);
-  const hp = base * (kind === 'raider' ? 2.1 : kind === 'rammer' ? 1.4 : 1);
-  const baseSpeed = (kind === 'rammer' ? 2.3 : kind === 'raider' ? 1.45 : 1.75) * (1 + cfg.spawnRate * 0.04) * speedBias;
+  const size = ((kind === 'raider' ? 18 : kind === 'rammer' ? 13 : kind === 'skiff' ? 7 : 15) + state.difficultyFromSize * 0.45) * (0.95 + Math.random() * 0.15);
+  const hp = base * (kind === 'raider' ? 2.1 : kind === 'rammer' ? 1.4 : kind === 'skiff' ? 0.3 : 1);
+  const baseSpeed = (kind === 'rammer' ? 2.3 : kind === 'raider' ? 1.45 : kind === 'skiff' ? 2.8 : 1.75) * (1 + cfg.spawnRate * 0.04) * speedBias;
   const enemyCaps = getShipWeaponCaps({
     size,
     hullLength,
@@ -3004,17 +3176,17 @@ function spawnEnemyAt(x, y, forcedKind = null) {
     sternTaper
   }, Math.floor(state.difficultyTier / 4));
 
-  const cannons = clamp(
+  const cannons = kind === 'skiff' ? 0 : clamp(
     Math.max(0, Math.floor(state.difficultyTier / 2) + (kind === 'raider' ? 1 : 0) + Math.floor(Math.random() * (0.4 + artilleryBias * 1.6))),
     0,
     enemyCaps.maxCannonsPerSide
   );
-  const gunners = clamp(
+  const gunners = kind === 'skiff' ? 0 : clamp(
     Math.max(1, 1 + Math.floor(state.difficultyTier / 2) + (kind === 'raider' ? 2 : 1) + Math.floor(Math.random() * 2)),
     1,
     enemyCaps.maxGunners
   );
-  const rowers = 1 + Math.floor(state.stageIndex / 2) + (kind === 'rammer' ? 2 : 0);
+  const rowers = 1 + Math.floor(state.stageIndex / 2) + (kind === 'rammer' || kind === 'skiff' ? 2 : 0);
   const cannonPivot = clamp((Math.floor(state.difficultyTier / 3) * 5) + (Math.random() < 0.32 ? 5 : 0) + Math.floor(Math.random() * 6), 0, 26);
   const squadId = (kind === 'pirate' || kind === 'raider') ? squadAnchor() : null;
   const enemyId = enemyIdSeed++;
@@ -3036,11 +3208,11 @@ function spawnEnemyAt(x, y, forcedKind = null) {
     sailOpen: true,
     gunners,
     cannons,
-    ram: kind === 'rammer',
-    ramDamage: kind === 'rammer' ? 62 : 46,
+    ram: kind === 'rammer' || kind === 'skiff',
+    ramDamage: kind === 'rammer' ? 62 : kind === 'skiff' ? 28 : 46,
     cannonPivot,
-    rudder: kind === 'rammer' ? 2 : 1,
-    mass: 20 + size * 0.9,
+    rudder: kind === 'rammer' ? 2 : kind === 'skiff' ? 3 : 1,
+    mass: kind === 'skiff' ? 5 + size * 0.4 : 20 + size * 0.9,
     gunReload: Math.max(0.66, (1.3 - state.difficultyTier * 0.035) * (1.08 - (quality - 1) * 0.18)),
     cannonReload: Math.max(1.25, (2.8 - state.difficultyTier * 0.04) * (1.14 - (quality - 1) * 0.22)),
     gunTimer: Math.random() * 0.8,
@@ -3190,29 +3362,145 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
   for (let i = 0; i < totalSlots; i++) {
     const type = lane[i] || 'empty';
     if (type === 'empty') continue;
-    const cannonPort = type === 'cannon';
-    if (cannonPort && !allowCannon) continue;
-    if (!cannonPort && !allowGun) continue;
+    const isCannonLike = CANNON_LIKE_TYPES.has(type);
+    const isGunLike = GUN_LIKE_TYPES.has(type);
+    if (isCannonLike && !allowCannon) continue;
+    if (isGunLike && !allowGun) continue;
     if (Math.random() > crewFireChance) continue;
 
     const mount = getHullSideMount(shape, i, totalSlots, sideSign, 0.12, 0.88);
-    const mountLen = cannonPort ? Math.max(8, player.size * 0.48) : Math.max(4.5, player.size * 0.3);
-    const muzzleLift = mountLen + (cannonPort ? 0.7 : 0.35);
+    const mountLen = isCannonLike ? Math.max(8, player.size * 0.48) : Math.max(4.5, player.size * 0.3);
+    const muzzleLift = mountLen + (isCannonLike ? 0.7 : 0.35);
     const localX = mount.x + mount.nx * muzzleLift;
     const localY = mount.y + mount.ny * muzzleLift;
     const spawnX = player.x + forward.x * localX + right.x * localY;
     const spawnY = player.y + forward.y * localX + right.y * localY;
 
-    const spread = (Math.random() - 0.5) * (cannonPort ? 0.12 : 0.18);
     const mountWorldAngle = player.heading + Math.atan2(mount.ny, mount.nx);
     const gunAdjust = clamp(angleDiff(targetAngle, mountWorldAngle), -GUN_PIVOT_RAD, GUN_PIVOT_RAD);
     const cannonAdjust = clamp(angleDiff(targetAngle, mountWorldAngle), -pivotRad, pivotRad);
-    const dir = cannonPort ? (mountWorldAngle + cannonAdjust + spread) : (mountWorldAngle + gunAdjust + spread);
-    const speed = player.bulletSpeed + (cannonPort ? 0.45 : 0.2);
-    const dmg = player.bulletDamage + (cannonPort ? 4 : 0);
-    const maxRange = cannonPort ? ranges.cannon : ranges.gun;
+
+    if (type === 'scattershot') {
+      // 6 pellets in a wide 55-degree spread — devastating at close range
+      const pelletCount = 6;
+      const spreadTotal = 0.96; // ~55 degrees
+      const pelletDmg = (player.bulletDamage * 0.55);
+      const pelletSpeed = player.bulletSpeed + 0.3;
+      const maxRange = ranges.gun * 0.65; // short range
+      const baseDir = mountWorldAngle + gunAdjust;
+      for (let p = 0; p < pelletCount; p++) {
+        const t = pelletCount === 1 ? 0 : (p / (pelletCount - 1)) - 0.5;
+        const jitter = (Math.random() - 0.5) * 0.12;
+        const pelletAngle = baseDir + t * spreadTotal + jitter;
+        const pdx = Math.cos(pelletAngle), pdy = Math.sin(pelletAngle);
+        if (target) {
+          const shotDist = Math.hypot(target.x - spawnX, target.y - spawnY);
+          if (shotDist > maxRange) continue;
+        }
+        state.bullets.push({
+          x: spawnX, y: spawnY,
+          vx: pdx * pelletSpeed, vy: pdy * pelletSpeed,
+          dmg: pelletDmg, heavy: false,
+          weaponType: 'scattershot',
+          owner: 'player', sourceSize: player.size,
+          maxRange, travel: 0
+        });
+        spawnMuzzleBlast(spawnX, spawnY, pdx, pdy, false);
+      }
+      firedGun = true;
+      gunCount += 1;
+      gunDirX += Math.cos(baseDir);
+      gunDirY += Math.sin(baseDir);
+      continue;
+    }
+
+    const spread = (Math.random() - 0.5) * (isCannonLike ? 0.12 : 0.18);
+    const dir = isCannonLike ? (mountWorldAngle + cannonAdjust + spread) : (mountWorldAngle + gunAdjust + spread);
     const dirX = Math.cos(dir);
     const dirY = Math.sin(dir);
+
+    if (type === 'ghostCannon') {
+      const speed = player.bulletSpeed + 0.55;
+      const dmg = player.bulletDamage + 5;
+      const maxRange = ranges.cannon;
+      if (target) {
+        const shotDist = Math.hypot(target.x - spawnX, target.y - spawnY);
+        if (shotDist > maxRange) continue;
+        if (!mountHasLineHit(spawnX, spawnY, dirX, dirY, maxRange, target, targetRadius)) continue;
+      }
+      state.bullets.push({
+        x: spawnX, y: spawnY,
+        vx: dirX * speed, vy: dirY * speed,
+        dmg, heavy: true,
+        weaponType: 'ghostCannon',
+        piercing: true, hitEnemies: new Set(),
+        owner: 'player', sourceSize: player.size,
+        maxRange, travel: 0
+      });
+      spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, true);
+      firedCannon = true;
+      cannonCount += 1;
+      cannonDirX += dirX;
+      cannonDirY += dirY;
+      continue;
+    }
+
+    if (type === 'fireBomb') {
+      const speed = player.bulletSpeed * 0.52; // slow arcing bomb
+      const dmg = player.bulletDamage + 3;
+      const maxRange = ranges.cannon * 0.80;
+      if (target) {
+        const shotDist = Math.hypot(target.x - spawnX, target.y - spawnY);
+        if (shotDist > maxRange) continue;
+        if (!mountHasLineHit(spawnX, spawnY, dirX, dirY, maxRange, target, targetRadius)) continue;
+      }
+      state.bullets.push({
+        x: spawnX, y: spawnY,
+        vx: dirX * speed, vy: dirY * speed,
+        dmg, heavy: true,
+        weaponType: 'fireBomb',
+        isBomb: true,
+        owner: 'player', sourceSize: player.size,
+        maxRange, travel: 0
+      });
+      spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, true);
+      firedCannon = true;
+      cannonCount += 1;
+      cannonDirX += dirX;
+      cannonDirY += dirY;
+      continue;
+    }
+
+    if (type === 'chainShot') {
+      const speed = player.bulletSpeed + 0.25;
+      const dmg = player.bulletDamage + 6;
+      const maxRange = ranges.cannon * 0.90;
+      if (target) {
+        const shotDist = Math.hypot(target.x - spawnX, target.y - spawnY);
+        if (shotDist > maxRange) continue;
+        if (!mountHasLineHit(spawnX, spawnY, dirX, dirY, maxRange, target, targetRadius)) continue;
+      }
+      state.bullets.push({
+        x: spawnX, y: spawnY,
+        vx: dirX * speed, vy: dirY * speed,
+        dmg, heavy: true,
+        weaponType: 'chainShot',
+        isChain: true,
+        owner: 'player', sourceSize: player.size,
+        maxRange, travel: 0
+      });
+      spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, true);
+      firedCannon = true;
+      cannonCount += 1;
+      cannonDirX += dirX;
+      cannonDirY += dirY;
+      continue;
+    }
+
+    // Standard gun or cannon
+    const speed = player.bulletSpeed + (isCannonLike ? 0.45 : 0.2);
+    const dmg = player.bulletDamage + (isCannonLike ? 4 : 0);
+    const maxRange = isCannonLike ? ranges.cannon : ranges.gun;
 
     if (target) {
       const shotDist = Math.hypot(target.x - spawnX, target.y - spawnY);
@@ -3226,14 +3514,14 @@ function broadsideFire(sideSign, target, distanceToTarget, allowGunFire, allowCa
       vx: dirX * speed,
       vy: dirY * speed,
       dmg,
-      heavy: cannonPort,
+      heavy: isCannonLike,
       owner: 'player',
       sourceSize: player.size,
       maxRange,
       travel: 0
     });
-    spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, cannonPort);
-    if (cannonPort) {
+    spawnMuzzleBlast(spawnX, spawnY, dirX, dirY, isCannonLike);
+    if (isCannonLike) {
       firedCannon = true;
       cannonCount += 1;
       cannonDirX += dirX;
@@ -3899,9 +4187,26 @@ function update(dt) {
   if (firedPlayer.firedGun) player.gunTimer = 0;
 
   updateShipValueTier();
-  const difficultyMult = 1 + state.difficultyTier * 0.22 + state.stageIndex * 0.12 + state.difficultyFromSize * 0.09 + state.shipValueTier * 0.06;
-  const spawnChance = (0.0069 * cfg.spawnRate + state.level * 0.00013 + state.difficultyTier * 0.0002 + state.difficultyFromSize * 0.00025 + state.shipValueTier * 0.00012) * 0.5 * dt * 60;
-  if (state.enemies.length < MAX_ENEMIES_ON_SCREEN && Math.random() < spawnChance) spawnEnemy();
+
+  // Phase system: alternate calm breathers and enemy swarms
+  const CALM_DURATION = 25;
+  const swarmDuration = Math.min(30, 12 + state.swarmCycle * 1.5);
+  state.swarmTimer += dt;
+  if (state.swarmPhase === 'calm' && state.swarmTimer >= CALM_DURATION) {
+    state.swarmPhase = 'swarm';
+    state.swarmTimer = 0;
+  } else if (state.swarmPhase === 'swarm' && state.swarmTimer >= swarmDuration) {
+    state.swarmPhase = 'calm';
+    state.swarmTimer = 0;
+    state.swarmCycle += 1;
+  }
+  const calmCap = 6;
+  const swarmCap = Math.min(50, 15 + state.swarmCycle * 4);
+  const activeCap = state.swarmPhase === 'swarm' ? swarmCap : calmCap;
+  const baseSpawnRate = 0.007 + state.stageIndex * 0.001 + state.difficultyTier * 0.0006;
+  const phaseMultiplier = state.swarmPhase === 'swarm' ? 8.0 : 0.7;
+  const spawnChance = baseSpawnRate * phaseMultiplier * dt * 60;
+  if (state.enemies.length < activeCap && Math.random() < spawnChance) spawnEnemy();
 
   for (let i = state.bullets.length - 1; i >= 0; i--) {
     const bullet = state.bullets[i];
@@ -3913,7 +4218,12 @@ function update(dt) {
     bullet.travel = (bullet.travel || 0) + stepDist;
     const maxRange = bullet.maxRange || (bullet.heavy ? 320 : 230);
     if (bullet.travel >= maxRange) {
-      spawnWaterSplash(bullet.x, bullet.y, !!bullet.heavy);
+      if (bullet.isBomb) {
+        // Fire bomb explodes even on miss
+        detonateBomb(bullet.x, bullet.y, bullet.dmg, bullet.sourceSize);
+      } else {
+        spawnWaterSplash(bullet.x, bullet.y, !!bullet.heavy);
+      }
       state.bullets.splice(i, 1);
       continue;
     }
@@ -3923,7 +4233,7 @@ function update(dt) {
   }
 
   function getEnemySteerTarget(enemy) {
-    if (enemy.kind === 'boss' || enemy.kind === 'rammer') {
+    if (enemy.kind === 'boss' || enemy.kind === 'rammer' || enemy.kind === 'skiff') {
       return { x: player.x, y: player.y };
     }
 
@@ -3977,7 +4287,7 @@ function update(dt) {
     let bestD2 = Infinity;
     const followRange = 220;
     for (const ally of state.enemies) {
-      if (ally === enemy || ally.kind === 'boss' || ally.kind === 'rammer') continue;
+      if (ally === enemy || ally.kind === 'boss' || ally.kind === 'rammer' || ally.kind === 'skiff') continue;
       const dx = ally.x - enemy.x;
       const dy = ally.y - enemy.y;
       const d2 = dx * dx + dy * dy;
@@ -4006,6 +4316,15 @@ function update(dt) {
 
   for (const enemy of state.enemies) {
     enemy.impactTimer = Math.max(0, (enemy.impactTimer || 0) - dt);
+    // Chain shot slow decay
+    if ((enemy.chainSlowTimer || 0) > 0) {
+      enemy.chainSlowTimer -= dt;
+      if (enemy.chainSlowTimer <= 0 && enemy.chainSlowOrigSpeed != null) {
+        enemy.baseSpeed = enemy.chainSlowOrigSpeed;
+        enemy.chainSlowOrigSpeed = null;
+        enemy.chainSlowTimer = 0;
+      }
+    }
     updateShipDamageState(enemy, dt, false);
     const ai = ensureEnemyAiState(enemy);
     const profile = getEnemyAiProfile(enemy);
@@ -4018,7 +4337,7 @@ function update(dt) {
     if (enemy.kind === 'boss') {
       const playerPlan = getBroadsideFirePlan(enemy, player);
       combatTarget = pickBossTarget(enemy, playerPlan).target;
-    } else if (enemy.kind === 'rammer') {
+    } else if (enemy.kind === 'rammer' || enemy.kind === 'skiff') {
       combatTarget = player;
     }
 
@@ -4068,7 +4387,7 @@ function update(dt) {
     let rowing = distToTarget > desiredRange * profile.rowThreshold || sideEval.score <= 0 || Math.abs(turn) > 0.85;
     let brake = distToTarget < desiredRange * profile.brakeRangeScale && sideEval.score > 0 && Math.abs(turn) < profile.brakeTurnThreshold;
 
-    if (enemy.kind === 'rammer') {
+    if (enemy.kind === 'rammer' || enemy.kind === 'skiff') {
       rowing = true;
       brake = false;
     }
@@ -4145,6 +4464,34 @@ function update(dt) {
     }
   }
 
+  // Helper: explode a fire bomb at world position (AOE ignition)
+  function detonateBomb(bx, by, dmg, sourceSize) {
+    const BOMB_RADIUS = 58;
+    for (const e2 of state.enemies) {
+      if (e2.hp <= 0) continue;
+      const dist = Math.hypot(e2.x - bx, e2.y - by);
+      if (dist > BOMB_RADIUS) continue;
+      const falloff = 1 - dist / BOMB_RADIUS * 0.5;
+      e2.hp -= dmg * 0.75 * falloff;
+      tryIgniteShip(e2, { heavy: true, sourceSize }, 3, 0.95);
+      spawnImpactDebris(e2.x, e2.y, (e2.x - bx) / (dist || 1), (e2.y - by) / (dist || 1), true, e2);
+    }
+    // Fiery explosion particles at bomb position
+    for (let k = 0; k < 18; k++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.2 + Math.random() * 2.8;
+      state.particles.push({
+        x: bx, y: by,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 0.55 + Math.random() * 0.55, maxLife: 1.1,
+        size: 6 + Math.random() * 10,
+        color: Math.random() < 0.5 ? '#ff6020' : '#ffb030',
+        sides: 5, rot: Math.random() * Math.PI * 2, circle: true
+      });
+    }
+    playCannonImpactSfx(bx, by, 0, -1, sourceSize || 16);
+  }
+
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const enemy = state.enemies[i];
 
@@ -4154,18 +4501,70 @@ function update(dt) {
         const bossFriendlyFire = b.sourceKind === 'boss' && b.shooterId !== enemy.id && enemy.kind !== 'boss';
         if (!bossFriendlyFire) continue;
       }
+      // Ghost cannon: skip enemies already hit by this bullet
+      if (b.piercing && b.hitEnemies && b.hitEnemies.has(enemy.id)) continue;
+
       const d = Math.hypot(enemy.x - b.x, enemy.y - b.y);
       if (d < enemy.size + 4) {
         const dmgScale = b.owner === 'enemy' ? 0.64 : 1;
-        enemy.hp -= b.dmg * dmgScale;
         const n = normalizeOr(b.vx, b.vy, 1, 0);
+
+        if (b.isBomb) {
+          // Fire bomb: AOE explosion on impact, then remove bullet
+          detonateBomb(b.x, b.y, b.dmg, b.sourceSize);
+          state.bullets.splice(j, 1);
+          // Re-check enemy death after AOE
+          if (enemy.hp <= 0) {
+            spawnShipExplosion(enemy.x, enemy.y, enemy.size, enemy.kind === 'boss', enemy);
+            state.enemies.splice(i, 1);
+            if (enemy.kind === 'boss') {
+              state.drops.push({ x: enemy.x, y: enemy.y, v: 22 + Math.random() * 6 });
+              onBossDefeated();
+            } else {
+              const bonus = enemy.kind === 'raider' ? 6 : enemy.kind === 'skiff' ? 1 : 3;
+              state.drops.push({ x: enemy.x, y: enemy.y, v: bonus + Math.random() * 2.5 });
+            }
+            break;
+          }
+          continue;
+        }
+
+        enemy.hp -= b.dmg * dmgScale;
         addHullFractureMark(enemy, b.x, b.y, 0.6 + (b.heavy ? 0.8 : 0.3));
-        tryIgniteShip(enemy, b, b.heavy ? 1 : 0, 0.12);
         spawnImpactDebris(enemy.x, enemy.y, n.x, n.y, !!b.heavy, enemy);
         spawnDeckBurst(enemy.x, enemy.y, n.x, n.y, !!b.heavy);
+
+        if (b.isChain) {
+          // Chain shot: slow the enemy for 4 seconds
+          if (!enemy.chainSlowOrigSpeed) enemy.chainSlowOrigSpeed = enemy.baseSpeed;
+          enemy.baseSpeed = enemy.chainSlowOrigSpeed * 0.30;
+          enemy.chainSlowTimer = 4.0;
+          // Chain visual: blue-white debris
+          for (let k = 0; k < 6; k++) {
+            const ang = Math.random() * Math.PI * 2;
+            state.particles.push({
+              x: enemy.x, y: enemy.y,
+              vx: Math.cos(ang) * (1 + Math.random()), vy: Math.sin(ang) * (1 + Math.random()),
+              life: 0.5, maxLife: 0.5, size: 4 + Math.random() * 4,
+              color: '#88b8ff', sides: 4, rot: 0, circle: false
+            });
+          }
+          tryIgniteShip(enemy, b, 0, 0);
+        } else {
+          tryIgniteShip(enemy, b, b.heavy ? 1 : 0, 0.12);
+        }
+
         if (b.heavy) playCannonImpactSfx(enemy.x, enemy.y, n.x, n.y, b.sourceSize || 16);
         else playGunImpactSfx(enemy.x, enemy.y, n.x, n.y, b.sourceSize || 16);
-        state.bullets.splice(j, 1);
+
+        if (b.piercing) {
+          // Ghost cannon: track hit, keep bullet alive
+          if (!b.hitEnemies) b.hitEnemies = new Set();
+          b.hitEnemies.add(enemy.id);
+        } else {
+          state.bullets.splice(j, 1);
+        }
+
         if (enemy.hp <= 0) {
           spawnShipExplosion(enemy.x, enemy.y, enemy.size, enemy.kind === 'boss', enemy);
           state.enemies.splice(i, 1);
@@ -4173,7 +4572,7 @@ function update(dt) {
             state.drops.push({ x: enemy.x, y: enemy.y, v: 22 + Math.random() * 6 });
             onBossDefeated();
           } else {
-            const bonus = enemy.kind === 'raider' ? 6 : 3;
+            const bonus = enemy.kind === 'raider' ? 6 : enemy.kind === 'skiff' ? 1 : 3;
             state.drops.push({ x: enemy.x, y: enemy.y, v: bonus + Math.random() * 2.5 });
           }
           break;
@@ -4280,7 +4679,7 @@ function update(dt) {
         state.drops.push({ x: enemy.x, y: enemy.y, v: 22 + Math.random() * 6 });
         onBossDefeated();
       } else {
-        const bonus = enemy.kind === 'raider' ? 6 : 3;
+        const bonus = enemy.kind === 'raider' ? 6 : enemy.kind === 'skiff' ? 1 : 3;
         state.drops.push({ x: enemy.x, y: enemy.y, v: bonus + Math.random() * 2.5 });
       }
     }
@@ -4408,6 +4807,14 @@ function update(dt) {
       state.gameOver = true;
       state.playerSunk = true;
       state.finalScore = Math.round(state.gold + state.level * 28 + state.bossesDefeated * 180 + state.stageIndex * 95);
+      // Award persistent doubloons: 25% of in-run gold + level bonus
+      const earnedDoubloons = Math.floor(state.gold * 0.25 + state.level * 4 + state.bossesDefeated * 20);
+      persistentDoubloons += earnedDoubloons;
+      state.earnedDoubloons = earnedDoubloons;
+      const sv = loadSave();
+      sv.doubloons = persistentDoubloons;
+      sv.unlocked = [...unlockedShips];
+      writeSave(sv);
       spawnPlayerShipBreakup();
     }
   }
@@ -4999,7 +5406,7 @@ function drawCombatDevtools() {
     ctx.fillStyle = '#e8f5ff';
     ctx.textAlign = 'center';
     ctx.font = '12px system-ui';
-    const label = rect.kind === 'pirate' ? 'Pirate' : rect.kind === 'raider' ? 'Raider' : rect.kind === 'rammer' ? 'Rammer' : 'Boss';
+    const label = rect.kind === 'pirate' ? 'Pirate' : rect.kind === 'raider' ? 'Raider' : rect.kind === 'rammer' ? 'Rammer' : rect.kind === 'skiff' ? 'Skiff' : 'Boss';
     ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 19);
   }
 
@@ -5104,47 +5511,95 @@ function drawShipyardScreen() {
   sy.starterPresetRects = [];
   if (sy.freeEdit) {
     const areaX = panelX + 18;
-    const areaY = panelY + 64;
+    const areaY = panelY + 58;
     const areaW = leftW - 36;
-    const areaH = 94;
-    const gap = 10;
-    const cardW = (areaW - gap * (STARTER_SHIP_PRESETS.length - 1)) / STARTER_SHIP_PRESETS.length;
+    const gap = 8;
+    const cardsPerRow = 4;
+    const rows = [SHIP_ROSTER.slice(0, 4), SHIP_ROSTER.slice(4)];
+    const cardW = (areaW - gap * (cardsPerRow - 1)) / cardsPerRow;
+    const cardH = 78;
+    const rowH = cardH + gap;
 
-    ctx.fillStyle = 'rgba(19,44,61,0.58)';
-    ctx.fillRect(areaX - 6, areaY - 8, areaW + 12, areaH + 14);
+    // Section header with persistent doubloons
     ctx.fillStyle = '#cfe5f7';
     ctx.font = '13px system-ui';
     ctx.textAlign = 'left';
-    ctx.fillText('Starter Presets', areaX + 2, areaY + 8);
+    ctx.fillText('Ship Roster', areaX + 2, areaY + 10);
+    ctx.fillStyle = '#ffd887';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Doubloons: ${persistentDoubloons}`, areaX + areaW - 2, areaY + 10);
 
-    for (let i = 0; i < STARTER_SHIP_PRESETS.length; i++) {
-      const preset = STARTER_SHIP_PRESETS[i];
-      const rect = {
-        id: preset.id,
-        x: areaX + i * (cardW + gap),
-        y: areaY + 14,
-        w: cardW,
-        h: 72
-      };
-      sy.starterPresetRects.push(rect);
+    for (let row = 0; row < rows.length; row++) {
+      const rowShips = rows[row];
+      const rowY = areaY + 16 + row * rowH;
+      for (let col = 0; col < rowShips.length; col++) {
+        const preset = rowShips[col];
+        const isUnlocked = unlockedShips.has(preset.id);
+        const canAfford = persistentDoubloons >= preset.cost;
+        const rect = {
+          id: preset.id,
+          x: areaX + col * (cardW + gap),
+          y: rowY,
+          w: cardW,
+          h: cardH,
+          isUnlocked,
+          canAfford,
+          cost: preset.cost
+        };
+        sy.starterPresetRects.push(rect);
 
-      const selected = sy.starterPresetId === preset.id;
-      ctx.fillStyle = selected ? '#2f7f5d' : '#1b3d54';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.strokeStyle = selected ? '#84d6ae' : '#4a6e86';
-      ctx.lineWidth = selected ? 2 : 1;
-      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        const selected = sy.starterPresetId === preset.id;
+        let bg = isUnlocked
+          ? (selected ? '#2f7f5d' : '#1b3d54')
+          : (canAfford ? '#3a2810' : '#1e1e22');
+        ctx.fillStyle = bg;
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.strokeStyle = selected ? '#84d6ae' : (isUnlocked ? '#4a6e86' : (canAfford ? '#8a6030' : '#3a3a44'));
+        ctx.lineWidth = selected ? 2 : 1;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-      ctx.fillStyle = '#eaf6ff';
-      ctx.font = '13px system-ui';
-      ctx.textAlign = 'left';
-      ctx.fillText(preset.name, rect.x + 8, rect.y + 17);
-      ctx.fillStyle = '#b6d4e9';
-      ctx.font = '12px system-ui';
-      ctx.fillText(`G ${preset.gunPerSide}/side · C ${preset.cannonPerSide}/side`, rect.x + 8, rect.y + 35);
-      ctx.fillText(`Crew ${preset.crew} · Pivot ${preset.cannonPivot}°`, rect.x + 8, rect.y + 52);
-      ctx.fillText(selected ? 'Selected' : 'Click to load', rect.x + 8, rect.y + 67);
+        // Ship name
+        ctx.fillStyle = isUnlocked ? '#eaf6ff' : (canAfford ? '#d4a860' : '#7a7a88');
+        ctx.font = `bold 12px system-ui`;
+        ctx.textAlign = 'left';
+        ctx.fillText(preset.name, rect.x + 7, rect.y + 15);
+
+        // Weapon summary
+        ctx.font = '11px system-ui';
+        ctx.fillStyle = isUnlocked ? '#a8d0e8' : (canAfford ? '#a08050' : '#585860');
+        const specType = preset.specialType;
+        const specCount = preset.specialPerSide || 0;
+        const specLabel = specType === 'ghostCannon' ? 'Ghost' : specType === 'scattershot' ? 'Scatter' : specType === 'fireBomb' ? 'Bomb' : specType === 'chainShot' ? 'Chain' : null;
+        const weapLine = specLabel && specCount > 0
+          ? `${specLabel} ×${specCount}/side${preset.gunPerSide > 0 ? ` + G${preset.gunPerSide}` : ''}`
+          : `G${preset.gunPerSide}/side · C${preset.cannonPerSide}/side`;
+        ctx.fillText(weapLine, rect.x + 7, rect.y + 30);
+
+        // Crew line
+        ctx.fillText(`Crew ${preset.crew} · Pivot ${preset.cannonPivot}°`, rect.x + 7, rect.y + 44);
+
+        // Status/action line
+        ctx.font = '11px system-ui';
+        if (isUnlocked) {
+          ctx.fillStyle = selected ? '#a8ffd4' : '#7ab8d4';
+          ctx.fillText(selected ? '✓ Selected' : 'Click to select', rect.x + 7, rect.y + 60);
+        } else {
+          // Lock icon and cost
+          ctx.fillStyle = canAfford ? '#ffcc60' : '#887060';
+          ctx.fillText(canAfford ? `Unlock: ${preset.cost} 🪙` : `Locked: ${preset.cost} 🪙`, rect.x + 7, rect.y + 60);
+          // Lock bar at top-right
+          ctx.fillStyle = canAfford ? 'rgba(255,180,50,0.25)' : 'rgba(80,60,60,0.3)';
+          ctx.fillRect(rect.x + rect.w - 24, rect.y, 24, cardH);
+          ctx.fillStyle = canAfford ? '#e0a030' : '#685858';
+          ctx.font = '14px system-ui';
+          ctx.textAlign = 'center';
+          ctx.fillText('🔒', rect.x + rect.w - 12, rect.y + cardH * 0.54);
+          ctx.textAlign = 'left';
+          ctx.font = '11px system-ui';
+        }
+      }
     }
+    ctx.textAlign = 'left';
   }
 
   const modeY = panelY + 56;
@@ -5204,7 +5659,12 @@ function drawShipyardScreen() {
   if (sy.editMode === 'weapons') {
     sy.slotRects = getShipyardWeaponSlotScreenPoints();
     for (const slot of sy.slotRects) {
-      const color = slot.type === 'cannon' ? '#d8a167' : slot.type === 'gun' ? '#9fcfe6' : '#33566f';
+      const slotColorMap = {
+        cannon: '#d8a167', gun: '#9fcfe6',
+        ghostCannon: '#40c8c0', fireBomb: '#e05820',
+        chainShot: '#8080d8', scattershot: '#d4c040'
+      };
+      const color = slotColorMap[slot.type] || '#33566f';
       const ring = slot.type === 'empty' ? '#678aa1' : '#ecf7ff';
       ctx.fillStyle = color;
       ctx.beginPath();
@@ -5222,6 +5682,15 @@ function drawShipyardScreen() {
       if (slot.type === 'cannon') {
         ctx.fillStyle = '#2d2e31';
         ctx.fillRect(slot.x - 6, slot.y - 2, 12, 4);
+      }
+      // Special weapon type labels
+      const specialLabels = { ghostCannon: 'G', fireBomb: 'F', chainShot: 'C', scattershot: 'S' };
+      if (specialLabels[slot.type]) {
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.round(slot.r * 1.1)}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(specialLabels[slot.type], slot.x, slot.y + slot.r * 0.38);
+        ctx.textAlign = 'left';
       }
     }
   } else {
@@ -5255,24 +5724,29 @@ function drawShipyardScreen() {
   const infoY = panelY + 86;
   ctx.textAlign = 'left';
   ctx.font = '17px system-ui';
+  ctx.font = '15px system-ui';
   ctx.fillStyle = '#c4e1f2';
-  ctx.fillText(`Gold: ${Math.round(state.gold)}`, infoX, infoY);
-  ctx.fillText(`Hull Refit Cost: ${sy.pendingCost}`, infoX, infoY + 28);
+  ctx.fillText(`Run Gold: ${Math.round(state.gold)}`, infoX, infoY);
+  ctx.fillStyle = '#ffd887';
+  ctx.fillText(`Doubloons: ${persistentDoubloons}  (saved across runs)`, infoX, infoY + 22);
+  ctx.fillStyle = '#c4e1f2';
+  ctx.font = '15px system-ui';
+  ctx.fillText(`Hull Refit Cost: ${sy.pendingCost}`, infoX, infoY + 46);
 
   const weapon = getPlayerWeaponCounts();
   const sternBeamMul = design.sternBeamMul ?? 1;
   const hullValue = Math.round(design.bodyHalfLenMul * 140 + design.bodyHalfBeamMul * 160 + sternBeamMul * 120 + design.bowTipMul * 120 + design.sternTipMul * 90);
   const totalValue = Math.round(hullValue + player.gunners * 18 + player.rowers * 12 + (player.repairCrew || 0) * 14 + weapon.cannonTotal * 28 + weapon.gunTotal * 9 + player.bulletDamage * 3 + (player.size - 16) * 22 + Math.max(0, player.cannonCapacityBonus) * 30);
   const predictedTier = clamp(Math.floor(totalValue / 120), 0, 14);
-  ctx.fillText(`Ship Value: ${totalValue} (Difficulty Tier +${predictedTier})`, infoX, infoY + 56);
-  ctx.fillText(`Placed: ${weapon.gunTotal} guns, ${weapon.cannonTotal} cannons`, infoX, infoY + 84);
+  ctx.fillText(`Ship Value: ${totalValue} (Difficulty Tier +${predictedTier})`, infoX, infoY + 70);
+  ctx.fillText(`Placed: ${weapon.gunTotal} guns, ${weapon.cannonTotal} cannons`, infoX, infoY + 94);
 
   const crewDemand = getWeaponCrewDemand();
   const crewRatio = getWeaponCrewRatio();
   const eff = getEffectiveReloadTimes();
-  ctx.fillText(`Weapon Crew Demand ${crewDemand.toFixed(1)} · Assigned Gunners ${player.gunners} · Efficiency ${Math.round(crewRatio * 100)}%`, infoX, infoY + 112);
+  ctx.fillText(`Weapon Crew Demand ${crewDemand.toFixed(1)} · Gunners ${player.gunners} · Efficiency ${Math.round(crewRatio * 100)}%`, infoX, infoY + 118);
   ctx.fillText(`Reloads: Gun ${eff.gun.toFixed(2)}s · Cannon ${eff.cannon.toFixed(2)}s`, infoX, infoY + 140);
-  ctx.fillText(`Stern Width: ${Math.round(sternBeamMul * 100)}% of mid-beam`, infoX, infoY + 168);
+  ctx.fillText(`Stern Width: ${Math.round(sternBeamMul * 100)}% of mid-beam`, infoX, infoY + 162);
 
   ctx.fillStyle = '#9fc2d9';
   ctx.font = '14px system-ui';
@@ -5403,15 +5877,77 @@ function draw() {
 
   for (const b of state.bullets) {
     const bp = toScreen(b.x, b.y);
-    const r = 4;
-    ctx.beginPath();
-    ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#c8ccd0';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(bp.x - 1.2, bp.y - 1.2, 1.4, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.fill();
+    const wt = b.weaponType;
+    // Themed bullet visuals per weapon type
+    if (wt === 'ghostCannon') {
+      // Teal glowing orb
+      const r = 5 * state.zoom;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r * 1.7, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(80,220,200,0.18)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#50dcc8';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x - 1.2, bp.y - 1.2, r * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(200,255,250,0.7)';
+      ctx.fill();
+    } else if (wt === 'fireBomb') {
+      // Large orange-red pulsing bomb
+      const t = state.time * 8;
+      const pulse = 1 + Math.sin(t) * 0.18;
+      const r = 6 * state.zoom * pulse;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r * 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,80,0,0.22)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff5010';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x - 1.5, bp.y - 1.5, r * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,200,100,0.8)';
+      ctx.fill();
+    } else if (wt === 'chainShot') {
+      // Two linked blue-white spheres
+      const r = 4 * state.zoom;
+      const ang = Math.atan2(b.vy, b.vx);
+      const offX = Math.cos(ang) * r * 1.2;
+      const offY = Math.sin(ang) * r * 1.2;
+      ctx.strokeStyle = 'rgba(180,200,255,0.7)';
+      ctx.lineWidth = 2 * state.zoom;
+      ctx.beginPath();
+      ctx.moveTo(bp.x - offX, bp.y - offY);
+      ctx.lineTo(bp.x + offX, bp.y + offY);
+      ctx.stroke();
+      for (const [ox, oy] of [[-offX, -offY], [offX, offY]]) {
+        ctx.beginPath();
+        ctx.arc(bp.x + ox, bp.y + oy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#a0b8ff';
+        ctx.fill();
+      }
+    } else if (wt === 'scattershot') {
+      // Small yellow-white pellet
+      const r = 3 * state.zoom;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0d870';
+      ctx.fill();
+    } else {
+      // Default: grey cannonball / musket ball
+      const r = b.heavy ? 5 * state.zoom : 3.5 * state.zoom;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8ccd0';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bp.x - 1.2, bp.y - 1.2, r * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill();
+    }
   }
 
   for (const d of state.drops) {
@@ -5501,10 +6037,27 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.font = '40px system-ui';
     ctx.textAlign = 'center';
-    ctx.fillText('Ship Sunk', canvas.width * 0.5, 250);
+    ctx.fillText('Ship Sunk', canvas.width * 0.5, 240);
     ctx.font = '20px system-ui';
-    ctx.fillText(`Score: ${Math.round(state.finalScore || 0)}`, canvas.width * 0.5, 290);
-    ctx.fillText('Refresh to start again', canvas.width * 0.5, 322);
+    ctx.fillText(`Score: ${Math.round(state.finalScore || 0)}`, canvas.width * 0.5, 278);
+    ctx.fillStyle = '#ffd887';
+    ctx.fillText(`+${state.earnedDoubloons || 0} Doubloons earned  (total: ${persistentDoubloons})`, canvas.width * 0.5, 308);
+    ctx.fillStyle = '#a8c8e0';
+    ctx.font = '15px system-ui';
+    ctx.fillText('Spend Doubloons in the Shipyard to unlock new ships.', canvas.width * 0.5, 334);
+    // Draw "Return to Shipyard" button
+    const btnW = 240, btnH = 42, btnX = canvas.width * 0.5 - btnW * 0.5, btnY = 372;
+    state.gameOverReturnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
+    ctx.fillStyle = '#1a4a6e';
+    ctx.strokeStyle = '#5ab0f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnW, btnH, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#e8f5ff';
+    ctx.font = 'bold 17px system-ui';
+    ctx.fillText('Return to Shipyard', canvas.width * 0.5, btnY + 27);
     ctx.textAlign = 'left';
   }
 

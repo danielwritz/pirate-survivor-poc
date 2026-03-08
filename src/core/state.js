@@ -58,6 +58,9 @@ export function createGameState() {
     clouds: [],
     mode: 'shipyard',
     bossSpawnedThisStage: false,
+    swarmPhase: 'calm',
+    swarmTimer: 0,
+    swarmCycle: 0,
     shipyard: createInitialShipyardState(),
     devtools: {
       visible: false,

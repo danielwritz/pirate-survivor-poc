@@ -2866,3 +2866,35 @@
 [2026-03-06T22:45:57.329Z] Player 6 disconnected. Remaining: 0
 [2026-03-07T02:02:02.216Z] Player 8 (Pirate) joined. Total: 1
 [2026-03-07T02:22:55.901Z] Player 8 disconnected. Remaining: 0
+[2026-03-08T04:42:24.257Z] Leaderboard DB path: :memory:
+[2026-03-08T04:42:24.258Z] Leaderboard persistence mode: memory
+[2026-03-08T04:42:24.258Z] Chat persistence mode: memory
+[2026-03-08T04:42:24.259Z] Loaded 0 chat messages for replay.
+[2026-03-08T04:42:24.259Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-08T04:42:24.258Z] Chat DB path: :memory:
+[2026-03-08T04:42:24.261Z] Open http://localhost:3000 in your browser to play.
+[2026-03-08T04:42:24.261Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-08T04:42:24.261Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-08T14:33:25.055Z] Leaderboard DB path: :memory:
+[2026-03-08T14:33:25.057Z] Leaderboard persistence mode: memory
+[2026-03-08T14:33:25.057Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-08T14:33:25.058Z] Loaded 0 chat messages for replay.
+[2026-03-08T14:33:25.057Z] Chat persistence mode: memory
+[2026-03-08T14:33:25.057Z] Chat DB path: :memory:
+[2026-03-08T14:33:25.061Z] Pirate Survivor server running on http://localhost:3000
+[2026-03-08T14:33:25.061Z] Tick rate: 20 Hz | Round: 10 min
+[2026-03-08T14:33:25.061Z] Open http://localhost:3000 in your browser to play.
+[2026-03-08T14:33:42.161Z] Leaderboard DB path: :memory:
+[2026-03-08T14:33:42.162Z] Leaderboard persistence mode: memory
+[2026-03-08T14:33:42.163Z] Chat DB path: :memory:
+[2026-03-08T14:33:42.163Z] Chat persistence mode: memory
+[2026-03-08T14:33:42.163Z] ERROR: One or more stores are running in non-durable memory mode. Data will not survive restarts.
+[2026-03-08T14:33:42.175Z] ERROR: uncaughtException: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at start (file:///C:/Users/DANIEL/source/repos/pirate-survivor-poc/server/index.js:330:14)
+[2026-03-08T14:33:42.163Z] Loaded 0 chat messages for replay.
+[2026-03-08T14:47:08.675Z] 404 /favicon.ico
+[2026-03-08T14:47:27.633Z] 404 /favicon.ico
+[2026-03-08T14:56:26.012Z] 404 /favicon.ico
