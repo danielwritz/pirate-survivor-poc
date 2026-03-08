@@ -1,5 +1,6 @@
 import {
   BOSS_WARNING_EDGE_MARGIN,
+  BOSS_WARNING_MARGIN_FRACTION,
   BOSS_WARNING_PULSE_HZ,
   BOSS_WARNING_PULSE_MAX,
   BOSS_WARNING_PULSE_MIN,
@@ -26,7 +27,7 @@ export function drawBossWarning(ctx, bossWorldPos, viewportState) {
   const dy = projected.y - cy;
   if (dx === 0 && dy === 0) return;
 
-  const margin = Math.max(0, Math.min(BOSS_WARNING_EDGE_MARGIN, Math.min(width, height) * 0.45));
+  const margin = Math.max(0, Math.min(BOSS_WARNING_EDGE_MARGIN, Math.min(width, height) * BOSS_WARNING_MARGIN_FRACTION));
   const bounds = {
     left: margin,
     right: width - margin,
@@ -34,25 +35,52 @@ export function drawBossWarning(ctx, bossWorldPos, viewportState) {
     bottom: height - margin
   };
 
-  const tCandidates = [];
+  const candidates = [];
   if (dx !== 0) {
     const tLeft = (bounds.left - cx) / dx;
+    if (tLeft > 0 && Number.isFinite(tLeft)) {
+      const pxLeft = cx + dx * tLeft;
+      const pyLeft = cy + dy * tLeft;
+      if (pyLeft >= bounds.top && pyLeft <= bounds.bottom) {
+        candidates.push({ t: tLeft, px: pxLeft, py: pyLeft });
+      }
+    }
+
     const tRight = (bounds.right - cx) / dx;
-    if (tLeft > 0) tCandidates.push(tLeft);
-    if (tRight > 0) tCandidates.push(tRight);
+    if (tRight > 0 && Number.isFinite(tRight)) {
+      const pxRight = cx + dx * tRight;
+      const pyRight = cy + dy * tRight;
+      if (pyRight >= bounds.top && pyRight <= bounds.bottom) {
+        candidates.push({ t: tRight, px: pxRight, py: pyRight });
+      }
+    }
   }
   if (dy !== 0) {
     const tTop = (bounds.top - cy) / dy;
+    if (tTop > 0 && Number.isFinite(tTop)) {
+      const pxTop = cx + dx * tTop;
+      const pyTop = cy + dy * tTop;
+      if (pxTop >= bounds.left && pxTop <= bounds.right) {
+        candidates.push({ t: tTop, px: pxTop, py: pyTop });
+      }
+    }
+
     const tBottom = (bounds.bottom - cy) / dy;
-    if (tTop > 0) tCandidates.push(tTop);
-    if (tBottom > 0) tCandidates.push(tBottom);
+    if (tBottom > 0 && Number.isFinite(tBottom)) {
+      const pxBottom = cx + dx * tBottom;
+      const pyBottom = cy + dy * tBottom;
+      if (pxBottom >= bounds.left && pxBottom <= bounds.right) {
+        candidates.push({ t: tBottom, px: pxBottom, py: pyBottom });
+      }
+    }
   }
 
-  const tEdge = Math.min(...tCandidates.filter((t) => Number.isFinite(t)));
-  if (!Number.isFinite(tEdge) || tEdge <= 0) return;
-
-  const px = cx + dx * tEdge;
-  const py = cy + dy * tEdge;
+  if (!candidates.length) return;
+  let best = candidates[0];
+  for (let i = 1; i < candidates.length; i++) {
+    if (candidates[i].t < best.t) best = candidates[i];
+  }
+  const { px, py } = best;
 
   const phase = performance.now() / 1000 * (Math.PI * 2 * BOSS_WARNING_PULSE_HZ);
   const pulse = (Math.sin(phase) + 1) * 0.5;

@@ -140,11 +140,16 @@ export const BOSS_SPLASH_PERCENT = 0.3;         // fraction of base reward for s
 // ─── Boss HUD ───
 export const BOSS_HEALTH_BAR_HEIGHT = 12;
 export const BOSS_HEALTH_BAR_WIDTH_FACTOR = 1.4;
+export const BOSS_HEALTH_BAR_MIN_WIDTH = 12;
+export const BOSS_HEALTH_BAR_VERTICAL_OFFSET_FACTOR = 1.6;
+export const BOSS_HEALTH_BAR_BORDER_SCALE = 0.18;
+export const BOSS_HEALTH_BAR_BORDER_MIN = 1;
 export const BOSS_WARNING_SIZE = 32;
 export const BOSS_WARNING_PULSE_MIN = 0.85;
 export const BOSS_WARNING_PULSE_MAX = 1.3;
 export const BOSS_WARNING_PULSE_HZ = 1.25;
 export const BOSS_WARNING_EDGE_MARGIN = 22;
+export const BOSS_WARNING_MARGIN_FRACTION = 0.45;
 
 // ─── Difficulty Stages ───
 export const STAGE_CALM_WATERS    = 'calm_waters';

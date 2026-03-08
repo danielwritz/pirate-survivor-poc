@@ -1,7 +1,11 @@
 import { clamp } from './core/math.js';
 import {
   BOSS_HEALTH_BAR_HEIGHT,
-  BOSS_HEALTH_BAR_WIDTH_FACTOR
+  BOSS_HEALTH_BAR_WIDTH_FACTOR,
+  BOSS_HEALTH_BAR_MIN_WIDTH,
+  BOSS_HEALTH_BAR_VERTICAL_OFFSET_FACTOR,
+  BOSS_HEALTH_BAR_BORDER_MIN,
+  BOSS_HEALTH_BAR_BORDER_SCALE
 } from '../shared/constants.js';
 
 function lerp(a, b, t) {
@@ -17,9 +21,9 @@ export function drawBossHealthBar(ctx, boss, screenX, screenY, options = {}) {
   const ratio = maxHealth > 0 ? clamp(health / maxHealth, 0, 1) : 0;
 
   const baseWidth = renderedWidth ?? (boss?.size ? boss.size * zoom * 2 : 0);
-  const width = Math.max(12, baseWidth * BOSS_HEALTH_BAR_WIDTH_FACTOR);
-  const height = Math.max(2, BOSS_HEALTH_BAR_HEIGHT);
-  const verticalOffset = (boss?.size || 0) * zoom + height * 1.6;
+  const width = Math.max(BOSS_HEALTH_BAR_MIN_WIDTH, baseWidth * BOSS_HEALTH_BAR_WIDTH_FACTOR);
+  const height = BOSS_HEALTH_BAR_HEIGHT;
+  const verticalOffset = (boss?.size || 0) * zoom + height * BOSS_HEALTH_BAR_VERTICAL_OFFSET_FACTOR;
   const originX = screenX - width * 0.5;
   const originY = screenY - verticalOffset;
 
@@ -39,7 +43,7 @@ export function drawBossHealthBar(ctx, boss, screenX, screenY, options = {}) {
   }
 
   ctx.strokeStyle = 'rgba(240,248,255,0.82)';
-  ctx.lineWidth = Math.max(1, height * 0.18);
+  ctx.lineWidth = Math.max(BOSS_HEALTH_BAR_BORDER_MIN, height * BOSS_HEALTH_BAR_BORDER_SCALE);
   ctx.strokeRect(originX, originY, width, height);
   ctx.restore();
 }
